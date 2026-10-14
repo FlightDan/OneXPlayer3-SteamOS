@@ -171,7 +171,7 @@ Copyright © 2026 FlightDan and contributors.
 
 感谢以下项目及其贡献者：
 
-特别感谢原始设备适配项目 **HANA & Claude**，以及提供设备、日志和实机反馈的测试者。
+特别感谢原始设备适配项目 **HANA**，以及提供设备、日志和实机反馈的测试者。
 
 - **设备适配**：[onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup)、[InputPlumber](https://github.com/ShadowBlip/InputPlumber)、[Linux](https://kernel.org/)、[KDE / KWin](https://invent.kde.org/plasma/kwin)、[Gamescope](https://github.com/ValveSoftware/gamescope)、[SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager)、[MangoHud](https://github.com/flightlessmango/MangoHud)。
 - **XeSS 运行环境**：[xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux)、[OptiScaler](https://github.com/optiscaler/OptiScaler)、[Mesa](https://gitlab.freedesktop.org/mesa/mesa)、[Intel Graphics Compiler](https://github.com/intel/intel-graphics-compiler)、[Intel compute-runtime / ocloc](https://github.com/intel/compute-runtime)。另感谢 [Intel XeSS](https://github.com/intel/xess) 提供的 SDK 与运行组件，其许可独立适用。

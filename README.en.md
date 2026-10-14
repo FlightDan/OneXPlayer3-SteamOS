@@ -171,7 +171,7 @@ This is an unofficial, community-maintained project and is not affiliated with V
 
 Thanks to the following projects and their contributors:
 
-Special thanks to **HANA & Claude** for the original device adaptation project, and to the testers who provided devices, logs and feedback from real hardware.
+Special thanks to **HANA** for the original device adaptation project, and to the testers who provided devices, logs and feedback from real hardware.
 
 - **Device support**: [onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup), [InputPlumber](https://github.com/ShadowBlip/InputPlumber), [Linux](https://kernel.org/), [KDE / KWin](https://invent.kde.org/plasma/kwin), [Gamescope](https://github.com/ValveSoftware/gamescope), [SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager) and [MangoHud](https://github.com/flightlessmango/MangoHud).
 - **XeSS runtime environment**: [xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux), [OptiScaler](https://github.com/optiscaler/OptiScaler), [Mesa](https://gitlab.freedesktop.org/mesa/mesa), [Intel Graphics Compiler](https://github.com/intel/intel-graphics-compiler) and [Intel compute-runtime / ocloc](https://github.com/intel/compute-runtime). Also thanks to [Intel XeSS](https://github.com/intel/xess) for its SDK and runtime components, governed by their own terms.
