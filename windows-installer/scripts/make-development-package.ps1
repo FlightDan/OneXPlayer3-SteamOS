@@ -25,6 +25,7 @@ function Copy-PackageTree([string]$source, [string]$relative) {
     New-Item -ItemType Directory -Force $target | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and $_.Extension -notin @('.pyc','.pdb') }) {
         if ($PublicBeta -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
+        if ($PublicBeta -and $relative -eq 'scripts' -and $item.Name -eq 'collect-desktop-runtime.py') { continue }
         $relativeFile = [IO.Path]::GetRelativePath($source, $item.FullName)
         $fileTarget = Join-Path $target $relativeFile
         New-Item -ItemType Directory -Force (Split-Path $fileTarget -Parent) | Out-Null
@@ -105,6 +106,10 @@ foreach ($name in 'SteamOSInstaller.exe','Launch.cmd','README.md','IMPLEMENTATIO
 Copy-PackageTree (Join-Path $projectRoot 'licenses') 'licenses'
 Copy-PackageTree (Join-Path $projectRoot 'docs') 'docs'
 if ($PublicBeta) {
+    # Keep all current task dependencies, including new guest tasks that the
+    # historical development package's explicit lists may not yet contain.
+    Copy-PackageTree (Join-Path $projectRoot 'guest') 'guest'
+    Copy-PackageTree (Join-Path $projectRoot 'scripts') 'scripts'
     $workspaceRoot = Split-Path $projectRoot -Parent
     foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.md','ROADMAP.md','GIT_WORKSPACE.md')) {
         Copy-Item -LiteralPath (Join-Path $workspaceRoot $name) -Destination (Join-Path $destination $name)
