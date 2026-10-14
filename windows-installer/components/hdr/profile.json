@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "hdr",
+  "version": "20261013-hdr-r3",
+  "archive": "hdr-20261013-r3.zip",
+  "source_files": [
+    "hdr/generate.py",
+    "hdr/installer.py",
+    "hdr/upstream.lua",
+    "hdr/UPSTREAM_LICENSE",
+    "hdr/test_profile.lua",
+    "file_transaction.py",
+    "shared_state.py"
+  ],
+  "deployment": "configuration_files_only",
+  "default": false,
+  "system": {
+    "version": "3.10",
+    "build": "20260924.1000",
+    "kernel": "7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9",
+    "gamescope": "3.16.30-1"
+  },
+  "device": {
+    "vendor": "ONE-NETBOOK",
+    "product": "ONEXPLAYER 3",
+    "driver": "xe",
+    "panel_vendor": "SDC",
+    "panel_model": "AMS881KB01-0"
+  },
+  "mapping": {
+    "eotf": "gamma22",
+    "peak": 1100,
+    "full_frame": 472,
+    "optical_measurement": false
+  },
+  "activation": "Session restart required; never restarted automatically",
+  "desktop_hdr": "No KDE HDR/WCG changes",
+  "acceptance": "Actual LuaJIT harness and virtual file lifecycle passed; live new install/reboot/suspend/performance still pending",
+  "transaction_state": "Root-owned private /home/.oxp3-installer/transactions/hdr on separately mounted shared home; legacy per-slot journal requires explicit offline migration"
+}

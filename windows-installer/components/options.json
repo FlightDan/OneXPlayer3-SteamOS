@@ -1,0 +1,278 @@
+{
+  "schema": 1,
+  "languages": [
+    "zh-CN",
+    "en-US"
+  ],
+  "kde_languages": [
+    "system",
+    "zh_CN",
+    "zh_TW",
+    "en_US",
+    "ja_JP",
+    "ko_KR",
+    "de_DE",
+    "fr_FR",
+    "es_ES",
+    "ru_RU"
+  ],
+  "repairs": [
+    {
+      "id": "refind",
+      "zh": "rEFInd · 双系统图形启动菜单",
+      "en": "rEFInd · graphical dual-boot menu",
+      "default": false,
+      "available": false,
+      "unavailable_zh": "请在第 5 步“启动器安装”单独选择；rEFInd 不属于系统修复组件。",
+      "unavailable_en": "Select this separately in step 5, Boot manager. rEFInd is not a system repair component.",
+      "dependencies": []
+    },
+    {
+      "id": "opti2xmx",
+      "zh": "Opti2XMX · 每游戏 XMX / Opti 注入与版本管理",
+      "en": "Opti2XMX · per-game XMX / Opti injection and version management",
+      "default": true,
+      "dependencies": ["decky"]
+    },
+    {
+      "id": "gamescope-env",
+      "zh": "游戏模式启动环境隔离 · 修复桌面切回黑屏",
+      "en": "Game mode environment isolation · fix black screen after desktop",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "flathub-ustc",
+      "zh": "SteamOS 桌面模式 应用商店 · 中科大 Flathub 源（可选）",
+      "en": "SteamOS Desktop Mode app store · USTC Flathub mirror (optional)",
+      "default": false,
+      "dependencies": []
+    },
+    {
+      "id": "hdr",
+      "zh": "游戏模式 HDR · Gamma 2.2",
+      "en": "Game mode HDR · Gamma 2.2",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "desktop-hdr",
+      "zh": "KDE 桌面 HDR 映射与恢复",
+      "en": "KDE desktop HDR mapping and recovery",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "keyboard",
+      "zh": "KDE 屏幕键盘与 Steam 键盘入口",
+      "en": "KDE touch keyboard and Steam keyboard launcher",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "input",
+      "zh": "背键驱动 · M1/L4、M2/R4、Home/L5",
+      "en": "Back buttons · M1/L4, M2/R4, Home/L5",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "multifunction",
+      "zh": "多功能键映射为 R5",
+      "en": "Map the multifunction key to R5",
+      "default": true,
+      "dependencies": [
+        "input"
+      ]
+    },
+    {
+      "id": "gyro",
+      "zh": "BMI260 陀螺仪 · BIOS 5.09（新装需校准）",
+      "en": "BMI260 gyro · BIOS 5.09 (calibrate after installation)",
+      "default": true,
+      "dependencies": ["input"]
+    },
+    {
+      "id": "xe-dsb",
+      "zh": "OXP3 显示兼容修复 · 暂停 DSB",
+      "en": "OXP3 display compatibility · disable DSB",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "gm7-resume",
+      "zh": "GM7 休眠恢复 · 自动匹配目标 SSD",
+      "en": "GM7 suspend recovery · match target SSD",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "wifi",
+      "zh": "BE201 无线 c106 与蓝牙固件",
+      "en": "BE201 wireless c106 and Bluetooth firmware",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "manager",
+      "zh": "SteamOS Manager 状态与错误修复",
+      "en": "SteamOS Manager state and error fixes",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "native-tdp",
+      "zh": "原生 TDP 10–40W 控制",
+      "en": "Native TDP controls · 10–40 W",
+      "default": true,
+      "dependencies": [
+        "manager"
+      ]
+    },
+    {
+      "id": "overlay",
+      "zh": "CPU/GPU/APU 功耗与 PVRAM 叠加层",
+      "en": "CPU/GPU/APU power and PVRAM overlay",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "fan-driver",
+      "zh": "OXP3 风扇与充电接口驱动",
+      "en": "OXP3 fan and charging interface driver",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "oxp3-fan",
+      "zh": "OXP3 风扇 · 自动与曲线",
+      "en": "OXP3 Fan · automatic mode and curves",
+      "default": true,
+      "dependencies": [
+        "fan-driver",
+        "decky"
+      ]
+    },
+    {
+      "id": "oxp3-cpu",
+      "zh": "OXP3 CPU · EPP 与分组限频",
+      "en": "OXP3 CPU · EPP and core group frequency limits",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "charging",
+      "zh": "OXP3 Battery · 充电上限与模式",
+      "en": "OXP3 Battery · charge limit and modes",
+      "default": true,
+      "dependencies": [
+        "fan-driver",
+        "decky"
+      ]
+    },
+    {
+      "id": "legacy-runtime",
+      "zh": "音量键与电量显示修复",
+      "en": "Volume keys and battery display fixes",
+      "default": true,
+      "dependencies": []
+    }
+  ],
+  "plugins": [
+    {
+      "id": "windows-reboot",
+      "zh": "重启进入 Windows · Decky 按钮与桌面快捷方式",
+      "en": "Restart into Windows · Decky button and desktop shortcut",
+      "default": true,
+      "dependencies": ["decky"]
+    },
+    {
+      "id": "decky",
+      "zh": "Decky Loader · 插件运行环境",
+      "en": "Decky Loader · plugin runtime",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "steamgriddb",
+      "zh": "SteamGridDB · 游戏封面",
+      "en": "SteamGridDB · game artwork",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "protondb",
+      "zh": "ProtonDB Badges · 兼容性标记",
+      "en": "ProtonDB Badges · compatibility ratings",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "tabmaster",
+      "zh": "TabMaster · 游戏库分页",
+      "en": "TabMaster · library tabs",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "css-loader",
+      "zh": "CSS Loader · 界面主题",
+      "en": "CSS Loader · interface themes",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "autoflatpaks",
+      "zh": "AutoFlatpaks · 应用更新",
+      "en": "AutoFlatpaks · application updates",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "deck-settings",
+      "zh": "Deck Settings · 游戏设置建议",
+      "en": "Deck Settings · game settings recommendations",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "hltb",
+      "zh": "HLTB for Deck · 游戏时长",
+      "en": "HLTB for Deck · playtime estimates",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "animation-changer",
+      "zh": "Animation Changer · 启动画面",
+      "en": "Animation Changer · startup animations",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
+      "id": "waydroid",
+      "zh": "Waydroid r2 · Android 宿主适配",
+      "en": "Waydroid r2 · Android host adaptation",
+      "default": true,
+      "dependencies": []
+    }
+  ]
+}

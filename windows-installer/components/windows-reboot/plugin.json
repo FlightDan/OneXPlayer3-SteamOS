@@ -1,0 +1,10 @@
+{
+  "name": "Restart into Windows",
+  "author": "OXP3 SteamOS",
+  "flags": ["root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["utility", "root"],
+    "description": "Restart into Windows for one boot from SteamOS."
+  }
+}

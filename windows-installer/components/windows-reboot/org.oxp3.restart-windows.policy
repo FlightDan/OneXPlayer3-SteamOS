@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <action id="org.oxp3.restart-windows">
+    <description>Restart into Windows</description>
+    <description xml:lang="zh_CN">重启进入 Windows</description>
+    <message>Authorization is required to restart into Windows.</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/oxp3-reboot-windows</annotate>
+  </action>
+</policyconfig>

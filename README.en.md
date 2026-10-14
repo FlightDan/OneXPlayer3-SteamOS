@@ -4,7 +4,9 @@
 
 ## 1. Introduction
 
-SteamOS support for the **ONEXPLAYER 3 handheld**, covering Game Mode, the KDE desktop, controller input and hardware controls, with **native Intel XeSS XMX hardware acceleration**.
+SteamOS support for the **ONEXPLAYER 3 handheld**, covering Game Mode, the KDE desktop, controller input and hardware controls, with **Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game)**.
+
+The current integration release is **OXP3 SteamOS 0.1.0 Beta**, based on **SteamOS 3.10**.
 
 Report bugs by email at **[dan@devdan.cc](mailto:dan@devdan.cc)** or through [GitHub Issues](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues).
 
@@ -52,6 +54,7 @@ Screenshots / logs:
 | Performance overlay | CPU / GPU / APU power, fan and video-memory information are displayed correctly | ✅ |
 | Volume keys | Volume keys work normally | ✅ |
 | Waydroid | Android apps and a Game Mode launcher; not fully validated | 🧪 |
+| Restart into Windows | [Decky button and desktop shortcut](windows-installer/docs/WINDOWS_REBOOT.md), for the next boot only; restart into Windows confirmed on the device | ✅ |
 | OXP3 Battery | Verified bypass power and correct charge-limit control | ✅ |
 | BE201 Wi-Fi | Wireless firmware support; many users have reported hardware failures under Windows. If the wireless driver drops out, try rebooting | ⚠️ |
 
@@ -62,35 +65,35 @@ Screenshots / logs:
 
 **Game Mode HDR**
 
-![Game Mode HDR and brightness controls](docs/screenshots/hdr-game-mode.png)
+![Game Mode HDR and brightness controls](windows-installer/docs/screenshots/hdr-game-mode.png)
 
 **Native TDP · 40 W**
 
-![Steam's native performance menu with 40 W TDP](docs/screenshots/native-tdp-40w.png)
+![Steam's native performance menu with 40 W TDP](windows-installer/docs/screenshots/native-tdp-40w.png)
 
 **In-game TDP and performance overlay**
 
-![15 W TDP and the in-game performance overlay](docs/screenshots/native-tdp-15w.png)
+![15 W TDP and the in-game performance overlay](windows-installer/docs/screenshots/native-tdp-15w.png)
 
-![20 W TDP and the in-game performance overlay](docs/screenshots/native-tdp-20w.png)
+![20 W TDP and the in-game performance overlay](windows-installer/docs/screenshots/native-tdp-20w.png)
 
 </details>
 
 <details>
 <summary>OXP3 control plugin screenshots</summary>
 
-![OXP3 CPU, Fan, Battery and Opti2XMX in Decky](docs/screenshots/decky-plugins.png)
+![OXP3 CPU, Fan, Battery and Opti2XMX in Decky](windows-installer/docs/screenshots/decky-plugins.png)
 
-![OXP3 Fan curve controls](docs/screenshots/oxp3-fan.png)
+![OXP3 Fan curve controls](windows-installer/docs/screenshots/oxp3-fan.png)
 
 </details>
 
 <details>
 <summary>Waydroid screenshots</summary>
 
-![Waydroid Android desktop](docs/screenshots/waydroid-desktop.png)
+![Waydroid Android desktop](windows-installer/docs/screenshots/waydroid-desktop.png)
 
-![Waydroid launcher in the Steam library](docs/screenshots/waydroid-steam-entry.png)
+![Waydroid launcher in the Steam library](windows-installer/docs/screenshots/waydroid-steam-entry.png)
 
 </details>
 
@@ -109,15 +112,15 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 
 **Opti2XMX · enable XMX per game**
 
-![Opti2XMX XMX acceleration toggle](docs/screenshots/opti2xmx-xmx.png)
+![Opti2XMX XMX acceleration toggle](windows-installer/docs/screenshots/opti2xmx-xmx.png)
 
 **Black Myth: Wukong · native XeSS and frame-generation settings**
 
-![XeSS and frame-generation options in Black Myth: Wukong](docs/screenshots/native-xess-settings.png)
+![XeSS and frame-generation options in Black Myth: Wukong](windows-installer/docs/screenshots/native-xess-settings.png)
 
 **Gameplay**
 
-![Black Myth: Wukong gameplay with the related configuration enabled](docs/screenshots/xess-gameplay.png)
+![Black Myth: Wukong gameplay with the related configuration enabled](windows-installer/docs/screenshots/xess-gameplay.png)
 
 </details>
 
@@ -126,18 +129,23 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 Packaged applications will be available under **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. **The final installer package has not been released yet.** The planned workflow below is subject to the instructions for the relevant release.
 
 1. Download the Windows installer ZIP from Releases, extract it completely and keep its companion files together.
-2. Back up existing data and save the BitLocker recovery key if applicable. Prepare at least **64 GiB of unallocated space** on the target GPT disk.
-3. Run **`SteamOSInstaller.exe`** and follow the wizard to select the installation location, official system image and desired adaptation components.
-4. Review the target disk, partition plan and selected options, then confirm installation.
-5. Follow the application's instructions to boot SteamOS and check Game Mode, the desktop, buttons and plugins.
+2. Back up existing data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Resume protection after installation once Windows boots normally.
+3. Prepare at least **64 GiB of contiguous unallocated space** on the target GPT disk, plus at least **45 GiB of free space** for the preparation workspace in Windows; **64 GiB** is recommended for the workspace.
+4. Run **`SteamOSInstaller.exe`** and follow the wizard to select the installation location, official system image and desired adaptation components. Internal dual-boot installation is supported; installation to an external SD / SSD is in Beta.
+5. Review the target disk, partition plan and selected options, optionally enable the rEFInd boot menu, then confirm installation.
+6. Follow the application's instructions to boot SteamOS and check Game Mode, the desktop, buttons and plugins.
 
 System images are obtained from Valve's official sources. Calibrate the gyroscope before first use; Waydroid's Android image requires separate initialization. The current adaptation targets SteamOS 3.10, with the gyroscope implementation targeting BIOS 5.09.
+
+System images are not bundled with the installer. Preparing SteamOS 3.10 and initializing some components require an internet connection. See the [installation guide (Chinese)](windows-installer/docs/INSTALLATION_GUIDE.md) for the full steps.
 
 ## 5. Roadmap
 
 - [ ] G3E CPU core enable / disable controls
 - [ ] Improved installer UI / UX
-- [ ] Integrated boot manager: Windows / SteamOS selection and default boot entry management
+- [x] Integrated boot manager: Windows / SteamOS selection and default boot entry management
+
+See the [Roadmap (Chinese)](ROADMAP.md) for further plans.
 
 ## 6. License
 
@@ -152,6 +160,8 @@ This is an unofficial, community-maintained project and is not affiliated with V
 ## 7. Acknowledgments
 
 Thanks to the following projects and their contributors:
+
+Special thanks to **HANA & Claude** for the original device adaptation project, and to the testers who provided devices, logs and feedback from real hardware.
 
 - **Device support**: [onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup), [InputPlumber](https://github.com/ShadowBlip/InputPlumber), [Linux](https://kernel.org/), [KDE / KWin](https://invent.kde.org/plasma/kwin), [Gamescope](https://github.com/ValveSoftware/gamescope), [SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager) and [MangoHud](https://github.com/flightlessmango/MangoHud).
 - **XeSS runtime environment**: [xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux), [OptiScaler](https://github.com/optiscaler/OptiScaler), [Mesa](https://gitlab.freedesktop.org/mesa/mesa), [Intel Graphics Compiler](https://github.com/intel/intel-graphics-compiler) and [Intel compute-runtime / ocloc](https://github.com/intel/compute-runtime). Also thanks to [Intel XeSS](https://github.com/intel/xess) for its SDK and runtime components, governed by their own terms.

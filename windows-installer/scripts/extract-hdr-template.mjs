@@ -1,0 +1,12 @@
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const upstream = path.resolve(root, '../onexplayer3-steamos-setup');
+const text = await readFile(path.join(upstream, 'oxp3-apply-fixes.sh'), 'utf8');
+const match = text.match(/LUA_HDR_CONTENT=\$\(cat <<'EOT'\r?\n([\s\S]*?)\r?\nEOT/);
+if (!match) throw Error('Maintained upstream HDR template not found');
+const output = path.join(root, 'components/hdr'); await mkdir(output, { recursive: true });
+await writeFile(path.join(output, 'upstream.lua'), match[1].replaceAll('\r\n', '\n') + '\n');
+await copyFile(path.join(upstream, 'LICENSE'), path.join(output, 'UPSTREAM_LICENSE'));
+console.log('Extracted the maintained HDR template; no device-generated file was copied.');

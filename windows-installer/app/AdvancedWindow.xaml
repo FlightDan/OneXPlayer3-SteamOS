@@ -1,0 +1,87 @@
+<Window x:Class="OxpInstaller.AdvancedWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="ONEXPLAYER 3 · 高级工具" Width="1080" Height="880" MinWidth="840" MinHeight="680" Background="#F3F5F9" FontFamily="Microsoft YaHei UI" Foreground="#17243A">
+ <Grid Margin="28" Background="#F3F5F9">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,18">
+   <TextBlock Text="ONEXPLAYER 3" FontSize="12" FontWeight="Bold" Foreground="#557294"/>
+   <TextBlock Text="准备 SteamOS 双系统安装介质" FontSize="27" FontWeight="SemiBold" Margin="0,6,0,6"/>
+   <TextBlock Text="制作阶段 · 内置磁盘只读 · QEMU 离线构建环境" Foreground="#64748B"/>
+  </StackPanel>
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+   <StackPanel>
+    <Border Background="White" CornerRadius="10" Padding="20" Margin="0,0,0,12"><StackPanel>
+     <TextBlock Text="1  官方恢复镜像" FontSize="17" FontWeight="SemiBold"/>
+     <TextBlock Text="支持本地 .img、.img.bz2、.img.zip；实际安装版本以镜像内信息为准。" Foreground="#64748B" Margin="0,6,0,12"/>
+     <TextBlock Text="恢复环境的 BE201 无线兼容性尚未验收；在线更新须先有可用的有线网络或 USB 网络共享。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,12"/>
+     <DockPanel><Button Content="选择文件" Click="BrowseSource" DockPanel.Dock="Right" Margin="10,0,0,0"/><TextBox x:Name="SourcePath" IsReadOnly="True"/></DockPanel>
+     <WrapPanel x:Name="DownloadActions" Margin="0,12,0,0">
+      <Button x:Name="DownloadButton" Content="下载官方 3.8.14" Click="DownloadSource"/>
+      <TextBlock Text="下载源" VerticalAlignment="Center" Margin="4,0,8,0"/>
+      <ComboBox x:Name="DownloadSourceSelector" Width="350" MinHeight="36" VerticalAlignment="Center" SelectionChanged="DownloadSourceChanged"/>
+      <Button x:Name="CheckSourcesButton" Content="重新检测" Click="CheckDownloadSources" Margin="10,0,0,0"/>
+     </WrapPanel>
+     <TextBox x:Name="CustomDownloadUrl" Visibility="Collapsed" Margin="0,10,0,0" ToolTip="HTTPS 镜像直链：.img、.img.bz2 或 .img.zip"/>
+     <TextBlock x:Name="DownloadSourceStatus" Text="打开后自动检测下载源…" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/>
+     <ProgressBar x:Name="DownloadProgress" Height="7" Margin="0,12,0,8" Foreground="#2261CB"/>
+     <DockPanel>
+      <WrapPanel DockPanel.Dock="Right">
+       <Button x:Name="RestartDownloadButton" Content="重新下载" Click="RestartDownload" Visibility="Collapsed"/>
+       <Button x:Name="PauseDownloadButton" Content="暂停下载" Click="Cancel" Visibility="Collapsed"/>
+      </WrapPanel>
+      <TextBlock x:Name="DownloadStatus" Text="就绪" Foreground="#64748B" TextWrapping="Wrap" VerticalAlignment="Center"/>
+     </DockPanel>
+     <WrapPanel Margin="0,10,0,0">
+      <Button x:Name="CopyDownloadAddressButton" Content="复制下载地址（自行下载）" Click="CopyDownloadAddress"/>
+      <Button Content="读取镜像信息" Click="InspectSource"/>
+     </WrapPanel>
+    </StackPanel></Border>
+    <Border Background="White" CornerRadius="10" Padding="20" Margin="0,0,0,12"><StackPanel>
+     <TextBlock Text="2  开发介质资源" FontSize="17" FontWeight="SemiBold"/>
+     <TextBlock Text="修复和第三方插件安装选项位于主向导；这里仅控制开发介质携带的资源。" Foreground="#64748B" Margin="0,6,0,10" TextWrapping="Wrap"/>
+     <WrapPanel Visibility="Collapsed">
+      <StackPanel Width="310"><CheckBox x:Name="HdrComponent" Content="首次启动启用 HDR（需匹配的 3.10 系统）" IsEnabled="False"/><CheckBox Content="无线固件 · BE201" IsEnabled="False"/><CheckBox Content="原生 TDP 10–40W + Manager" IsEnabled="False"/><CheckBox Content="功耗 / PVRAM 叠加层" IsEnabled="False"/><CheckBox Content="OXP3 CPU · EPP / 分组限频" IsEnabled="False"/></StackPanel>
+      <StackPanel Width="310"><CheckBox Content="Decky Loader + 所选插件" IsEnabled="False"/><CheckBox Content="背键与输入 · 持久安装待验收" IsEnabled="False"/><CheckBox Content="Battery · 安装/恢复待验收" IsEnabled="False"/><CheckBox Content="OXP3 风扇 · 自动 / 曲线" IsEnabled="False"/><CheckBox Content="KDE HDR / WCG 安全处理" IsEnabled="False"/></StackPanel>
+     </WrapPanel>
+     <TextBlock Text="组件选择与下方资源携带分别保存。当前 3.8.14 基础镜像不支持已验收的 HDR 组件；首次启动不会自动启用所携带资源。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/>
+     <CheckBox x:Name="WaydroidResource" Content="携带 Waydroid r2 宿主适配资源（可选）" Margin="0,12,0,0"/>
+     <TextBlock Text="实机使用已通过；适配包约 2 MB，另附源码。需要 SteamOS 3.10、匹配的 7.2.4 内核与依赖；当前 3.8.14 介质只携带资源。Android 13 + Google Play 系统镜像另行下载。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,6,0,0"/>
+     <CheckBox x:Name="HdrResource" Content="携带 HDR Gamma22 配置与独立恢复工具（不自动启用）" Margin="0,6,0,0"/>
+     <CheckBox x:Name="ControlResources" Content="携带新增 OXP3 控制组件维护源码（可选）" Margin="0,12,0,0"/>
+     <TextBlock Text="含 40W TDP、功耗叠加层、风扇、CPU 与 Battery 维护源码和中英文界面。当前只携带资源，实际安装需匹配版本与独立恢复验收；不会应用新的功率、风扇、CPU 或充电策略。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,6,0,0"/>
+    </StackPanel></Border>
+    <Border Background="White" CornerRadius="10" Padding="20" Margin="0,0,0,12"><StackPanel>
+     <DockPanel><Button Content="读取磁盘" Click="ReadDisks" DockPanel.Dock="Right"/><TextBlock Text="3  内置磁盘布局预览" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
+     <TextBlock Text="此阶段只读取布局；不会压缩、清空或创建内置分区。" Foreground="#64748B" Margin="0,8,0,12"/>
+     <TextBox x:Name="DiskPreview" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="72" MaxHeight="180" VerticalScrollBarVisibility="Auto" Text="点击“读取磁盘”查看当前开发机布局；安装环境会重新核对目标掌机。"/>
+     <ComboBox x:Name="SpaceSelector" Margin="0,10,0,0" MinHeight="32" ToolTip="仅提供至少 64 GiB 的已有未分配空间。选择仅用于预览。"/>
+    </StackPanel></Border>
+    <Border Background="White" CornerRadius="10" Padding="20"><StackPanel>
+     <TextBlock Text="4  制作结果" FontSize="17" FontWeight="SemiBold"/>
+     <DockPanel Margin="0,12,0,12"><Button Content="输出位置" Click="BrowseOutput" DockPanel.Dock="Right" Margin="10,0,0,0"/><TextBox x:Name="OutputPath" IsReadOnly="True"/></DockPanel>
+     <WrapPanel><Button x:Name="BuildButton" Content="制作预览介质" Click="BuildImage" Background="#2261CB" Foreground="White"/><Button Content="验证镜像启动" Click="BootPreviewImage"/><Button Content="验证离线后端" Click="ProbeBackend"/><Button x:Name="CancelButton" Content="取消当前操作" Click="Cancel" IsEnabled="False"/></WrapPanel>
+     <ProgressBar x:Name="Progress" Height="5" Margin="0,16,0,10" Foreground="#2261CB"/>
+     <TextBlock x:Name="StatusText" Text="就绪" Foreground="#64748B" TextWrapping="Wrap"/>
+     <TextBox x:Name="LogText" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" FontSize="11" Height="150" VerticalScrollBarVisibility="Auto" Margin="0,12,0,0"/>
+    </StackPanel></Border>
+    <Border Background="White" CornerRadius="10" Padding="20" Margin="0,12,0,0"><StackPanel>
+     <DockPanel><Button Content="读取 U 盘候选" Click="ReadUsbMedia" DockPanel.Dock="Right"/><TextBlock Text="U 盘制作目标 · 只读核对" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
+     <TextBlock Text="使用上方输出镜像核对容量与设备身份。系统盘、镜像所在盘和无法唯一识别的设备不作为写入目标。当前版本只读取和核对。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,10"/>
+     <ComboBox x:Name="UsbMediaSelector" MinHeight="32"/>
+     <WrapPanel Margin="0,10,0,0"><Button Content="重新核对选定设备" Click="RecheckUsbMedia"/><Button Content="写入 U 盘 · 待专用盘验收" IsEnabled="False"/></WrapPanel>
+     <TextBox x:Name="UsbMediaPreview" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" MaxHeight="150" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0" Text="先制作镜像，再读取候选设备。"/>
+    </StackPanel></Border>
+    <Border Background="White" CornerRadius="10" Padding="20" Margin="0,12,0,0"><StackPanel>
+     <TextBlock Text="虚拟磁盘验证" FontSize="17" FontWeight="SemiBold"/>
+     <TextBlock Text="创建容量为 80 GiB 的稀疏测试文件，验证已有分区保留和 SteamOS 部署。实际占用随写入增加。测试文件没有 Windows 操作系统。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,12"/>
+     <DockPanel Margin="0,0,0,12"><Button Content="打开已有测试盘" Click="BrowseFixture" DockPanel.Dock="Right" Margin="10,0,0,0"/><TextBox x:Name="FixturePath" IsReadOnly="True"/></DockPanel>
+     <WrapPanel><Button Content="创建虚拟测试盘" Click="CreateVirtualDisk"/><Button Content="验证系统部署" Click="DeployVirtualDisk"/><Button Content="验证 UEFI 启动" Click="BootVirtualDisk"/></WrapPanel>
+     <WrapPanel Margin="0,8,0,0"><Button Content="从制作介质验证安装流程" Click="TestMediaInstall"/><Button Content="验证插件部署与恢复" Click="TestVirtualPlugins"/><Button Content="验证 Windows 介质写入" Click="TestWindowsMediaWrite"/></WrapPanel>
+     <TextBlock Text="Windows 介质写入验证会新建独立 VHD，写入上方输出镜像并逐块读回。管理员权限只用于该任务，不选择现有设备。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/>
+     <TextBlock Text="介质安装验证使用上方输出镜像，新建独立测试文件并核对 Linux 确认、A/B 部署与资源携带。至少预留 12 GiB 工作空间。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    </StackPanel></Border>
+   </StackPanel>
+  </ScrollViewer>
+  <TextBlock Grid.Row="2" Text="预览介质尚不开放实际安装。完整目标包含保留 Windows 的部署、双系统引导和真实启动验收。" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" Margin="0,16,0,0"/>
+ </Grid>
+</Window>
+

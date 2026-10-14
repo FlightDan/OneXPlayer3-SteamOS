@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OxpInstaller</AssemblyName>
+    <PortableLauncherName Condition="'$(PortableLauncherName)' == ''">SteamOSInstaller.exe</PortableLauncherName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../components/release.json" LogicalName="OxpInstaller.release.json" />
+  </ItemGroup>
+  <Target Name="CreatePortableLauncher" AfterTargets="Build" DependsOnTargets="_GetAppHostPaths">
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                   AppHostDestinationPath="$(MSBuildProjectDirectory)/../$(PortableLauncherName)"
+                   AppBinaryName="app/bin/$(Configuration)/$(TargetFramework)/$(AssemblyName)$(TargetExt)"
+                   IntermediateAssembly="@(IntermediateAssembly-&gt;'%(FullPath)')"
+                   WindowsGraphicalUserInterface="true"
+                   DotNetSearchLocations="AppRelative"
+                   AppRelativeDotNet="../../../../runtime/dotnet" />
+  </Target>
+</Project>
+
+

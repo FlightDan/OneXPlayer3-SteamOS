@@ -17,9 +17,9 @@ This project uses, adapts or integrates the projects below. AGPL-3.0-only applie
 | SteamOS Manager · Valve / Collabora / Igalia contributors | [SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager) | 原生 TDP 接口与状态修复 / Native TDP interfaces and state fixes |
 | MangoHud / mangoapp | [flightlessmango/MangoHud](https://github.com/flightlessmango/MangoHud) | 性能覆盖层与遥测展示 / Performance overlay and telemetry |
 
-上游修复包的 MIT 版权与许可声明保存在 [licenses/upstream-fixes-MIT.txt](licenses/upstream-fixes-MIT.txt)。InputPlumber 及内核派生组件继续适用其各自许可证；不得把它们统一改标为 AGPL。BMI260 包装模块源码保留 `GPL-2.0-only OR BSD-2-Clause` 标识。
+上游修复包的 MIT 版权与许可声明保存在 [licenses/upstream-fixes-MIT.txt](windows-installer/licenses/upstream-fixes-MIT.txt)。InputPlumber 及内核派生组件继续适用其各自许可证；不得把它们统一改标为 AGPL。BMI260 包装模块源码保留 `GPL-2.0-only OR BSD-2-Clause` 标识。
 
-The upstream fix pack's MIT notice is retained in [licenses/upstream-fixes-MIT.txt](licenses/upstream-fixes-MIT.txt). InputPlumber and kernel-derived components retain their own licenses and must not be uniformly relabeled AGPL. The BMI260 wrapper source retains its `GPL-2.0-only OR BSD-2-Clause` identifier.
+The upstream fix pack's MIT notice is retained in [licenses/upstream-fixes-MIT.txt](windows-installer/licenses/upstream-fixes-MIT.txt). InputPlumber and kernel-derived components retain their own licenses and must not be uniformly relabeled AGPL. The BMI260 wrapper source retains its `GPL-2.0-only OR BSD-2-Clause` identifier.
 
 ## XeSS 与插件运行环境 / XeSS and plugin runtime
 
@@ -35,9 +35,9 @@ The upstream fix pack's MIT notice is retained in [licenses/upstream-fixes-MIT.t
 | Decky Loader | [SteamDeckHomebrew/decky-loader](https://github.com/SteamDeckHomebrew/decky-loader) | 游戏模式插件加载器 / Game Mode plugin loader |
 | Decky plugin template / frontend APIs | [Plugin template](https://github.com/SteamDeckHomebrew/decky-plugin-template), [frontend library](https://github.com/SteamDeckHomebrew/decky-frontend-lib) | 插件框架与前端接口 / Plugin framework and frontend APIs |
 
-Opti2XMX 当前的 AGPL-3.0-only 及 Decky 模板 BSD-3-Clause 声明保存在 [licenses/Opti2XMX-AGPL-BSD.txt](licenses/Opti2XMX-AGPL-BSD.txt)。Intel XeSS、运行库中的嵌套组件和驱动构建各自需要保留对应版本的授权与源码材料。
+Opti2XMX 当前的 AGPL-3.0-only 及 Decky 模板 BSD-3-Clause 声明保存在 [licenses/Opti2XMX-AGPL-BSD.txt](windows-installer/licenses/Opti2XMX-AGPL-BSD.txt)。Intel XeSS、运行库中的嵌套组件和驱动构建各自需要保留对应版本的授权与源码材料。
 
-Opti2XMX's current AGPL-3.0-only and Decky template BSD-3-Clause notices are retained in [licenses/Opti2XMX-AGPL-BSD.txt](licenses/Opti2XMX-AGPL-BSD.txt). Intel XeSS, nested runtime components and driver builds require their own version-specific license and source materials.
+Opti2XMX's current AGPL-3.0-only and Decky template BSD-3-Clause notices are retained in [licenses/Opti2XMX-AGPL-BSD.txt](windows-installer/licenses/Opti2XMX-AGPL-BSD.txt). Intel XeSS, nested runtime components and driver builds require their own version-specific license and source materials.
 
 ## 集成的第三方 Decky 插件 / Integrated third-party Decky plugins
 

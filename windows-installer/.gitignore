@@ -1,0 +1,13 @@
+cache/
+runtime/
+logs/
+work/
+output/
+app/bin/
+app/obj/
+dist/
+!components/windows-reboot/dist/
+!components/windows-reboot/dist/index.js
+**/__pycache__/
+workspace.json
+workspace.json.tmp

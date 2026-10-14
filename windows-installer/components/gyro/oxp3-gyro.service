@@ -1,0 +1,16 @@
+[Unit]
+Description=ONEXPLAYER 3 BMI260 exact-kernel binding
+After=systemd-udev-trigger.service
+Before=inputplumber.service
+ConditionPathExists=/sys/bus/i2c/devices/i2c-10EC5280:00
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/var/lib/oxp3-gyro-v1/load.sh
+ExecStopPost=/var/lib/oxp3-gyro-v1/unload.sh
+TimeoutStartSec=20
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

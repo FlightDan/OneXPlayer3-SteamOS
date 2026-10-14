@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "waydroid",
+  "bundle_version": "steamos-3.10-b20260924.1000-wlroots0.20.2-oxp3-r2",
+  "archive": "steamos-3.10-b20260924.1000-wlroots0.20.2-oxp3-r2.tar.gz",
+  "source_archive": "waydroid-source-ibt-r2.tar",
+  "system": {
+    "version": "3.10",
+    "build": "20260924.1000",
+    "kernel": "7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9"
+  },
+  "packages": {
+    "glibc": "2.43+r37+gfdf10644d6ee-1",
+    "glib2": "2.88.2-1",
+    "python": "3.14.6-1",
+    "wayland": "1.25.0-1",
+    "libdisplay-info": "0.3.0-1",
+    "libdrm": "2.4.134-1",
+    "pixman": "0.46.4-1",
+    "mesa": "26.1.2.221562.radeonsi_26.1.2-4",
+    "libglvnd": "1.7.0-3",
+    "systemd": "261.2-1.2",
+    "libinput": "1.31.3-1",
+    "libxkbcommon": "1.13.2-1",
+    "seatd": "0.9.3-1",
+    "hwdata": "0.409-1",
+    "libxcb": "1.17.0-1",
+    "xcb-util-renderutil": "0.3.10-2"
+  },
+  "binder_package": "1-2",
+  "android": {
+    "version": 13,
+    "variant": "GApps",
+    "included": false
+  },
+  "acceptance": {
+    "device_use": "user_reported_passed",
+    "date": "2026-10-13",
+    "granular_features": "not_separately_recorded"
+  },
+  "deployment": "resources_only_until_repeat_restore_and_matching_new_system_acceptance",
+  "source": "https://github.com/pjohno/steamos-waydroid-bundle",
+  "handoff": "plugins/waydroid-adaptation/README.md",
+  "rollback": "not_yet_integrated"
+}

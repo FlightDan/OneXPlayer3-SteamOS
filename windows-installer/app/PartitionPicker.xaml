@@ -1,0 +1,31 @@
+<UserControl x:Class="OxpInstaller.PartitionPicker" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <StackPanel SizeChanged="PickerSizeChanged">
+  <TextBlock x:Name="Heading" FontSize="19" FontWeight="SemiBold" Margin="0,0,0,8"/>
+  <WrapPanel Margin="0,0,0,10"><Button x:Name="RefreshButton" Click="ReadDisks" Margin="0,0,10,8"/><TextBlock x:Name="DiskReadStatus" Visibility="Collapsed" VerticalAlignment="Center" Foreground="#35547A" Margin="0,0,10,8" AutomationProperties.LiveSetting="Polite"/><Button x:Name="ExampleButton" Click="UseExample" Visibility="Collapsed" Margin="0,0,0,8"/></WrapPanel>
+  <TextBlock x:Name="InventoryStatus" TextWrapping="Wrap" Foreground="#35547A" Margin="0,0,0,10"/>
+  <ComboBox x:Name="Disks" Margin="0,0,0,10" SelectionChanged="DiskChanged" HorizontalContentAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+  <DataGrid x:Name="Partitions" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" CanUserReorderColumns="False" CanUserSortColumns="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column" RowHeight="52" MinHeight="150" BorderBrush="#D4DBE5" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E8EDF4" SelectionChanged="PartitionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.PanningMode="None">
+   <DataGrid.Resources><Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="5,0"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/></Style></DataGrid.Resources>
+   <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#192B43"/><Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#DCEAFF"/><Setter Property="Foreground" Value="#123C78"/></Trigger></Style.Triggers></Style></DataGrid.RowStyle>
+   <DataGrid.CellStyle><Style TargetType="DataGridCell"><Setter Property="BorderThickness" Value="0"/><Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#DCEAFF"/><Setter Property="Foreground" Value="#123C78"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#2968D9"/></Trigger></Style.Triggers></Style></DataGrid.CellStyle>
+   <DataGrid.Columns>
+    <DataGridTextColumn x:Name="NameColumn" Binding="{Binding Name}" ElementStyle="{StaticResource CellText}" Width="1.5*" MinWidth="80"/>
+    <DataGridTextColumn x:Name="SizeColumn" Binding="{Binding CapacityText}" ElementStyle="{StaticResource CellText}" Width="82"/>
+    <DataGridTextColumn x:Name="FreeColumn" Binding="{Binding FreeText}" ElementStyle="{StaticResource CellText}" Width="82"/>
+    <DataGridTextColumn x:Name="TypeColumn" Binding="{Binding Type}" ElementStyle="{StaticResource CellText}" Width="*" MinWidth="60"/>
+    <DataGridTextColumn x:Name="StatusColumn" Binding="{Binding Status}" ElementStyle="{StaticResource CellText}" Width="1.5*" MinWidth="95"/>
+   </DataGrid.Columns>
+  </DataGrid>
+  <TextBlock x:Name="SelectionHint" TextWrapping="Wrap" Margin="0,10,0,8" Foreground="#A34727"/>
+  <Button x:Name="DeletePartitionButton" Click="DeletePartition" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,12" Foreground="#A32F23"/>
+  <StackPanel x:Name="CapacityPanel" IsEnabled="False">
+   <TextBlock x:Name="CapacityLabel" FontWeight="SemiBold"/>
+   <WrapPanel Margin="0,8,0,4"><TextBox x:Name="CapacityInput" Width="130" TextChanged="CapacityChanged" Margin="0,0,0,8"/><TextBlock Text="GiB" VerticalAlignment="Center" Margin="8,0,16,8"/><Button x:Name="Capacity64Button" Content="64G" Tag="64" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="Capacity100Button" ToolTipService.ShowOnDisabled="True" Content="100G" Tag="100" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="AllSpaceButton" Click="UseAll" Margin="0,0,0,8"/></WrapPanel>
+   <TextBlock x:Name="CapacityHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,4,0,10"/>
+   <!-- Temporarily hidden pending post-release investigation of the remaining-space NTFS action. -->
+   <Button x:Name="FormatRemainingButton" Visibility="Collapsed" Click="FormatRemaining" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,8" ToolTipService.ShowOnDisabled="True"/>
+   <TextBlock x:Name="FormatRemainingHint" Visibility="Collapsed" TextWrapping="Wrap" Foreground="#61728A" Margin="0,0,0,12"/>
+  </StackPanel>
+  <StackPanel x:Name="ChangesHost"/>
+ </StackPanel>
+</UserControl>

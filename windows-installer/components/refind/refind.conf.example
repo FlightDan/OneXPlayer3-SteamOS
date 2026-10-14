@@ -1,0 +1,16 @@
+# Merge these global settings into the generated target-specific refind.conf.
+# The default_selection value must match an actual menuentry title.
+# This example does not include the target ESP GUID or EFI boot entries.
+
+# Default system: use "SteamOS" or "Windows" when those entries exist.
+default_selection "SteamOS"
+
+# Seconds to wait before starting the default system.
+# 0 = wait for user selection; -1 = start the default immediately.
+timeout 5
+
+# Requires the bundled UsbXbox360Dxe.efi and EFI/Xbox360/config.ini.
+# D-pad or left stick selects; A/Start confirms; B returns.
+driver_dirs /EFI/OXP3-rEFInd/drivers_x64
+big_icon_size 256
+small_icon_size 96

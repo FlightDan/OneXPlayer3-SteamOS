@@ -1,0 +1,444 @@
+"""Real payload file lifecycle tests on isolated directories, no hardware activation."""
+import base64
+import configparser
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+import subprocess
+from integration import stage,restore,validate,config_file,zip_files,LogicalFiles,apply_files,package_version
+
+PAYLOAD=Path('/mnt/payload')
+CATALOG=json.loads((PAYLOAD/'components/options.json').read_text())
+
+class IntegrationChecks(unittest.TestCase):
+    def test_decky_startup_paths_and_deck_read_access(self):
+        from runtime_access import require_access
+        self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
+        old_mask=os.umask(0o077)
+        try:
+            first=stage(self.root,PAYLOAD,self.options,'A')
+            self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+            stage(self.root,PAYLOAD,self.options,'B')
+        finally: os.umask(old_mask)
+        privileged=self.root/'var/lib/oxp3-installer/decky/runtime'
+        unit=(self.root/'etc/systemd/system/plugin_loader.service').read_text()
+        self.assertIn('Environment=PRIVILEGED_PATH=/var/lib/oxp3-installer/decky/runtime',unit)
+        self.assertIn('Environment=CHOWN_PLUGIN_PATH=0',unit)
+        paths={}
+        for folder in ('OXP3-CPU','decky-steamgriddb'):
+            plugin=privileged/'plugins'/folder
+            for file in (plugin/'plugin.json',plugin/'dist/index.js'):
+                self.assertEqual(file.stat().st_uid,0)
+                self.assertEqual(file.stat().st_mode & 0o022,0)
+                paths[file.relative_to(self.root).as_posix()]=os.R_OK
+        marker=self.root/'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
+        self.assertEqual(marker.stat().st_uid,1000)
+        paths[marker.relative_to(self.root).as_posix()]=os.R_OK
+        paths['home/deck/.local/share/Steam']=os.R_OK|os.W_OK|os.X_OK
+        self.root.chmod(0o755)
+        self.assertEqual(require_access(self.root,paths),len(paths))
+        self.assertFalse((self.root/'home/deck/homebrew/plugins').exists())
+        self.assertEqual(restore(self.root,'A','oxp3-cpu'),[])
+        self.assertEqual(restore(self.root,'A','steamgriddb'),[])
+        self.assertEqual(restore(self.root,'A','decky'),[])
+        self.assertFalse(marker.exists())
+
+    def test_desktop_return_launcher_repeat_and_existing_marker(self):
+        from runtime_access import require_access
+        self.options.update(repairs=[],plugins=['decky'],kde_language='system')
+        marker=self.root/'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
+        marker.parent.mkdir(parents=True)
+        marker.write_text('existing marker retained')
+        os.chown(marker,1000,1000)
+        stage(self.root,PAYLOAD,self.options,'A')
+        stage(self.root,PAYLOAD,self.options,'B')
+        launcher=self.root/'home/deck/Desktop/Return.desktop'
+        self.assertIn('Exec=/usr/bin/steamos-session-select gamescope',launcher.read_text())
+        self.assertIn('Name[zh_CN]=\u8fd4\u56de\u6e38\u620f\u6a21\u5f0f',launcher.read_text(encoding='utf-8'))
+        self.assertEqual(launcher.stat().st_uid,1000)
+        self.root.chmod(0o755)
+        require_access(self.root,{'home/deck/Desktop/Return.desktop':os.R_OK|os.X_OK})
+        self.assertEqual(restore(self.root,'A','decky'),[])
+        self.assertEqual(marker.read_text(),'existing marker retained')
+
+    def test_runtime_bundle_directories_ignore_restrictive_umask(self):
+        for name,prefix in (('desktop-hdr','opt/oxp3-desktop-gamma22/6.7.3-1.6'),
+                            ('opti2xmx','opt/oxp3-opti2xmx/20261005')):
+            relative=prefix+'/runtime/lib/library.so'
+            old_mask=os.umask(0o077)
+            try:
+                apply_files(self.root,self.root/'state',name,
+                            {relative:{'data':b'runtime fixture','mode':0o644}},(1000,1000))
+            finally:
+                os.umask(old_mask)
+            library=self.root/relative
+            self.assertEqual(library.stat().st_mode & 0o777,0o644)
+            for directory in (library.parent,library.parent.parent,self.root/prefix,(self.root/prefix).parent):
+                self.assertEqual(directory.stat().st_mode & 0o777,0o755,str(directory))
+            self.assertEqual(((self.root/prefix).parent/'.installer-state').stat().st_mode & 0o777,0o700)
+
+    def test_directory_modes_do_not_inherit_secret_umask(self):
+        from hdr.installer import ensure_directory
+        old_mask=os.umask(0o077)
+        try:
+            public=self.root/'etc/dbus-1/session.d'
+            private=self.root/'private-state'
+            owned=self.root/'home/deck/.local/lib'
+            ensure_directory(public,0o755)
+            ensure_directory(private,0o700)
+            ensure_directory(owned,0o755,(1000,1000))
+        finally:
+            os.umask(old_mask)
+        for directory in (public,public.parent,owned,owned.parent,owned.parent.parent):
+            self.assertEqual(directory.stat().st_mode & 0o777,0o755,str(directory))
+        self.assertEqual((owned.stat().st_uid,owned.stat().st_gid),(1000,1000))
+        self.assertEqual(private.stat().st_mode & 0o777,0o700)
+        # Existing private paths and foreign symlinks must remain untouched.
+        ensure_directory(private,0o755)
+        self.assertEqual(private.stat().st_mode & 0o777,0o700)
+        link=self.root/'private-link'; link.symlink_to(private,target_is_directory=True)
+        with self.assertRaises(OSError): ensure_directory(link,0o755)
+
+    def test_resource_io_failure_is_fatal(self):
+        from unittest.mock import patch
+        import errno
+        self.options.update(repairs=[],plugins=['decky'],kde_language='system')
+        read_bytes=Path.read_bytes
+        def broken(path):
+            if path==PAYLOAD/'plugins/decky/PluginLoader': raise OSError(errno.EIO,'Injected device I/O failure')
+            return read_bytes(path)
+        with patch.object(Path,'read_bytes',broken):
+            with self.assertRaisesRegex(OSError,'device I/O failure'):
+                stage(self.root,PAYLOAD,self.options,'A')
+
+    def test_invalid_plugin_archive_is_skipped(self):
+        from unittest.mock import patch
+        import zipfile
+        self.options.update(repairs=['keyboard'],plugins=['decky','steamgriddb'],kde_language='system')
+        with patch('integration.zip_files',side_effect=zipfile.BadZipFile('File is not a zip file')):
+            result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(result['components']['decky']['status'],'files_installed')
+        self.assertTrue(result['components']['steamgriddb']['safe_to_skip'])
+        self.assertEqual(result['components']['keyboard']['status'],'files_installed')
+
+    def test_missing_decky_skips_dependents_and_keeps_independent_repair(self):
+        from unittest.mock import patch
+        self.options.update(repairs=['keyboard'],plugins=['decky','steamgriddb'],kde_language='system')
+        read_bytes=Path.read_bytes
+        def missing(path):
+            if path==PAYLOAD/'plugins/decky/PluginLoader': raise FileNotFoundError('Plugin download unavailable')
+            return read_bytes(path)
+        with patch.object(Path,'read_bytes',missing):
+            for slot in ('A','B'):
+                result=stage(self.root,PAYLOAD,self.options,slot)
+                for name in ('decky','steamgriddb'):
+                    self.assertEqual(result['components'][name]['status'],'not_installed')
+                    self.assertTrue(result['components'][name]['safe_to_skip'])
+                self.assertIn('Dependency not installed',result['components']['steamgriddb']['reason'])
+                self.assertEqual(result['components']['keyboard']['status'],'files_installed')
+                self.assertNotIn('plugin_loader.service',result['services'])
+        self.assertFalse((self.root/'etc/systemd/system/plugin_loader.service').exists())
+
+    def test_component_write_failure_is_fatal(self):
+        from unittest.mock import patch
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        apply=apply_files
+        def broken(root,state,name,files,owner):
+            if name=='keyboard': raise OSError('Injected interrupted write')
+            return apply(root,state,name,files,owner)
+        with patch('integration.apply_files',broken):
+            with self.assertRaisesRegex(OSError,'interrupted write'):
+                stage(self.root,PAYLOAD,self.options,'A')
+        self.assertFalse((self.root/'home/.oxp3-installer/integration/A/result.json').exists())
+
+    def test_flathub_fresh_repository_repeat_and_restore_both_slots(self):
+        self.options.update(repairs=['flathub-ustc'],plugins=[],kde_language='system')
+        definition=self.root/'etc/flatpak/remotes.d/flathub.flatpakrepo'
+        for slot in ('A','B'):
+            first=stage(self.root,PAYLOAD,self.options,slot)
+            self.assertEqual(first['components']['flathub-ustc']['status'],'files_installed')
+            parser=configparser.ConfigParser(interpolation=None); parser.read(definition)
+            self.assertEqual(parser['Flatpak Repo']['Url'],'https://mirrors.ustc.edu.cn/flathub')
+            self.assertGreater(len(base64.b64decode(parser['Flatpak Repo']['GPGKey'],validate=True)),1024)
+            self.assertFalse((self.root/'var/lib/flatpak/repo/config').exists())
+            self.assertEqual(stage(self.root,PAYLOAD,self.options,slot),first)
+            self.assertEqual(restore(self.root,slot,'flathub-ustc'),[])
+            self.assertFalse(definition.exists())
+
+    def test_flathub_existing_repo_preserves_keys_other_remotes_and_restores(self):
+        self.options.update(repairs=['flathub-ustc'],plugins=[],kde_language='system')
+        config=self.root/'var/lib/flatpak/repo/config'; config.parent.mkdir(parents=True)
+        definition=self.root/'etc/flatpak/remotes.d/flathub.flatpakrepo'
+        definition.parent.mkdir(parents=True); definition.write_text('old declaration\n')
+        for remote in (False,True):
+            original='[core]\nrepo_version=1\n[remote "other"]\nurl=https://example.org/\n'
+            if remote: original+='[remote "flathub"]\nurl=https://dl.flathub.org/repo/\ngpg-verify=true\nxa.title=Custom Flathub\n'
+            config.write_text(original)
+            result=stage(self.root,PAYLOAD,self.options,'A')
+            self.assertEqual(result['components']['flathub-ustc']['status'],'files_installed')
+            if remote:
+                self.assertIn('gpg-verify=true',config.read_text())
+                self.assertIn('xa.title=Custom Flathub',config.read_text())
+                self.assertIn('url=https://mirrors.ustc.edu.cn/flathub',config.read_text())
+                self.assertIn('[remote "other"]\nurl=https://example.org/',config.read_text())
+            else: self.assertEqual(config.read_text(),original)
+            self.assertEqual(restore(self.root,'A','flathub-ustc'),[])
+            self.assertEqual(config.read_text(),original)
+            self.assertEqual(definition.read_text(),'old declaration\n')
+
+    def test_gm7_boot_entries_repeat_and_restore(self):
+        self.options.update(repairs=['gm7-resume','xe-dsb'],plugins=[],kde_language='system')
+        grub=self.root/'efi/EFI/steamos/grub.cfg'; grub.parent.mkdir(parents=True)
+        original='set quiet="quiet splash"\n steamenv_boot /boot/vmlinuz-neptune root=PARTUUID=abc $quiet\n linux /boot/vmlinuz-neptune root=PARTUUID=abc single\n'
+        grub.write_text(original)
+        disk={'model':'Predator SSD GM7 1TB','bus':'NVMe'}
+        first=stage(self.root,PAYLOAD,self.options,'A',target_disk=disk)
+        self.assertTrue(first['components']['gm7-resume']['applicable'])
+        self.assertEqual(grub.read_text().count('nvme.noacpi=1'),2)
+        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A',target_disk=disk),first)
+        self.assertEqual(grub.read_text().count('nvme.noacpi=1'),2)
+        self.assertEqual(restore(self.root,'A','gm7-resume'),[])
+        self.assertEqual(grub.read_text(),original)
+        self.assertIn('enable_dsb=0',(self.root/'etc/modprobe.d/xe-oxp3.conf').read_text())
+        self.assertEqual(restore(self.root,'A','xe-dsb'),[])
+        self.assertFalse((self.root/'etc/modprobe.d/xe-oxp3.conf').exists())
+
+    def test_gm7_does_not_tune_other_disks_or_override_conflicts(self):
+        from boot_repairs import gm7_files
+        for disk in (None,{'model':'Samsung SSD','bus':'NVMe'},{'model':'Predator GM7','bus':'USB'}):
+            self.assertEqual(gm7_files(self.root,disk),{})
+        grub=self.root/'efi/EFI/steamos/grub.cfg'; grub.parent.mkdir(parents=True)
+        original='steamenv_boot /boot/vmlinuz-neptune nvme.noacpi=0\n'; grub.write_text(original)
+        with self.assertRaisesRegex(RuntimeError,'Conflicting'):
+            gm7_files(self.root,{'model':'Predator SSD GM7 1TB','bus':'NVMe'})
+        self.assertEqual(grub.read_text(),original)
+
+    def test_be201_missing_firmware_repeat_restore_preserves_stock(self):
+        self.options.update(repairs=['wifi'],plugins=[],kde_language='system')
+        stock=self.root/'usr/lib/firmware/intel/ibt-00a0-0291-usb.sfi.zst'
+        stock.parent.mkdir(parents=True); stock.write_bytes(b'stock-compressed-firmware')
+        first=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(first['components']['wifi']['status'],'files_installed')
+        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+        self.assertFalse(stock.with_suffix('').exists())
+        self.assertTrue((stock.parent/'ibt-00a0-0291-iml.sfi').is_file())
+        self.assertEqual(restore(self.root,'A','wifi'),[])
+        self.assertEqual(stock.read_bytes(),b'stock-compressed-firmware')
+        self.assertFalse((stock.parent/'ibt-00a0-0291-iml.sfi').exists())
+
+    def test_fresh_home_allows_deck_to_create_steam(self):
+        self._check_home_ownership(False)
+    def test_root_owned_home_parents_are_repaired_without_recursive_chown(self):
+        self._check_home_ownership(True)
+    def _check_home_ownership(self, existing):
+        home=self.root/'home/deck'
+        directories=('.local','.local/bin','.local/share','.config',
+                     '.config/gamescope','.config/gamescope/scripts','.cache')
+        if existing:
+            for name in directories: (home/name).mkdir(parents=True,exist_ok=True)
+            sentinel=home/'.local/share/root-managed-sentinel'
+            sentinel.write_text('preserve root-owned file')
+        self.options.update(repairs=['keyboard','gamescope-env'],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertTrue(all(x['status']=='files_installed' for x in result['components'].values()))
+        for name in (*directories,'.local/share/applications','.config/systemd/user'):
+            info=(home/name).stat()
+            self.assertEqual((info.st_uid,info.st_gid),(1000,1000),name)
+        if existing:
+            self.assertEqual(sentinel.stat().st_uid,0)
+            self.assertEqual(sentinel.read_text(),'preserve root-owned file')
+        self.root.chmod(0o755)
+        # Exercise real Unix permissions as the target UID, not as root.
+        code="import os,sys;from pathlib import Path;os.setgroups([]);os.setgid(1000);os.setuid(1000);h=Path(sys.argv[1]);(h/'.local/share/Steam').mkdir();(h/'.cache/steam-write-check').write_text('ok')"
+        subprocess.run(['python3','-c',code,str(home)],check=True)
+        stage(self.root,PAYLOAD,self.options,'B')
+        self.assertEqual((home/'.cache/steam-write-check').read_text(),'ok')
+    def test_user_directory_rejects_symlinks_and_foreign_owners(self):
+        from hdr.installer import ensure_user_directory
+        home=self.root/'home/deck'; home.mkdir(parents=True); os.chown(home,1000,1000)
+        outside=self.root/'outside'; outside.mkdir()
+        (home/'.local').symlink_to(outside,target_is_directory=True)
+        with self.assertRaises((OSError,RuntimeError)):
+            ensure_user_directory(home/'.local/share',0o755,(1000,1000),home)
+        self.assertEqual(outside.stat().st_uid,0)
+        self.assertFalse((outside/'share').exists())
+        (home/'.local').unlink(); (home/'.local').mkdir(); os.chown(home/'.local',1001,1001)
+        with self.assertRaisesRegex(RuntimeError,'another account'):
+            ensure_user_directory(home/'.local/share',0o755,(1000,1000),home)
+        self.assertEqual((home/'.local').stat().st_uid,1001)
+        with self.assertRaisesRegex(RuntimeError,'inside'):
+            ensure_user_directory(outside,0o755,(1000,1000),home)
+    def setUp(self):
+        self.directory=tempfile.TemporaryDirectory(prefix='oxp3-options-'); self.root=Path(self.directory.name)
+        (self.root/'etc').mkdir(); (self.root/'etc/passwd').write_text('deck:x:1000:1000::/home/deck:/bin/bash\n')
+        (self.root/'etc/os-release').write_text('ID=steamos\nVERSION_ID=3.10\nBUILD_ID=20260924.1000\n')
+        (self.root/'usr/share/applications').mkdir(parents=True)
+        (self.root/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
+        (self.root/'usr/bin').mkdir(parents=True,exist_ok=True)
+        for tool in ('python3','efibootmgr','systemctl','pkexec','kdialog'):
+            (self.root/'usr/bin'/tool).write_bytes(b'fixture tool')
+        p=self.root/'etc/inputplumber/capability_maps.d/onexplayer_type3.yaml'; p.parent.mkdir(parents=True)
+        p.write_text('  - name: Keyboard key (Ctrl+Meta+O)\n    target_event:\n      gamepad:\n        button: Keyboard\n  - name: Orange Button\n')
+        packages={'gamescope':'3.16.30-1'}
+        manifest=json.loads((PAYLOAD/'integration/manifest.json').read_text())
+        for item in manifest.values(): packages.update(item.get('packages',{}))
+        for name,version in packages.items():
+            d=self.root/'var/lib/pacman/local'/(name+'-'+version); d.mkdir(parents=True)
+            (d/'desc').write_text('%NAME%\n'+name+'\n\n%VERSION%\n'+version+'\n')
+        self.options={'schema':1,'repairs':[x['id'] for x in CATALOG['repairs'] if x['default']], 'plugins':[x['id'] for x in CATALOG['plugins'] if x['default']], 'installer_language':'zh-CN','kde_language':'zh_CN'}
+    def tearDown(self): self.directory.cleanup()
+    def test_image_database_takes_precedence_over_var(self):
+        d=self.root/'usr/lib/holo/pacmandb/local/gamescope-3.16.30-1'; d.mkdir(parents=True)
+        (d/'desc').write_text('%NAME%\ngamescope\n\n%VERSION%\n3.16.30-1\n')
+        stale=self.root/'var/lib/pacman/local/gamescope-3.16.30-1/desc'
+        stale.write_text('%NAME%\ngamescope\n\n%VERSION%\nstale\n')
+        self.assertEqual(package_version(self.root,'gamescope'),'3.16.30-1')
+        (d/'desc').unlink()
+        self.assertIsNone(package_version(self.root,'gamescope'))
+    def test_stock_mapping_creates_restorable_override(self):
+        override=self.root/'etc/inputplumber/capability_maps.d/oxp3-installer.yaml'
+        stock=self.root/'usr/share/inputplumber/capability_maps/oxp3-installer.yaml'
+        self.options.update(repairs=['input','multifunction'],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(result['components']['multifunction']['status'],'files_installed')
+        self.assertIn('RightPaddle2',override.read_text()); self.assertNotIn('RightPaddle2',stock.read_text())
+        self.assertIn('LeftPaddle2',stock.read_text())
+        self.assertEqual(restore(self.root,'A','multifunction'),[]); self.assertFalse(override.exists())
+    def test_all_default_payloads(self):
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        refused={k:v for k,v in result['components'].items() if v['status']!='files_installed'}
+        self.assertEqual(refused,{})
+        self.assertIn('LANGUAGE=zh_CN',(self.root/'home/deck/.config/plasma-localerc').read_text())
+        self.assertIn('RightPaddle2',(self.root/'etc/inputplumber/capability_maps.d/oxp3-installer.yaml').read_text())
+        self.assertEqual(json.loads((self.root/'var/lib/oxp3-fan/config.json').read_text()),{'mode':'auto'})
+        self.assertFalse(json.loads((self.root/'var/lib/oxp3-cpu/config.json').read_text())['enabled'])
+        self.assertEqual((self.root/'usr/bin/steamos-manager').read_bytes(),(PAYLOAD/'integration/manager/steamos-manager').read_bytes())
+        self.assertTrue((self.root/'opt/oxp3-desktop-gamma22/6.7.3-1.6/bin/kwin_wayland').is_file())
+        opti=self.root/'var/lib/oxp3-installer/decky/runtime/plugins/opti2xmx'
+        self.assertEqual(json.loads((opti/'package.json').read_text())['version'],'0.2.1')
+        self.assertTrue((opti/'opti.py').is_file())
+        self.assertEqual(json.loads((opti/'plugin.json').read_text())['flags'],[])
+        self.assertTrue((self.root/'opt/oxp3-opti2xmx/20261005/runtime/igc/neo/bin').is_dir())
+        self.assertTrue(os.access(self.root/'opt/oxp3-opti2xmx/20261005/runtime/tools/cm-compile.sh',os.X_OK))
+        self.assertFalse((self.root/'home/deck/.local/share/opti2xmx/games').exists())
+        # Repeat preserves originals and does not reset control configuration.
+        second=stage(self.root,PAYLOAD,self.options,'A'); self.assertEqual(result,second)
+        record=self.root/'home/deck/.local/share/opti2xmx/opti/42/current.json'
+        record.parent.mkdir(parents=True)
+        record.write_text(json.dumps({'status':'active','injection_enabled':False}))
+        with self.assertRaisesRegex(RuntimeError,'Uninstall managed Opti'):
+            restore(self.root,'A','opti2xmx')
+        self.assertTrue((opti/'main.py').exists())
+        record.write_text(json.dumps({'status':'removed','pending':None}))
+        self.assertEqual(restore(self.root,'A','opti2xmx'),[])
+        self.assertFalse((opti/'main.py').exists())
+        self.assertFalse((self.root/'opt/oxp3-opti2xmx/20261005').exists())
+        self.assertEqual(restore(self.root,'A','keyboard'),[])
+        self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
+        # Restore then install creates a new original epoch.
+        data=config_file(self.root,'home/deck/.config/kwinrc','Wayland',{'InputMethod':'/usr/share/applications/org.kde.plasma.keyboard.desktop','VirtualKeyboardMode':'1'})
+        apply_files(self.root,self.root/'home/.oxp3-installer/integration/A','keyboard',{'home/deck/.config/kwinrc':{'data':data,'user':True}},(1000,1000))
+        self.assertTrue((self.root/'home/deck/.config/kwinrc').exists())
+    def test_gyro_lifecycle_preserves_button_mapping(self):
+        self.options.update(repairs=['input','multifunction','gyro'],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertTrue(all(x['status']=='files_installed' for x in result['components'].values()))
+        profile=self.root/'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml'
+        self.assertIn('gyro_bias: [0, 0, 0]',profile.read_text())
+        self.assertIn('gyro_auto_calibrate: false',profile.read_text())
+        self.assertIn('y: [-1, 0, 0]',profile.read_text())
+        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),result)
+        with self.assertRaises(RuntimeError): restore(self.root,'A','input')
+        self.assertEqual(restore(self.root,'A','gyro'),[])
+        self.assertFalse(profile.exists())
+        self.assertFalse((self.root/'etc/systemd/system/inputplumber.service.d/oxp3-gyro-v1.conf').exists())
+        self.assertTrue((self.root/'etc/inputplumber/devices.d/50-onexplayer_3.yaml').exists())
+        self.assertIn('RightPaddle2',(self.root/'etc/inputplumber/capability_maps.d/oxp3-installer.yaml').read_text())
+    def test_gyro_live_restore_restarts_input_after_failure(self):
+        from unittest.mock import patch
+        import integration_runtime as runtime
+        commands=[]
+        def fake_run(*args):
+            commands.append(args)
+            return 'enabled' if args==('steamos-readonly','status') else ''
+        with patch.object(runtime,'run',side_effect=fake_run), patch.object(runtime.subprocess,'run') as active, patch.object(runtime,'restore',side_effect=RuntimeError('conflict')):
+            active.return_value.returncode=0
+            with self.assertRaises(RuntimeError): runtime.restore_live('gyro','A')
+        self.assertLess(commands.index(('systemctl','stop','inputplumber.service')),commands.index(('systemctl','stop','oxp3-gyro.service')))
+        self.assertEqual(commands[-2:],[('systemctl','daemon-reload'),('systemctl','start','inputplumber.service')])
+        self.assertIn(('steamos-readonly','enable'),commands)
+    def test_gyro_manual_calibration_blocks_partial_restore(self):
+        self.options.update(repairs=['input','gyro'],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        profile=self.root/'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml'
+        profile.write_text(profile.read_text().replace('gyro_bias: [0, 0, 0]','gyro_bias: [0.1, 0.2, 0.3]'))
+        with self.assertRaises(RuntimeError): restore(self.root,'A','gyro')
+        self.assertTrue((self.root/'var/lib/oxp3-gyro-v1/launch.sh').is_file())
+        self.assertTrue((self.root/'etc/systemd/system/inputplumber.service.d/oxp3-gyro-v1.conf').is_file())
+    def test_disabled_items_do_not_install(self):
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(result['components'],{})
+        self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
+        self.assertFalse((self.root/'home/deck/.config/plasma-localerc').exists())
+        self.assertFalse((self.root/'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml').exists())
+        self.assertFalse((self.root/'opt/oxp3-opti2xmx').exists())
+    def test_incompatible_source_refuses_repairs(self):
+        (self.root/'etc/os-release').write_text('ID=steamos\nVERSION_ID=3.8.14\nBUILD_ID=20260707.10\n')
+        self.options.update(repairs=['hdr','wifi','input','desktop-hdr'],plugins=[])
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertTrue(all(v['status']=='not_installed' for k,v in result['components'].items() if k!='kde-language'))
+        self.assertFalse((self.root/'opt/oxp3-desktop-gamma22').exists())
+        self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
+    def test_dependency_and_unknown_language_rejected_before_write(self):
+        for changed in (dict(self.options,plugins=[]),dict(self.options,kde_language='../../etc'),dict(self.options,repairs=['not-real'])):
+            with self.assertRaises(ValueError): stage(self.root,PAYLOAD,changed,'A')
+        self.assertFalse((self.root/'home').exists())
+    def test_user_changes_block_restore(self):
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        config=self.root/'home/deck/.config/kwinrc'; config.write_text('Manual user edit\n')
+        self.assertTrue(restore(self.root,'A','keyboard'))
+        self.assertEqual(config.read_text(),'Manual user edit\n')
+    def test_changed_request_is_preserved(self):
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        with self.assertRaises(RuntimeError): stage(self.root,PAYLOAD,dict(self.options,kde_language='en_US'),'A')
+    def test_kde_preserves_unrelated_settings(self):
+        p=self.root/'home/deck/.config/plasma-localerc'; p.parent.mkdir(parents=True)
+        p.write_text('[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=de\n[Other]\nkeep=yes\n')
+        data=config_file(self.root,'home/deck/.config/plasma-localerc','Translations',{'LANGUAGE':'zh_CN'}).decode()
+        self.assertIn('LANG=de_DE.UTF-8',data); self.assertIn('keep=yes',data); self.assertIn('LANGUAGE=zh_CN',data)
+    def test_gamescope_environment_isolation_has_independent_restore(self):
+        self.options.update(repairs=['gamescope-env'],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        p=self.root/'home/deck/.config/systemd/user/gamescope-session.service.d/90-oxp3-desktop-env-isolation.conf'
+        data=p.read_text()
+        self.assertIn('unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET',data)
+        self.assertIn('UnsetEnvironment=WAYLAND_DISPLAY WAYLAND_SOCKET',data)
+        self.assertNotIn('WAYLAND_DISPLAY=',data)
+        self.assertEqual(result['components']['gamescope-env']['status'],'files_installed')
+        self.assertFalse((self.root/'opt/oxp3-desktop-gamma22').exists())
+        self.assertEqual(restore(self.root,'A','gamescope-env'),[])
+        self.assertFalse(p.exists())
+    def test_live_guard_refuses_this_virtual_machine(self):
+        from integration_runtime import device_guard
+        with self.assertRaises(RuntimeError): device_guard()
+    def test_cross_slot_home_original_and_recovery(self):
+        self.options.update(repairs=['keyboard','gamescope-env'],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        other=Path(self.directory.name)/'slot-B'; (other/'etc').mkdir(parents=True)
+        for name in ('passwd','os-release'): (other/'etc'/name).write_bytes((self.root/'etc'/name).read_bytes())
+        (other/'usr/share/applications').mkdir(parents=True)
+        (other/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
+        (other/'home').mkdir(); subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
+        try:
+            stage(other,PAYLOAD,self.options,'B')
+            self.assertEqual((other/'usr/local/lib/oxp3-integration/slot').read_text().strip(),'B')
+            self.assertEqual(restore(other,'B','keyboard'),[])
+            self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
+        finally: subprocess.run(['umount',str(other/'home')],check=True)
+
+if __name__=='__main__': unittest.main()

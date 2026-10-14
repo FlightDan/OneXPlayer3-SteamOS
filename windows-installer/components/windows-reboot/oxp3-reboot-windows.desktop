@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Restart into Windows
+Name[zh_CN]=重启进入 Windows
+Name[zh_TW]=重新啟動進入 Windows
+Comment=Restart into Windows for the next boot only
+Comment[zh_CN]=仅下一次启动进入 Windows
+Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-windows-reboot/desktop.py
+Icon=system-reboot
+Terminal=false
+Categories=System;
+StartupNotify=false

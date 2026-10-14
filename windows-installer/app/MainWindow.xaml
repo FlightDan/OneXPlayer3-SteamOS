@@ -1,0 +1,165 @@
+<Window x:Class="OxpInstaller.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:OxpInstaller"
+ Title="ONEXPLAYER · SteamOS 安装助手" Width="1060" Height="720" MinWidth="640" MinHeight="360" WindowState="Maximized" WindowStyle="SingleBorderWindow" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Background="#F4F6FA" Foreground="#192B43" FontFamily="Microsoft YaHei UI" FontSize="14" SizeChanged="LayoutChanged" PreviewKeyDown="WindowKeyDown">
+ <Window.Resources>
+  <Style x:Key="Card" TargetType="Border"><Setter Property="Background" Value="White"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="16"/><Setter Property="Margin" Value="0,0,0,12"/><Setter Property="BorderBrush" Value="#DFE6F0"/><Setter Property="BorderThickness" Value="1"/></Style>
+  <Style x:Key="Muted" TargetType="TextBlock"><Setter Property="Foreground" Value="#61728A"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="LineHeight" Value="23"/></Style>
+  <Style x:Key="Title" TargetType="TextBlock"><Setter Property="FontSize" Value="19"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Margin" Value="0,0,0,10"/></Style>
+  <Style x:Key="StepLink" TargetType="Button">
+   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="6,10"/><Setter Property="Margin" Value="0,0,0,4"/><Setter Property="MinHeight" Value="48"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="StepBorder" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="StepBorder" Property="Background" Value="#253F5F"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="StepBorder" Property="Background" Value="#253F5F"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="Target" TargetType="RadioButton">
+   <Setter Property="Padding" Value="16"/><Setter Property="Margin" Value="0,0,0,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+    <Border x:Name="Tile" CornerRadius="10" BorderThickness="2" BorderBrush="#DEE5EF" Background="White" Padding="{TemplateBinding Padding}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions><ContentPresenter/><Border x:Name="Dot" Grid.Column="1" Width="20" Height="20" CornerRadius="10" BorderThickness="2" BorderBrush="#B5C2D3" VerticalAlignment="Top"/></Grid></Border>
+    <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="#2968D9"/><Setter TargetName="Tile" Property="Background" Value="#EFF5FF"/><Setter TargetName="Dot" Property="Background" Value="#2968D9"/><Setter TargetName="Dot" Property="BorderBrush" Value="#2968D9"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="#112A4C"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="Background" Value="#F0F5FB"/></Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </Window.Resources>
+ <Grid x:Name="WindowRoot" Background="#F4F6FA">
+ <Grid x:Name="WizardShell">
+  <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="176"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border Background="#122944"><Grid Margin="12,16,12,12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <StackPanel><TextBlock Text="ONEXPLAYER" FontSize="16" FontWeight="Bold" Foreground="White"/><TextBlock TextWrapping="Wrap" x:Name="SidebarSubtitle" Text="SteamOS 安装助手" Foreground="#B4C6DC" Margin="0,6,0,6"/><TextBlock Text="{x:Static local:ReleaseInfo.DisplayVersion}" Foreground="#B4C6DC" FontSize="12" Margin="0,0,0,16"/></StackPanel>
+   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly"><StackPanel>
+    <Button x:Name="TargetTab" Tag="0" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavTarget" Text="01   安装位置" Foreground="White"/></Button>
+    <Button x:Name="SourceTab" Tag="1" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavSource" Text="02   准备系统" Foreground="#94A9C3"/></Button>
+    <StackPanel x:Name="SourceSubitems" Visibility="Collapsed" Margin="16,0,0,4">
+     <Button x:Name="RecoverySourceTab" Tag="0" Click="NavigateSourceSection" Style="{StaticResource StepLink}"><TextBlock x:Name="NavRecoverySource" Text="恢复镜像" TextWrapping="Wrap" Foreground="#B4C6DC"/></Button>
+     <Button x:Name="OfficialSourceTab" Tag="1" Click="NavigateSourceSection" Style="{StaticResource StepLink}"><TextBlock x:Name="NavOfficialSource" Text="3.10 镜像" TextWrapping="Wrap" Foreground="#B4C6DC"/></Button>
+    </StackPanel>
+    <Button x:Name="ContentTab" Tag="2" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavContent" Text="03   选择安装内容" Foreground="#94A9C3"/></Button>
+    <Button x:Name="ReviewTab" Tag="3" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavReview" Text="04   确认方案" Foreground="#94A9C3"/></Button>
+    <Button x:Name="BootTab" Tag="4" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavBoot" Text="05   启动器安装" Foreground="#94A9C3"/></Button>
+    <Button x:Name="ProgressTab" Tag="5" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavProgress" Text="06   安装进度" Foreground="#94A9C3"/></Button>
+    <Button x:Name="ResultTab" Tag="6" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavResult" Text="07   完成" Foreground="#94A9C3"/></Button>
+   </StackPanel></ScrollViewer>
+   <StackPanel Grid.Row="2">
+    <CheckBox x:Name="DebugMode" Content="调试模式" IsChecked="False" Checked="DebugModeChanged" Unchecked="DebugModeChanged" Margin="0,0,0,4" ToolTip="显示高级工具和示例 / 开发选项">
+     <CheckBox.Style><Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="#192B43"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter Property="Foreground" Value="#192B43"/></Trigger></Style.Triggers></Style></CheckBox.Style>
+    </CheckBox>
+    <Button x:Name="AdvancedButton" Content="高级工具 ↗" Click="OpenAdvanced" Visibility="Collapsed" Background="#253F5F" Foreground="White" Margin="0,8,0,8" Padding="8,6"/>
+    <UniformGrid x:Name="InstallerLanguage" Columns="2" Margin="0,0,0,8">
+     <RadioButton x:Name="ChineseLanguage" Content="中文" Tag="zh-CN" GroupName="Language" Style="{StaticResource LanguageOption}" Checked="LanguageChanged" AutomationProperties.Name="简体中文"/>
+     <RadioButton x:Name="EnglishLanguage" Content="English" Tag="en-US" GroupName="Language" Style="{StaticResource LanguageOption}" Checked="LanguageChanged"/>
+    </UniformGrid>
+    <Button x:Name="ExitButton" Content="退出" Click="ExitWindow" HorizontalAlignment="Stretch" Margin="0" MinHeight="48" Padding="8,6" Background="#253F5F" Foreground="White"/>
+   </StackPanel>
+  </Grid></Border>
+  <Grid x:Name="MainContent" Grid.Column="1" Margin="20,16,20,12">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="PageTitle" Text="SteamOS，装在你选择的位置" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock x:Name="PageSubtitle" Text="保留 Windows 双系统，或把完整系统装进外部设备。" Style="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel><Button x:Name="StopButton" Grid.Column="1" Content="停止演练" Click="Stop" Visibility="Collapsed" Background="#B42318" Foreground="White" Margin="12,0,0,0" VerticalAlignment="Top"/></Grid>
+   <Border x:Name="ModeBannerCard" Grid.Row="1" Background="#FFF0D9" CornerRadius="8" Padding="12,8" Margin="0,0,0,10"><TextBlock x:Name="ModeBanner" Foreground="#80511A" FontSize="13" TextWrapping="Wrap"/></Border>
+   <ScrollViewer x:Name="PageScroll" Grid.Row="2" SizeChanged="LogLayoutChanged" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly" PanningDeceleration="0.002" Background="Transparent" Padding="0,0,8,0">
+    <StackPanel>
+     <Grid>
+     <StackPanel x:Name="TargetPage">
+      <Border x:Name="BootPrerequisitesCard" Style="{StaticResource Card}" Background="#FFF4DF"><StackPanel><TextBlock x:Name="BootPrerequisitesNote" TextWrapping="Wrap" Foreground="#80511A"/><Button x:Name="BootPrerequisitesShow" Click="ShowBootPrerequisites" HorizontalAlignment="Left" Margin="0,10,0,0"/></StackPanel></Border>
+      <Grid x:Name="TargetChoices"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+      <RadioButton x:Name="InternalTarget" GroupName="Target" IsChecked="True" Style="{StaticResource Target}" Checked="ChoiceChanged" AutomationProperties.Name="内置硬盘，保留 Windows">
+       <StackPanel Margin="0,0,8,0"><TextBlock Text="内置硬盘 · 双系统" Style="{StaticResource Title}" TextWrapping="Wrap"/><TextBlock Text="保留 Windows，选择空闲区域或删除不用的数据分区来安装。" Style="{StaticResource Muted}"/></StackPanel>
+      </RadioButton>
+      <RadioButton x:Name="ExternalTarget" GroupName="Target" Style="{StaticResource Target}" Checked="ChoiceChanged" AutomationProperties.Name="外部 SD 卡或 SSD，完整 SteamOS">
+       <StackPanel Margin="0,0,8,0"><TextBlock Text="外部 SD 卡 / SSD（beta）" Style="{StaticResource Title}" TextWrapping="Wrap"/><TextBlock Text="系统装在外部设备，保留已有分区。" Style="{StaticResource Muted}"/></StackPanel>
+      </RadioButton>
+      </Grid>
+      <Border x:Name="PartitionCard" Style="{StaticResource Card}"><local:PartitionPicker x:Name="PartitionSelector"/></Border>
+      <TextBlock x:Name="PlanningScope" Text="所选磁盘与容量用于安装规划；本次执行仍使用独立的 80 GiB 虚拟测试盘。" Style="{StaticResource Muted}" FontSize="12" Margin="0,2,0,12"/>
+      <Border x:Name="RecentPanel" Style="{StaticResource Card}" Visibility="Collapsed"><StackPanel><TextBlock Text="上次任务" FontWeight="SemiBold"/><TextBlock x:Name="RecentText" Style="{StaticResource Muted}" Margin="0,6,0,10"/><WrapPanel><Button x:Name="ResumeRecentButton" Content="继续上次演练" Click="ResumeRecent" Visibility="Collapsed" Margin="0,0,10,0"/><Button Content="查看任务记录" Click="OpenRecent" HorizontalAlignment="Left"/></WrapPanel></StackPanel></Border>
+     </StackPanel>
+     <StackPanel x:Name="SourcePage" Visibility="Collapsed">
+      <StackPanel x:Name="RecoverySourceSection">
+      <Border Style="{StaticResource Card}"><StackPanel x:Name="DownloadHost"/></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="选择本地恢复镜像" Style="{StaticResource Title}"/>
+       <TextBlock Text="使用本地 SteamOS 恢复镜像；准备过程在 Windows 中自动完成。" Style="{StaticResource Muted}"/>
+       <DockPanel Margin="0,8,0,8"><Button Content="选择文件…" Click="BrowseImage" DockPanel.Dock="Right" Margin="10,0,0,0"/><TextBox x:Name="ImagePath" IsReadOnly="True" VerticalContentAlignment="Center" AutomationProperties.Name="系统镜像路径"/></DockPanel>
+       <TextBlock Text="支持 .img、.img.bz2 和 .img.zip。选择后，继续准备 3.10 镜像。" Style="{StaticResource Muted}" FontSize="12"/>
+       <Expander x:Name="DeveloperOptions" Header="开发选项" Visibility="Collapsed" Margin="0,16,0,0"><StackPanel Margin="0,10,0,0"><CheckBox x:Name="UsePrepared" Content="使用本工具已准备好的 80 GiB 系统镜像" Checked="SourceModeChanged" Unchecked="SourceModeChanged"/><TextBlock Text="仅接受工具 work 目录中的 prepared.img，可跳过重复准备。" Style="{StaticResource Muted}" FontSize="12"/></StackPanel></Expander>
+      </StackPanel></Border>
+      </StackPanel>
+      <StackPanel x:Name="OfficialSourceSection" Visibility="Collapsed">
+      <StackPanel x:Name="OfficialDownloadHost"/>
+      <Expander Header="系统版本选项" Margin="0,0,0,12"><StackPanel Margin="0,10,0,0">
+       <CheckBox x:Name="Upgrade310" IsChecked="True" Margin="0,0,0,4"><TextBlock x:Name="UpgradeLabel" FontWeight="SemiBold" TextWrapping="Wrap"/></CheckBox>
+       <TextBlock x:Name="SystemVersionNote" Style="{StaticResource Muted}"/>
+      </StackPanel></Expander>
+      </StackPanel>
+     </StackPanel>
+     <StackPanel x:Name="ContentPage" Visibility="Collapsed">
+      <Border Style="{StaticResource Card}"><StackPanel x:Name="ComponentOptionsHost"/></Border>
+     </StackPanel>
+     <StackPanel x:Name="ReviewPage" Visibility="Collapsed">
+      <Border x:Name="PhysicalConsentBorder" Visibility="{Binding Visibility, ElementName=PhysicalConsent}" Margin="0,0,0,14" Padding="10" CornerRadius="8" BorderThickness="2" BorderBrush="#C48A32" Background="#FFF4DF">
+       <CheckBox x:Name="PhysicalConsent" Visibility="Collapsed" Margin="0" FontWeight="Bold" FontSize="16"><TextBlock Text="我已备份重要数据，核对目标范围并确认格式化安装。" TextWrapping="Wrap" FontWeight="Bold"/></CheckBox>
+      </Border>
+      <Border x:Name="ReviewPartitionCard" Style="{StaticResource Card}"><StackPanel x:Name="ReviewPartitionHost"/></Border>
+      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="本次安装方案" Style="{StaticResource Title}"/>
+       <TextBlock x:Name="ReviewTarget" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,12"/><TextBlock x:Name="ReviewSource" Style="{StaticResource Muted}"/>
+       <Border Height="1" Background="#E2E8F1" Margin="0,16"/>
+       <TextBlock x:Name="ReviewLayout" Style="{StaticResource Muted}"/>
+       <TextBlock Text="01  准备系统 → 02  修复与插件 → 03  写入并核对 → 04  验证启动" Foreground="#315F9E" Margin="0,16,0,8" TextWrapping="Wrap"/>
+       <TextBlock x:Name="ReviewExecutionNote" Style="{StaticResource Muted}"/>
+      </StackPanel></Border>
+     </StackPanel>
+     <StackPanel x:Name="BootPage" Visibility="Collapsed">
+      <Border Style="{StaticResource Card}"><StackPanel x:Name="BootOptionsHost"/></Border>
+     </StackPanel>
+     <StackPanel x:Name="ProgressPage" Visibility="Collapsed" SizeChanged="LogLayoutChanged">
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock x:Name="ProgressTitle" Text="准备系统" Style="{StaticResource Title}" Margin="0,0,0,8"/>
+       <TextBlock x:Name="ProgressMessage" Style="{StaticResource Muted}"/>
+       <TextBlock x:Name="ProgressArchiveHint" Text="所选镜像为 .bz2 格式，解压可能需要较长时间，请耐心等待。" Style="{StaticResource Muted}" Margin="0,8,0,0" Visibility="Collapsed"/>
+       <ProgressBar x:Name="Progress" Height="10" Minimum="0" Maximum="100" Margin="0,12,0,8" Foreground="#2968D9"/>
+       <TextBlock x:Name="ProgressDetail" Style="{StaticResource Muted}" FontSize="14" FontWeight="SemiBold"/>
+       <TextBlock x:Name="ProgressStopNote" Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0"/>
+      </StackPanel></Border>
+     </StackPanel>
+     <StackPanel x:Name="ResultPage" Visibility="Collapsed" SizeChanged="LogLayoutChanged">
+      <Border x:Name="IncompleteCard" Style="{StaticResource Card}" Background="#FFF0EF" BorderBrush="#E6A09A" Visibility="Collapsed"><StackPanel><TextBlock x:Name="IncompleteHeading" Text="还有项目未完成" FontWeight="SemiBold" Foreground="#B42318"/><TextBlock x:Name="IncompleteItems" TextWrapping="Wrap" Foreground="#B42318" Margin="0,8,0,0"/></StackPanel></Border>
+      <Border x:Name="ResultCard" Style="{StaticResource Card}"><StackPanel><TextBlock x:Name="ResultTitle" FontSize="23" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/><TextBlock x:Name="ResultMessage" Style="{StaticResource Muted}"/></StackPanel></Border>
+      <StackPanel x:Name="RestartPanel" Visibility="Collapsed" Margin="0,0,0,16"><Button x:Name="RestartButton" Content="重启到 SteamOS" Click="RestartToSteamOS" HorizontalAlignment="Left" Background="#2968D9" Foreground="White"/></StackPanel>
+      <TextBlock x:Name="ResultScope" Style="{StaticResource Muted}" Margin="0,0,0,12"/><WrapPanel Margin="0,8,0,0"><Button x:Name="ResumeResultButton" Content="复查并继续" Click="ResumeRecent" Visibility="Collapsed" Margin="0,0,10,0"/><Button Content="打开任务文件夹" Click="OpenSession" HorizontalAlignment="Left"/></WrapPanel>
+     </StackPanel>
+    </Grid>
+     <Border x:Name="WorkspaceCard" Style="{StaticResource Card}"><StackPanel>
+      <DockPanel><Button x:Name="BrowseWorkspaceButton" Content="选择文件夹…" Click="BrowseWorkspace" DockPanel.Dock="Right" Margin="12,0,0,0" MinHeight="48"/><TextBlock x:Name="WorkspaceHeading" Text="工作空间" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
+      <TextBox x:Name="WorkspacePath" IsReadOnly="True" MinHeight="0" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" Margin="0,8,0,0" AutomationProperties.Name="工作目录"/>
+      <TextBlock x:Name="SpaceText" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+      <TextBlock x:Name="WorkspaceNote" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"/>
+     </StackPanel></Border>
+   <Grid x:Name="LogPanel" Visibility="Collapsed" Margin="0,12,0,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Button x:Name="ExportLogButton" Content="导出详细日志…" Click="ExportLog" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12,0,0,0" Panel.ZIndex="1"/>
+    <Expander x:Name="LogExpander" Header="详细日志" IsExpanded="False" Grid.RowSpan="2"><TextBox x:Name="LogText" Height="240" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" AutomationProperties.Name="详细日志"/></Expander>
+   </Grid></StackPanel></ScrollViewer>
+   <StackPanel Grid.Row="3"><ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly"><TextBlock x:Name="ValidationMessage" Foreground="#A34727" TextWrapping="Wrap"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Margin" Value="0,8,0,8"/><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style></TextBlock></ScrollViewer>
+
+   </StackPanel>
+   <Grid x:Name="PageFooter" Grid.Row="4" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Button x:Name="BackButton" Content="上一步" Click="Back" HorizontalAlignment="Left" MinWidth="94"/><Button x:Name="NextButton" Grid.Column="1" Content="下一步" Click="Next" Background="#2968D9" Foreground="White" MinWidth="136" Margin="0" IsDefault="True"/></Grid>
+  </Grid>
+ </Grid>
+ <Grid x:Name="SafetyOverlay" Visibility="Collapsed" Background="#990B1626" KeyboardNavigation.TabNavigation="Cycle">
+  <Border Background="White" CornerRadius="16" Margin="24" Padding="24" MaxWidth="680" MaxHeight="480">
+   <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TextBlock Text="继续前，请确认数据安全" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,16"/>
+    <ScrollViewer Grid.Row="1" PanningMode="VerticalOnly" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
+     <TextBlock Text="Beta 测试阶段 · 请先备份重要数据" FontSize="17" FontWeight="SemiBold" Foreground="#A34727" TextWrapping="Wrap"/>
+     <TextBlock x:Name="SafetyTarget" Margin="0,14,0,14" TextWrapping="Wrap"/>
+     <TextBlock x:Name="SafetyMessage" TextWrapping="Wrap" LineHeight="24"/>
+    </StackPanel></ScrollViewer>
+    <UniformGrid Grid.Row="2" Columns="2" Margin="0,20,0,0"><Button x:Name="SafetyCancel" Content="返回检查" Click="CancelSafety"/><Button x:Name="SafetyContinue" Content="已备份，继续" Click="ConfirmSafety" Margin="0" Background="#A34727" Foreground="White"/></UniformGrid>
+   </Grid>
+  </Border>
+ </Grid>
+ <Grid x:Name="BootPrerequisitesOverlay" Visibility="Collapsed" Background="#990B1626" KeyboardNavigation.TabNavigation="Cycle">
+  <Border Background="White" CornerRadius="16" Margin="24" Padding="24" MaxWidth="720" MaxHeight="660">
+   <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TextBlock x:Name="BootPrerequisitesTitle" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,16"/>
+    <ScrollViewer Grid.Row="1" PanningMode="VerticalOnly" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><TextBlock x:Name="BootPrerequisitesMessage" TextWrapping="Wrap" LineHeight="24"/></ScrollViewer>
+    <CheckBox x:Name="BootPrerequisitesConsent" Grid.Row="2" Margin="0,16,0,0" Checked="BootPrerequisitesConsentChanged" Unchecked="BootPrerequisitesConsentChanged"/>
+    <UniformGrid Grid.Row="3" Columns="2" Margin="0,16,0,0"><Button x:Name="BootPrerequisitesExit" Click="ExitBootPrerequisites"/><Button x:Name="BootPrerequisitesContinue" Click="ConfirmBootPrerequisites" IsEnabled="False" Margin="0" Background="#2968D9" Foreground="White"/></UniformGrid>
+   </Grid>
+  </Border>
+ </Grid>
+ </Grid>
+</Window>

@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "id": "refind",
+      "name": "rEFInd · 双系统图形启动菜单",
+      "state": "separate_boot_phase_implemented",
+      "default": false,
+      "available": true,
+      "installation_phase": "new_steamos_esp",
+      "dependencies": [],
+      "url": "https://www.rodsbooks.com/refind/",
+      "reason": "第 5 步独立选择，默认关闭。固定 rEFInd 0.14.2 载荷，按 GPT GUID 生成入口，备份并替换新 SteamOS ESP 的 fallback，保留官方 A/B 链式引导；支持重复安装、中断恢复和卸载。Windows 真系统启动、OXP3 固件触屏与实机安装仍待用户验收；详见独立 VM 记录。",
+      "source": "windows-installer/docs/REFIND_OPTION.md"
+    },
+    {
+      "id": "flathub-ustc",
+      "name": "SteamOS 桌面模式 应用商店 · 中科大 Flathub 源",
+      "state": "option_registered_execution_pending",
+      "default": false,
+      "url": "https://mirrors.ustc.edu.cn/flathub",
+      "dependencies": [],
+      "reason": "用户指定的可选换源修复，默认关闭。仅显式勾选后修改现有 Flathub remote URL；用户级/系统级识别、原地址记录、重复应用、独立恢复与新装 Discover 验收待接入。不修改 SteamOS/pacman 或其他 Flatpak remote。缓存未命中与 extra-data 仍可能访问国外站点。",
+      "source": "windows-installer/docs/FLATHUB_MIRROR.md"
+    },
+    {
+      "id": "hdr",
+      "name": "HDR Gamma 2.2 1100/472",
+      "state": "file_lifecycle_virtual_passed_live_install_pending",
+      "default": false,
+      "reason": "维护模板已同步；用户所有权、重复安装、逻辑路径恢复、冲突拒绝与 LuaJIT 行为通过虚拟盘验证。可携带配置与恢复源码；只允许3.10/精确内核/Gamescope3.16.30-1，3.8.14实际拒绝。首启激活/显示/重启/休眠仍待验。",
+      "source": "research/hdr/GAMMA22_1100_DAILY.md"
+    },
+    {
+      "id": "xe-dsb",
+      "name": "OXP3 显示兼容修复 · 暂停 DSB",
+      "default": true,
+      "state": "offline_integrated_hardware_pending",
+      "reason": "仅精确兼容系统；DSB 重新开启留待后续测试。GM7 参数仅为匹配的 NVMe 目标生成。",
+      "source": "windows-installer/docs/early-repair-audit-20261014.json"
+    },
+    {
+      "id": "gm7-resume",
+      "name": "GM7 休眠恢复 · 自动匹配目标 SSD",
+      "default": true,
+      "state": "offline_integrated_hardware_pending",
+      "reason": "仅精确兼容系统；DSB 重新开启留待后续测试。GM7 参数仅为匹配的 NVMe 目标生成。",
+      "source": "windows-installer/docs/early-repair-audit-20261014.json"
+    },
+    {
+      "id": "wifi",
+      "name": "BE201 无线固件",
+      "state": "research",
+      "default": false,
+      "reason": "c106 后续开机故障仍可复现，恢复内核与最终系统必须分别验证。",
+      "source": "research/wifi/README.md"
+    },
+    {
+      "id": "native-tdp",
+      "name": "原生 TDP 10–40W",
+      "dependencies": [
+        "manager"
+      ],
+      "state": "device_use_accepted_integration_pending",
+      "default": false,
+      "reason": "本机 40W 菜单和短测已通过；36–40W 同步双 PL1/PL2，默认不升功率。限定内核 7.2.4 / Manager 26.4.1，实体 AC/DC、长期热测试和新装恢复未验。",
+      "source": "RESEARCH_GOAL.md"
+    },
+    {
+      "id": "manager",
+      "name": "SteamOS Manager 修复",
+      "state": "compatibility_pending",
+      "default": false,
+      "reason": "仅允许同版本补丁；恢复镜像 3.8.14 不能直接套用 3.10 的组件。",
+      "source": "research/manager/README.md"
+    },
+    {
+      "id": "charging",
+      "name": "OXP3 Battery 充电上限与模式",
+      "state": "device_interface_deployed_effect_acceptance_pending",
+      "default": false,
+      "reason": "原生/Decky 60–100% 界面已部署，默认不改充电策略，复用精确 oxpec。实际停充/抑制负载、睡眠/重启和精确行为恢复未完成，不把抑制充电等同于电气旁路。源码可携带，自动部署/恢复待接入。",
+      "source": "research/charging/DECKY_DELIVERY.md"
+    },
+    {
+      "id": "input",
+      "name": "输入与背键",
+      "state": "current_boot_buttons_accepted_persistent_install_pending",
+      "default": false,
+      "reason": "本次启动中 M1/L4、M2/R4、Home/L5、A/B/X/Y 已实机通过，用户保留候选；多功能键最终 R5 待复验。精确内核持久安装、休眠/更新/MCU 恢复、模拟量及 gyro 尚未验收，不在 3.8.14 加载研究模块。",
+      "source": "research/input/hid-build-v1/BUILD_STATUS.md"
+    },
+    {
+      "id": "legacy-runtime",
+      "name": "音量与电量",
+      "state": "research",
+      "default": false,
+      "reason": "迁移为 root 拥有的独立组件及实体功能验收待完成。",
+      "source": "research/runtime_hardening/README.md"
+    },
+    {
+      "id": "waydroid",
+      "name": "Waydroid Android 13 + GApps",
+      "state": "device_use_accepted_resource_staging",
+      "default": false,
+      "bundle": "steamos-3.10-b20260924.1000-wlroots0.20.2-oxp3-r2",
+      "binder": "1-2",
+      "reason": "用户实机使用正常；可携带 r2 资源。限定 SteamOS 3.10 build 20260924.1000、内核 7.2.4 和精确依赖，3.8.14 不可安装；自动部署、重复安装与恢复待接入。Android 系统镜像另行下载。",
+      "source": "plugins/waydroid-adaptation/README.md"
+    },
+    {
+      "id": "overlay",
+      "name": "CPU/GPU/APU 功耗与 PVRAM 叠加层",
+      "state": "device_display_passed_integration_pending",
+      "default": false,
+      "reason": "游戏非零功耗和进程显存显示已验证；只放开能量计数器读权限。保留 Steam 档位，陈旧值 N/A；新装权限/配置/服务恢复待接入。",
+      "source": "research/overlay/telemetry.py"
+    },
+    {
+      "id": "oxp3-fan",
+      "name": "OXP3 风扇",
+      "dependencies": [
+        "decky"
+      ],
+      "state": "device_use_accepted_integration_pending",
+      "default": false,
+      "reason": "自动/预设/自定义曲线及 RPM 已接入并获用户可用确认，默认 EC 自动。需要精确 oxpec 模块和抑制旧 Turbo 写入；长期曲线、崩溃/休眠/重启及模块恢复未完整验收。",
+      "source": "research/overlay/fan.py"
+    },
+    {
+      "id": "oxp3-cpu",
+      "name": "OXP3 CPU",
+      "dependencies": [
+        "decky"
+      ],
+      "state": "prototype_readback_restore_passed",
+      "default": false,
+      "reason": "EPP 与 2P/8E/4LP-E 限频、恢复通过，IBC 只读。默认不应用设置；首次加载错误根因未确认，单独重载/RPC 正常，生命周期待验。不提供 CPU 硬瓦数限制。",
+      "source": "research/overlay/cpu_control.py"
+    },
+    {
+      "id": "desktop-hdr",
+      "name": "KDE 桌面 HDR/WCG 安全处理",
+      "state": "research",
+      "default": false,
+      "reason": "关闭 HDR/WCG 并 DPMS on 后画面恢复；游戏 Gamma22 保留。窗口高亮组未通过；重接 Gamma22 或隐藏内屏 HDR 开关尚未实现。",
+      "source": "research/evidence/20261013-desktop-hdr-recovery.md"
+    }
+  ],
+  "plugins": [
+    {
+      "id": "windows-reboot",
+      "name": "重启进入 Windows · Decky 按钮与桌面快捷方式",
+      "version": "0.1.1",
+      "state": "device_reboot_confirmed_installer_integrated",
+      "default": true,
+      "dependencies": ["decky"],
+      "source": "windows-installer/docs/WINDOWS_REBOOT.md"
+    },
+    {
+      "id": "decky",
+      "name": "Decky Loader",
+      "version": "3.2.10",
+      "state": "resources_cached",
+      "default": false
+    },
+    {
+      "id": "steamgriddb",
+      "name": "SteamGridDB",
+      "version": "1.8.1",
+      "dependencies": [
+        "decky"
+      ],
+      "state": "resources_cached",
+      "default": false
+    },
+    {
+      "id": "protondb",
+      "name": "ProtonDB Badges",
+      "version": "1.2.0",
+      "dependencies": [
+        "decky"
+      ],
+      "state": "resources_cached",
+      "default": false
+    }
+  ]
+}

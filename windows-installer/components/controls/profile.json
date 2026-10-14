@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "id": "oxp3-controls",
+  "version": "20261013-r5",
+  "archive": "oxp3-controls-20261013-r5.zip",
+  "source_files": [
+    "rapl/provider.py",
+    "rapl/test_provider.py",
+    "manager/tdp-error-propagation.patch",
+    "manager/tdp-live-state-cache.patch",
+    "overlay/telemetry.py",
+    "overlay/allow-read.py",
+    "overlay/presets.conf",
+    "overlay/update-layout.py",
+    "overlay/test-layout-device.py",
+    "overlay/cpu_control.py",
+    "overlay/cpu-plugin-main.py",
+    "overlay/cpu-plugin-index.js",
+    "overlay/test_cpu_control.py",
+    "overlay/fan.py",
+    "overlay/fan-plugin-main.py",
+    "overlay/fan-plugin-index.js",
+    "overlay/fan-sleep.py",
+    "overlay/load-fan-module.py",
+    "overlay/test_fan.py",
+    "charging/battery_control.py",
+    "charging/battery_provider.py",
+    "charging/battery-plugin-main.py",
+    "charging/battery-plugin-index.js",
+    "charging/deploy-battery.py",
+    "charging/update-battery-ui.py",
+    "charging/check-battery-ui.mjs",
+    "PLUGIN_LANGUAGES.md",
+    "check-plugin-i18n.mjs"
+  ],
+  "deployment": "resources_only",
+  "default": false,
+  "target": {
+    "vendor": "ONE-NETBOOK",
+    "product": "ONEXPLAYER 3",
+    "cpu": "Intel Arc G3 Extreme",
+    "system_version": "3.10",
+    "system_build": "20260924.1000",
+    "kernel": "7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9",
+    "manager": "26.4.1-2",
+    "mangoapp": "0.8.3.rc1.r24.g33c2c7dd-4",
+    "core_groups": [
+      2,
+      8,
+      4
+    ]
+  },
+  "components": [
+    "native-tdp",
+    "manager",
+    "overlay",
+    "oxp3-fan",
+    "oxp3-cpu",
+    "charging"
+  ],
+  "reference_only": [
+    "charging/deploy-battery.py",
+    "charging/update-battery-ui.py"
+  ],
+  "tdp": {
+    "min_watts": 10,
+    "max_watts": 40,
+    "default_power_change": false,
+    "long_40w_thermal_acceptance": false
+  },
+  "fan": {
+    "default": "firmware_auto",
+    "driver_binary_included": false,
+    "driver_rebuild_and_module_restore": "pending"
+  },
+  "cpu": {
+    "default_enabled": false,
+    "independent_watt_limit": false,
+    "ibc_manual_control": false,
+    "first_load_error_root_cause": "not_confirmed"
+  },
+  "battery": {
+    "min_percent": 60,
+    "max_percent": 100,
+    "default_policy_change": false,
+    "shared_validated_fan_module_required": true,
+    "boot_policy_reapplication": false,
+    "electrical_bypass_accepted": false,
+    "exact_raw_behaviour_restore": false,
+    "charge_effect_and_sleep_reboot_acceptance": "pending"
+  },
+  "plugin_languages": {
+    "plugins": [
+      "OXP3 CPU",
+      "OXP3 Fan",
+      "OXP3 Battery"
+    ],
+    "bundled": [
+      "zh",
+      "en"
+    ],
+    "source": "navigator.language",
+    "chinese_language_codes": "zh and zh-* (case-insensitive; underscores accepted)",
+    "other_languages_and_missing_locale": "en",
+    "missing_translation": "en",
+    "install_time_language_selection": false
+  },
+  "desktop_hdr": {
+    "state": "research_pending",
+    "safe_recovery": [
+      "hdr_off",
+      "wcg_off",
+      "dpms_on"
+    ],
+    "gamma22_window_highlights": "not_accepted",
+    "hide_unsafe_internal_toggle_if_not_adaptable": true
+  },
+  "acceptance": "TDP and fan user-confirmed; CPU prototype readback/restore/reload passed; new-install and lifecycle acceptance pending",
+  "handoff": [
+    "RESEARCH_GOAL.md",
+    "DEVICE_CHANGES.md",
+    "research/REMAINING_ACCEPTANCE.md"
+  ],
+  "note": "No automatic deployment, kernel binary, device configuration, credentials or private screenshot is included."
+}

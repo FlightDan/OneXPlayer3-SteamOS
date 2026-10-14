@@ -1,0 +1,948 @@
+{
+  "schema": 1,
+  "scope": "private development package; public redistribution source/notice closure still pending",
+  "runtime": [
+    {
+      "name": "rEFInd x86-64 EFI with Graphite Quiet theme",
+      "version": "0.14.2 / Arch 0.14.2-3",
+      "source": "https://archive.archlinux.org/packages/r/refind/refind-0.14.2-3-x86_64.pkg.tar.zst",
+      "notices": ["components/refind/LICENSE.txt", "components/refind/COPYING.txt", "components/refind/SOURCE.md", "components/refind/Outfit-OFL.txt", "components/refind/DMMono-OFL.txt"],
+      "pending": "Public redistribution source inventory; current package is a private test build"
+    },
+    {
+      "name": "QEMU Windows",
+      "version": "11.1.0 / 20260811",
+      "source": "https://qemu.weilnetz.de/w64/",
+      "notices": [
+        "runtime/qemu-min/COPYING",
+        "runtime/qemu-min/COPYING.LIB",
+        "runtime/qemu-min/share/edk2-licenses.txt"
+      ],
+      "pending": "Exact Windows build inputs and source/notices for all DLL dependencies"
+    },
+    {
+      "name": "Alpine Linux virt",
+      "version": "3.23.6",
+      "source": "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/",
+      "pending": "Corresponding kernel, initramfs and ISO package sources/notices"
+    },
+    {
+      "name": ".NET Core and Windows Desktop",
+      "version": "10.0.12",
+      "source": "https://github.com/dotnet/runtime",
+      "notices": [
+        "runtime/dotnet/LICENSE.txt",
+        "runtime/dotnet/ThirdPartyNotices.txt"
+      ],
+      "pending": "Review notices for the exact Windows Desktop runtime build"
+    },
+    {
+      "name": "7-Zip",
+      "source": "https://www.7-zip.org/",
+      "notices": [
+        "licenses/7-Zip-License.txt"
+      ],
+      "pending": "Pin installed binary version and preserve corresponding source for public release"
+    },
+    {
+      "name": "kmscon + libtsm",
+      "version": "Debian 9.0.0-4 / 4.0.2-0.4",
+      "source": "https://deb.debian.org/debian/pool/main/",
+      "notices": [
+        "runtime/console/licenses/kmscon-copyright",
+        "runtime/console/licenses/libtsm-copyright"
+      ],
+      "sources": "runtime/console/sources/",
+      "pending": "Review combined notices with the exact target SteamOS libraries before public release"
+    },
+    {
+      "name": "Decky Loader",
+      "version": "3.2.10",
+      "source": "https://github.com/SteamDeckHomebrew/decky-loader",
+      "pending": "Release binary source and bundled dependency notices; include source cache for a public release"
+    },
+    {
+      "name": "Waydroid OXP3 r2",
+      "version": "steamos-3.10-b20260924.1000-wlroots0.20.2-oxp3-r2",
+      "source": "https://github.com/pjohno/steamos-waydroid-bundle",
+      "notices": [
+        "cache/components/waydroid/waydroid-source-ibt-r2.tar",
+        "cache/components/waydroid/intel-ibt-kernel-calls.patch"
+      ],
+      "pending": "Review complete nested package sources/licenses before public redistribution"
+    },
+    {
+      "name": "aria2 Windows",
+      "version": "1.37.0 win-64bit-build1",
+      "license": "GPL-2.0-or-later",
+      "source": "https://github.com/aria2/aria2/releases/tag/release-1.37.0",
+      "download": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip",
+      "executable": "runtime/aria2/aria2c.exe",
+      "bytes": 5649408,
+      "sourceArchive": "runtime/aria2/aria2-1.37.0.tar.xz",
+      "notices": [
+        "runtime/aria2/COPYING",
+        "runtime/aria2/AUTHORS",
+        "runtime/aria2/LICENSE.OpenSSL",
+        "runtime/aria2/README.mingw"
+      ],
+      "pending": "Exact corresponding sources and notices for statically linked dependencies/build inputs before public redistribution"
+    }
+  ],
+  "files": [
+    {
+      "file": "runtime/qemu-min/brlapi-0.8.dll",
+      "bytes": 115200
+    },
+    {
+      "file": "runtime/qemu-min/bundle-report.json",
+      "bytes": 3643
+    },
+    {
+      "file": "runtime/qemu-min/COPYING",
+      "bytes": 17880
+    },
+    {
+      "file": "runtime/qemu-min/COPYING.LIB",
+      "bytes": 26415
+    },
+    {
+      "file": "runtime/qemu-min/libaom.dll",
+      "bytes": 9424346
+    },
+    {
+      "file": "runtime/qemu-min/libatk-1.0-0.dll",
+      "bytes": 159478
+    },
+    {
+      "file": "runtime/qemu-min/libavif-16.dll",
+      "bytes": 335578
+    },
+    {
+      "file": "runtime/qemu-min/libbrotlicommon.dll",
+      "bytes": 143429
+    },
+    {
+      "file": "runtime/qemu-min/libbrotlidec.dll",
+      "bytes": 62461
+    },
+    {
+      "file": "runtime/qemu-min/libbrotlienc.dll",
+      "bytes": 788364
+    },
+    {
+      "file": "runtime/qemu-min/libbz2-1.dll",
+      "bytes": 100964
+    },
+    {
+      "file": "runtime/qemu-min/libcacard-0.dll",
+      "bytes": 109915
+    },
+    {
+      "file": "runtime/qemu-min/libcairo-2.dll",
+      "bytes": 1247164
+    },
+    {
+      "file": "runtime/qemu-min/libcairo-gobject-2.dll",
+      "bytes": 35639
+    },
+    {
+      "file": "runtime/qemu-min/libcapstone.dll",
+      "bytes": 8022840
+    },
+    {
+      "file": "runtime/qemu-min/libcrypto-3-x64.dll",
+      "bytes": 5495118
+    },
+    {
+      "file": "runtime/qemu-min/libcurl-4.dll",
+      "bytes": 1226963
+    },
+    {
+      "file": "runtime/qemu-min/libdatrie-1.dll",
+      "bytes": 35033
+    },
+    {
+      "file": "runtime/qemu-min/libdav1d-7.dll",
+      "bytes": 1931258
+    },
+    {
+      "file": "runtime/qemu-min/libdb-6.2.dll",
+      "bytes": 1534932
+    },
+    {
+      "file": "runtime/qemu-min/libdeflate.dll",
+      "bytes": 99228
+    },
+    {
+      "file": "runtime/qemu-min/libepoxy-0.dll",
+      "bytes": 1771389
+    },
+    {
+      "file": "runtime/qemu-min/libexpat-1.dll",
+      "bytes": 237567
+    },
+    {
+      "file": "runtime/qemu-min/libfdt-1.dll",
+      "bytes": 42010
+    },
+    {
+      "file": "runtime/qemu-min/libffi-8.dll",
+      "bytes": 40945
+    },
+    {
+      "file": "runtime/qemu-min/libfontconfig-1.dll",
+      "bytes": 508462
+    },
+    {
+      "file": "runtime/qemu-min/libfreetype-6.dll",
+      "bytes": 790651
+    },
+    {
+      "file": "runtime/qemu-min/libfribidi-0.dll",
+      "bytes": 156403
+    },
+    {
+      "file": "runtime/qemu-min/libgcc_s_seh-1.dll",
+      "bytes": 150998
+    },
+    {
+      "file": "runtime/qemu-min/libgdk-3-0.dll",
+      "bytes": 1384574
+    },
+    {
+      "file": "runtime/qemu-min/libgdk_pixbuf-2.0-0.dll",
+      "bytes": 362253
+    },
+    {
+      "file": "runtime/qemu-min/libgio-2.0-0.dll",
+      "bytes": 1913623
+    },
+    {
+      "file": "runtime/qemu-min/libglib-2.0-0.dll",
+      "bytes": 1566649
+    },
+    {
+      "file": "runtime/qemu-min/libgmodule-2.0-0.dll",
+      "bytes": 26748
+    },
+    {
+      "file": "runtime/qemu-min/libgmp-10.dll",
+      "bytes": 679747
+    },
+    {
+      "file": "runtime/qemu-min/libgnutls-30.dll",
+      "bytes": 2316158
+    },
+    {
+      "file": "runtime/qemu-min/libgobject-2.0-0.dll",
+      "bytes": 359475
+    },
+    {
+      "file": "runtime/qemu-min/libgraphite2.dll",
+      "bytes": 167155
+    },
+    {
+      "file": "runtime/qemu-min/libgstapp-1.0-0.dll",
+      "bytes": 100140
+    },
+    {
+      "file": "runtime/qemu-min/libgstbase-1.0-0.dll",
+      "bytes": 546663
+    },
+    {
+      "file": "runtime/qemu-min/libgstreamer-1.0-0.dll",
+      "bytes": 1481894
+    },
+    {
+      "file": "runtime/qemu-min/libgtk-3-0.dll",
+      "bytes": 7165030
+    },
+    {
+      "file": "runtime/qemu-min/libharfbuzz-0.dll",
+      "bytes": 1530181
+    },
+    {
+      "file": "runtime/qemu-min/libhogweed-7.dll",
+      "bytes": 275389
+    },
+    {
+      "file": "runtime/qemu-min/libhwy.dll",
+      "bytes": 88615
+    },
+    {
+      "file": "runtime/qemu-min/libiconv-2.dll",
+      "bytes": 1143148
+    },
+    {
+      "file": "runtime/qemu-min/libidn2-0.dll",
+      "bytes": 247081
+    },
+    {
+      "file": "runtime/qemu-min/libintl-8.dll",
+      "bytes": 298731
+    },
+    {
+      "file": "runtime/qemu-min/libjack64.dll",
+      "bytes": 312511
+    },
+    {
+      "file": "runtime/qemu-min/libjbig-0.dll",
+      "bytes": 62083
+    },
+    {
+      "file": "runtime/qemu-min/libjpeg-8.dll",
+      "bytes": 967968
+    },
+    {
+      "file": "runtime/qemu-min/libjxl.dll",
+      "bytes": 6218625
+    },
+    {
+      "file": "runtime/qemu-min/libjxl_cms.dll",
+      "bytes": 147921
+    },
+    {
+      "file": "runtime/qemu-min/liblcms2-2.dll",
+      "bytes": 456345
+    },
+    {
+      "file": "runtime/qemu-min/libLerc.dll",
+      "bytes": 804265
+    },
+    {
+      "file": "runtime/qemu-min/liblz4.dll",
+      "bytes": 158649
+    },
+    {
+      "file": "runtime/qemu-min/liblzma-5.dll",
+      "bytes": 191836
+    },
+    {
+      "file": "runtime/qemu-min/liblzo2-2.dll",
+      "bytes": 155548
+    },
+    {
+      "file": "runtime/qemu-min/libncursesw6.dll",
+      "bytes": 548227
+    },
+    {
+      "file": "runtime/qemu-min/libnettle-9.dll",
+      "bytes": 360977
+    },
+    {
+      "file": "runtime/qemu-min/libnfs-16.dll",
+      "bytes": 361411
+    },
+    {
+      "file": "runtime/qemu-min/libnspr4.dll",
+      "bytes": 335552
+    },
+    {
+      "file": "runtime/qemu-min/libopus-0.dll",
+      "bytes": 500112
+    },
+    {
+      "file": "runtime/qemu-min/liborc-0.4-0.dll",
+      "bytes": 479279
+    },
+    {
+      "file": "runtime/qemu-min/libp11-kit-0.dll",
+      "bytes": 1594910
+    },
+    {
+      "file": "runtime/qemu-min/libpango-1.0-0.dll",
+      "bytes": 434535
+    },
+    {
+      "file": "runtime/qemu-min/libpangocairo-1.0-0.dll",
+      "bytes": 83118
+    },
+    {
+      "file": "runtime/qemu-min/libpangoft2-1.0-0.dll",
+      "bytes": 111841
+    },
+    {
+      "file": "runtime/qemu-min/libpangowin32-1.0-0.dll",
+      "bytes": 111376
+    },
+    {
+      "file": "runtime/qemu-min/libpcre2-8-0.dll",
+      "bytes": 717955
+    },
+    {
+      "file": "runtime/qemu-min/libpixman-1-0.dll",
+      "bytes": 740378
+    },
+    {
+      "file": "runtime/qemu-min/libplc4.dll",
+      "bytes": 22514
+    },
+    {
+      "file": "runtime/qemu-min/libplds4.dll",
+      "bytes": 19281
+    },
+    {
+      "file": "runtime/qemu-min/libpng16-16.dll",
+      "bytes": 264269
+    },
+    {
+      "file": "runtime/qemu-min/libpsl-5.dll",
+      "bytes": 105304
+    },
+    {
+      "file": "runtime/qemu-min/librav1e.dll",
+      "bytes": 3527680
+    },
+    {
+      "file": "runtime/qemu-min/libsasl2-3.dll",
+      "bytes": 167600
+    },
+    {
+      "file": "runtime/qemu-min/libsharpyuv-0.dll",
+      "bytes": 53757
+    },
+    {
+      "file": "runtime/qemu-min/libslirp-0.dll",
+      "bytes": 217294
+    },
+    {
+      "file": "runtime/qemu-min/libsnappy.dll",
+      "bytes": 55237
+    },
+    {
+      "file": "runtime/qemu-min/libspice-server-1.dll",
+      "bytes": 1198840
+    },
+    {
+      "file": "runtime/qemu-min/libssh.dll",
+      "bytes": 626451
+    },
+    {
+      "file": "runtime/qemu-min/libssh2-1.dll",
+      "bytes": 271318
+    },
+    {
+      "file": "runtime/qemu-min/libssl-3-x64.dll",
+      "bytes": 994446
+    },
+    {
+      "file": "runtime/qemu-min/libssp-0.dll",
+      "bytes": 43432
+    },
+    {
+      "file": "runtime/qemu-min/libstdc++-6.dll",
+      "bytes": 2661299
+    },
+    {
+      "file": "runtime/qemu-min/libSvtAv1Enc-4.dll",
+      "bytes": 7573028
+    },
+    {
+      "file": "runtime/qemu-min/libsystre-0.dll",
+      "bytes": 14593
+    },
+    {
+      "file": "runtime/qemu-min/libtasn1-6.dll",
+      "bytes": 113467
+    },
+    {
+      "file": "runtime/qemu-min/libthai-0.dll",
+      "bytes": 72294
+    },
+    {
+      "file": "runtime/qemu-min/libtiff-6.dll",
+      "bytes": 625178
+    },
+    {
+      "file": "runtime/qemu-min/libtre-5.dll",
+      "bytes": 100574
+    },
+    {
+      "file": "runtime/qemu-min/libu2f-emu-0.dll",
+      "bytes": 103045
+    },
+    {
+      "file": "runtime/qemu-min/libunistring-5.dll",
+      "bytes": 2251328
+    },
+    {
+      "file": "runtime/qemu-min/libusb-1.0.dll",
+      "bytes": 246863
+    },
+    {
+      "file": "runtime/qemu-min/libusbredirparser-1.dll",
+      "bytes": 66480
+    },
+    {
+      "file": "runtime/qemu-min/libvirglrenderer-1.dll",
+      "bytes": 881380
+    },
+    {
+      "file": "runtime/qemu-min/libwebp-7.dll",
+      "bytes": 749724
+    },
+    {
+      "file": "runtime/qemu-min/libwebpdemux-2.dll",
+      "bytes": 25726
+    },
+    {
+      "file": "runtime/qemu-min/libwinpthread-1.dll",
+      "bytes": 64419
+    },
+    {
+      "file": "runtime/qemu-min/libyuv.dll",
+      "bytes": 1009713
+    },
+    {
+      "file": "runtime/qemu-min/libzstd.dll",
+      "bytes": 1218273
+    },
+    {
+      "file": "runtime/qemu-min/nss3.dll",
+      "bytes": 1408181
+    },
+    {
+      "file": "runtime/qemu-min/nssutil3.dll",
+      "bytes": 172668
+    },
+    {
+      "file": "runtime/qemu-min/qemu-img.exe",
+      "bytes": 1934744
+    },
+    {
+      "file": "runtime/qemu-min/qemu-system-x86_64.exe",
+      "bytes": 25457048
+    },
+    {
+      "file": "runtime/qemu-min/SDL2.dll",
+      "bytes": 2412441
+    },
+    {
+      "file": "runtime/qemu-min/SDL2_image.dll",
+      "bytes": 136769
+    },
+    {
+      "file": "runtime/qemu-min/share/bios-256k.bin",
+      "bytes": 262144
+    },
+    {
+      "file": "runtime/qemu-min/share/edk2-i386-vars.fd",
+      "bytes": 540672
+    },
+    {
+      "file": "runtime/qemu-min/share/edk2-licenses.txt",
+      "bytes": 42903
+    },
+    {
+      "file": "runtime/qemu-min/share/edk2-x86_64-code.fd",
+      "bytes": 3653632
+    },
+    {
+      "file": "runtime/qemu-min/share/kvmvapic.bin",
+      "bytes": 9216
+    },
+    {
+      "file": "runtime/qemu-min/share/linuxboot_dma.bin",
+      "bytes": 1536
+    },
+    {
+      "file": "runtime/qemu-min/share/vgabios-stdvga.bin",
+      "bytes": 39424
+    },
+    {
+      "file": "runtime/qemu-min/zlib1.dll",
+      "bytes": 128488
+    },
+    {
+      "file": "runtime/archive/7z.dll",
+      "bytes": 1906688
+    },
+    {
+      "file": "runtime/archive/7z.exe",
+      "bytes": 577536
+    },
+    {
+      "file": "runtime/archive/License.txt",
+      "bytes": 6031
+    },
+    {
+      "file": "runtime/console/inventory.json",
+      "bytes": 1345
+    },
+    {
+      "file": "runtime/console/kmscon",
+      "bytes": 302016
+    },
+    {
+      "file": "runtime/console/libtsm.so.4",
+      "bytes": 68544
+    },
+    {
+      "file": "runtime/console/licenses/kmscon-copyright",
+      "bytes": 6826
+    },
+    {
+      "file": "runtime/console/licenses/libtsm-copyright",
+      "bytes": 9700
+    },
+    {
+      "file": "runtime/console/modules/mod-bbulk.so",
+      "bytes": 18784
+    },
+    {
+      "file": "runtime/console/sources/kmscon_9.0.0-4.debian.tar.xz",
+      "bytes": 7352
+    },
+    {
+      "file": "runtime/console/sources/kmscon_9.0.0.orig.tar.xz",
+      "bytes": 736668
+    },
+    {
+      "file": "runtime/console/sources/libtsm_4.0.2-0.4.debian.tar.xz",
+      "bytes": 5320
+    },
+    {
+      "file": "runtime/console/sources/libtsm_4.0.2.orig.tar.gz",
+      "bytes": 148135
+    }
+  ],
+  "alpinePackages": [
+    {
+      "name": "btrfs-progs",
+      "version": "6.17.1-r0",
+      "license": "GPL-2.0-or-later",
+      "source": "https://btrfs.wiki.kernel.org",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/btrfs-progs-6.17.1-r0.apk",
+      "bytes": 842975
+    },
+    {
+      "name": "btrfs-progs-extra",
+      "version": "6.17.1-r0",
+      "license": "GPL-2.0-or-later",
+      "source": "https://btrfs.wiki.kernel.org",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/btrfs-progs-extra-6.17.1-r0.apk",
+      "bytes": 1819354
+    },
+    {
+      "name": "e2fsprogs",
+      "version": "1.47.3-r0",
+      "license": "GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT",
+      "source": "https://e2fsprogs.sourceforge.net/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/e2fsprogs-1.47.3-r0.apk",
+      "bytes": 180511
+    },
+    {
+      "name": "dosfstools",
+      "version": "4.2-r2",
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/dosfstools/dosfstools",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/dosfstools-4.2-r2.apk",
+      "bytes": 71114
+    },
+    {
+      "name": "parted",
+      "version": "3.6-r2",
+      "license": "GPL-3.0-or-later",
+      "source": "https://www.gnu.org/software/parted/parted.html",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/parted-3.6-r2.apk",
+      "bytes": 223319
+    },
+    {
+      "name": "sfdisk",
+      "version": "2.41.6-r1",
+      "license": "GPL-1.0-or-later",
+      "source": "https://git.kernel.org/cgit/utils/util-linux/util-linux.git",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/sfdisk-2.41.6-r1.apk",
+      "bytes": 34515
+    },
+    {
+      "name": "python3",
+      "version": "3.12.15-r0",
+      "license": "PSF-2.0",
+      "source": "https://www.python.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/python3-3.12.15-r0.apk",
+      "bytes": 8109912
+    },
+    {
+      "name": "tar",
+      "version": "1.35-r4",
+      "license": "GPL-3.0-or-later",
+      "source": "https://www.gnu.org/software/tar/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/tar-1.35-r4.apk",
+      "bytes": 209613
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7-r2",
+      "license": "BSD-3-Clause OR GPL-2.0-or-later",
+      "source": "https://facebook.github.io/zstd/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zstd-1.5.7-r2.apk",
+      "bytes": 129692
+    },
+    {
+      "name": "openssl",
+      "version": "3.5.9-r0",
+      "license": "Apache-2.0",
+      "source": "https://www.openssl.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/openssl-3.5.9-r0.apk",
+      "bytes": 340121
+    },
+    {
+      "name": "ntfs-3g-progs",
+      "version": "2026.2.25-r0",
+      "license": "GPL-2.0-only",
+      "source": "https://www.tuxera.com/company/open-source/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ntfs-3g-progs-2026.2.25-r0.apk",
+      "bytes": 225109
+    },
+    {
+      "name": "ntfs-3g",
+      "version": "2026.2.25-r0",
+      "license": "GPL-2.0-only",
+      "source": "https://www.tuxera.com/company/open-source/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ntfs-3g-2026.2.25-r0.apk",
+      "bytes": 97022
+    },
+    {
+      "name": "libblkid",
+      "version": "2.41.6-r1",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://git.kernel.org/cgit/utils/util-linux/util-linux.git",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libblkid-2.41.6-r1.apk",
+      "bytes": 95032
+    },
+    {
+      "name": "musl",
+      "version": "1.2.5-r23",
+      "license": "MIT",
+      "source": "https://musl.libc.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/musl-1.2.5-r23.apk",
+      "bytes": 414071
+    },
+    {
+      "name": "lzo",
+      "version": "2.10-r5",
+      "license": "GPL-2.0-or-later",
+      "source": "https://www.oberhumer.com/opensource/lzo",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/lzo-2.10-r5.apk",
+      "bytes": 85092
+    },
+    {
+      "name": "eudev-libs",
+      "version": "3.2.14-r6",
+      "license": "GPL-2.0-or-later",
+      "source": "https://github.com/eudev-project/eudev",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/eudev-libs-3.2.14-r6.apk",
+      "bytes": 26138
+    },
+    {
+      "name": "libuuid",
+      "version": "2.41.6-r1",
+      "license": "BSD-3-Clause",
+      "source": "https://git.kernel.org/cgit/utils/util-linux/util-linux.git",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libuuid-2.41.6-r1.apk",
+      "bytes": 14259
+    },
+    {
+      "name": "zlib",
+      "version": "1.3.2-r1",
+      "license": "Zlib",
+      "source": "https://zlib.net/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+      "bytes": 56205
+    },
+    {
+      "name": "zstd-libs",
+      "version": "1.5.7-r2",
+      "license": "BSD-3-Clause OR GPL-2.0-or-later",
+      "source": "https://facebook.github.io/zstd/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zstd-libs-1.5.7-r2.apk",
+      "bytes": 373813
+    },
+    {
+      "name": "libcom_err",
+      "version": "1.47.3-r0",
+      "license": "GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT",
+      "source": "https://e2fsprogs.sourceforge.net/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcom_err-1.47.3-r0.apk",
+      "bytes": 6098
+    },
+    {
+      "name": "e2fsprogs-libs",
+      "version": "1.47.3-r0",
+      "license": "GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT",
+      "source": "https://e2fsprogs.sourceforge.net/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/e2fsprogs-libs-1.47.3-r0.apk",
+      "bytes": 209132
+    },
+    {
+      "name": "device-mapper-libs",
+      "version": "2.03.35-r0",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause",
+      "source": "https://sourceware.org/lvm2/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/device-mapper-libs-2.03.35-r0.apk",
+      "bytes": 138241
+    },
+    {
+      "name": "libncursesw",
+      "version": "6.5_p20251123-r0",
+      "license": "X11",
+      "source": "https://invisible-island.net/ncurses/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libncursesw-6.5_p20251123-r0.apk",
+      "bytes": 158748
+    },
+    {
+      "name": "readline",
+      "version": "8.3.1-r0",
+      "license": "GPL-3.0-or-later",
+      "source": "https://tiswww.cwru.edu/php/chet/readline/rltop.html",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/readline-8.3.1-r0.apk",
+      "bytes": 127218
+    },
+    {
+      "name": "libfdisk",
+      "version": "2.41.6-r1",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://git.kernel.org/cgit/utils/util-linux/util-linux.git",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libfdisk-2.41.6-r1.apk",
+      "bytes": 125191
+    },
+    {
+      "name": "libsmartcols",
+      "version": "2.41.6-r1",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://git.kernel.org/cgit/utils/util-linux/util-linux.git",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libsmartcols-2.41.6-r1.apk",
+      "bytes": 55151
+    },
+    {
+      "name": "libssl3",
+      "version": "3.5.9-r0",
+      "license": "Apache-2.0",
+      "source": "https://www.openssl.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libssl3-3.5.9-r0.apk",
+      "bytes": 381864
+    },
+    {
+      "name": "libexpat",
+      "version": "2.8.5-r0",
+      "license": "MIT",
+      "source": "https://libexpat.github.io/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libexpat-2.8.5-r0.apk",
+      "bytes": 61353
+    },
+    {
+      "name": "libbz2",
+      "version": "1.0.8-r6",
+      "license": "bzip2-1.0.6",
+      "source": "https://sourceware.org/bzip2/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libbz2-1.0.8-r6.apk",
+      "bytes": 35471
+    },
+    {
+      "name": "libcrypto3",
+      "version": "3.5.9-r0",
+      "license": "Apache-2.0",
+      "source": "https://www.openssl.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcrypto3-3.5.9-r0.apk",
+      "bytes": 1980193
+    },
+    {
+      "name": "libffi",
+      "version": "3.5.2-r0",
+      "license": "MIT",
+      "source": "https://sourceware.org/libffi/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libffi-3.5.2-r0.apk",
+      "bytes": 18342
+    },
+    {
+      "name": "gdbm",
+      "version": "1.26-r0",
+      "license": "GPL-3.0-or-later",
+      "source": "https://www.gnu.org/software/gdbm/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/gdbm-1.26-r0.apk",
+      "bytes": 31906
+    },
+    {
+      "name": "xz-libs",
+      "version": "5.8.4-r0",
+      "license": "GPL-2.0-or-later AND 0BSD AND Public-Domain AND LGPL-2.1-or-later",
+      "source": "https://tukaani.org/xz/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/xz-libs-5.8.4-r0.apk",
+      "bytes": 118501
+    },
+    {
+      "name": "mpdecimal",
+      "version": "4.0.1-r0",
+      "license": "BSD-2-Clause",
+      "source": "https://www.bytereef.org/mpdecimal/index.html",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/mpdecimal-4.0.1-r0.apk",
+      "bytes": 78811
+    },
+    {
+      "name": "libpanelw",
+      "version": "6.5_p20251123-r0",
+      "license": "X11",
+      "source": "https://invisible-island.net/ncurses/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libpanelw-6.5_p20251123-r0.apk",
+      "bytes": 5556
+    },
+    {
+      "name": "sqlite-libs",
+      "version": "3.53.4-r0",
+      "license": "blessing",
+      "source": "https://www.sqlite.org/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/sqlite-libs-3.53.4-r0.apk",
+      "bytes": 877766
+    },
+    {
+      "name": "acl-libs",
+      "version": "2.3.2-r1",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later",
+      "source": "https://savannah.nongnu.org/projects/acl",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/acl-libs-2.3.2-r1.apk",
+      "bytes": 14337
+    },
+    {
+      "name": "libgcc",
+      "version": "15.2.0-r2",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "source": "https://gcc.gnu.org",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libgcc-15.2.0-r2.apk",
+      "bytes": 80358
+    },
+    {
+      "name": "libstdc++",
+      "version": "15.2.0-r2",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "source": "https://gcc.gnu.org",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libstdc++-15.2.0-r2.apk",
+      "bytes": 961296
+    },
+    {
+      "name": "ntfs-3g-libs",
+      "version": "2026.2.25-r0",
+      "license": "GPL-2.0-only",
+      "source": "https://www.tuxera.com/company/open-source/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ntfs-3g-libs-2026.2.25-r0.apk",
+      "bytes": 138523
+    },
+    {
+      "name": "libeconf",
+      "version": "0.8.3-r0",
+      "license": "MIT",
+      "source": "https://github.com/openSUSE/libeconf",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libeconf-0.8.3-r0.apk",
+      "bytes": 26053
+    },
+    {
+      "name": "ncurses-terminfo-base",
+      "version": "6.5_p20251123-r0",
+      "license": "X11",
+      "source": "https://invisible-island.net/ncurses/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ncurses-terminfo-base-6.5_p20251123-r0.apk",
+      "bytes": 21855
+    }
+  ]
+}

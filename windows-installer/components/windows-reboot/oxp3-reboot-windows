@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 -I -B /usr/local/lib/oxp3-windows-reboot/boot.py "$@"

@@ -1,0 +1,123 @@
+{
+  "recorded_utc": "2026-10-13T17:07:06.562546+00:00",
+  "passed": true,
+  "stages": [
+    {
+      "name": "lifecycle",
+      "passed": true
+    },
+    {
+      "name": "manual-steamos-boot",
+      "passed": true
+    },
+    {
+      "name": "windows-probe",
+      "passed": true
+    },
+    {
+      "name": "windows-efi-probe-boot",
+      "passed": true
+    },
+    {
+      "name": "uninstall",
+      "passed": true
+    },
+    {
+      "name": "restored-steamos-boot",
+      "passed": true
+    }
+  ],
+  "lifecycle": {
+    "passed": true,
+    "checks": [
+      "actual FAT installation/readback",
+      "repeat preserves original loader",
+      "Windows default and indefinite wait",
+      "user modification refuses overwrite",
+      "user edit preserved",
+      "uninstall and repeat restore original bytes",
+      "install/remove recovery boundary 1",
+      "install/remove recovery boundary 2",
+      "install/remove recovery boundary 3",
+      "install/remove recovery boundary 4",
+      "install/remove recovery boundary 5",
+      "install/remove recovery boundary 6",
+      "install/remove recovery boundary 7",
+      "install/remove recovery boundary 8",
+      "install/remove recovery boundary 9",
+      "install/remove recovery boundary 10",
+      "install/remove recovery boundary 11",
+      "install/remove recovery boundary 12",
+      "install/remove recovery boundary 13",
+      "install/remove recovery boundary 14",
+      "install/remove recovery boundary 15",
+      "install/remove recovery boundary 16",
+      "install/remove recovery boundary 17",
+      "install/remove recovery boundary 18",
+      "install/remove recovery boundary 19",
+      "install/remove recovery boundary 20",
+      "install/remove recovery boundary 21",
+      "rollback partial install",
+      "resume reconfiguration",
+      "reconfiguration retains first backup",
+      "other ESP files preserved byte for byte"
+    ],
+    "count": 31,
+    "scope": "production installer on disposable FAT ESP; injected process interruptions, not power-loss durability"
+  },
+  "boots": {
+    "manual-steamos-boot": {
+      "passed": true,
+      "refindManual": true,
+      "windowsProbe": false,
+      "scope": "UEFI SteamOS fixture boot to serial login; no Windows OS, Steam frontend or hardware acceptance",
+      "local_record": "work\\uefi-55a708c54efe4c738596873d67e2a3ae\\result.json"
+    },
+    "windows-efi-probe-boot": {
+      "passed": true,
+      "refindManual": false,
+      "windowsProbe": true,
+      "scope": "rEFInd GPT-bound Windows EFI probe, not Windows OS boot",
+      "local_record": "work\\uefi-90ef8da2881140cabdc468ce9508cb55\\result.json"
+    },
+    "restored-steamos-boot": {
+      "passed": true,
+      "refindManual": false,
+      "windowsProbe": false,
+      "scope": "UEFI SteamOS fixture boot to serial login; no Windows OS, Steam frontend or hardware acceptance",
+      "local_record": "work\\uefi-fcad809ca66e46db9edf74710db4e1ea\\result.json"
+    }
+  },
+  "ui": {
+    "options": {
+      "passed": true,
+      "events": 39,
+      "local_record": "logs/options-checks.json"
+    },
+    "touch_layout": {
+      "passed": true,
+      "events": 1020,
+      "local_record": "logs/touch-ui-20261014-002715/checks.json"
+    },
+    "wizard": {
+      "passed": true,
+      "events": 70,
+      "local_record": "logs/wizard-ui-20261014-002720/checks.json"
+    }
+  },
+  "theme": {
+    "name": "Graphite Quiet",
+    "review": "ship for reviewed 1280x800 visual scope",
+    "screenshots": [
+      "refind-dark-menu.png",
+      "refind-dark-windows.png",
+      "refind-dark-tools.png"
+    ]
+  },
+  "limitations": [
+    "Windows EFI destination probe is not a real Windows OS boot",
+    "Physical installation, handheld touch, display rotation and Secure Boot chain are untested",
+    "Injected process interruption is not physical power loss",
+    "SteamOS boot proof reaches serial login, not Steam frontend"
+  ]
+}

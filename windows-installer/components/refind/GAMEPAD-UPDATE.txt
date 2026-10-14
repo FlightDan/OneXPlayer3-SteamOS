@@ -1,0 +1,30 @@
+OXP3 启动菜单手柄更新组件
+
+按键：十字键 / 左摇杆选择，A / Start 确认，B 返回。
+驱动：UsbXbox360Dxe v1.8.0，许可与来源见随附文件。
+适用于本安装助手已安装且有 EFI/OXP3-rEFInd/state.json 的 rEFInd。
+该包不安装 SteamOS、不分区、不修改固件启动顺序。
+
+在 SteamOS 终端将本目录解压后进入该目录，先确认 /esp 是原 SteamOS EFI 分区挂载点：
+
+  findmnt /esp
+  sudo python3 ./manage.py verify --esp /esp
+
+验证通过后更新（下面示例默认 SteamOS、等待 5 秒）：
+
+  sudo python3 ./manage.py configure --esp /esp --payload . --default SteamOS --timeout 5
+  sudo python3 ./manage.py verify --esp /esp
+
+若菜单默认希望 Windows，改为 --default Windows；需已有已识别的 Windows 项。
+一直等待选择使用 --timeout 0。驱动是否有效尚未完成 OXP3 实机验证，首次试用可保留倒计时。
+不要单独复制驱动或覆盖 refind.conf，否则会破坏原事务记录的一致性。
+遇到 Managed file changed / not owned 时停止，保留现场，不强行覆盖。
+更新中断后可从本目录运行 sudo python3 ./manage.py resume --esp /esp。
+
+卸载整个 rEFInd 并恢复安装前的 SteamOS fallback：
+  sudo python3 ./manage.py uninstall --esp /esp
+
+驱动可能生成 EFI/Xbox360/driver_*.log，卸载不会删除日志。
+若其他 EFI 分区已有 EFI/Xbox360/config.ini，驱动可能读取那份配置，请检查日志。
+更新后试验选择、确认、松手停止移动，以及启动 SteamOS / Windows 后手柄仍正常。
+本包尚未写入任何真实设备的 EFI 分区。
