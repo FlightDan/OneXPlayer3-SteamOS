@@ -64,8 +64,8 @@
     },
     {
       "id": "keyboard",
-      "zh": "KDE 屏幕键盘与 Steam 键盘入口",
-      "en": "KDE touch keyboard and Steam keyboard launcher",
+      "zh": "KDE 屏幕键盘配置",
+      "en": "KDE touch keyboard configuration",
       "default": true,
       "dependencies": []
     },

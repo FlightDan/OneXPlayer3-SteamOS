@@ -26,9 +26,13 @@ public static class OptionsChecks
         var catalog = InstallerOptions.Catalog;
         Require(window.FindName("PhysicalMode") == null,"physical-mode-checkbox-removed");
         Require(((CheckBox)window.FindName("Upgrade310")).IsChecked==true,"official-3.10-source-selected-by-default");
-        Require(((TextBlock)window.FindName("ModeBanner")).Text.Contains("Beta"),"beta-risk-is-explicit-in-banner");
+        var modeBanner = ((TextBlock)window.FindName("ModeBanner")).Text;
+        Require((modeBanner.Contains("备份") || modeBanner.Contains("Back up")) && !modeBanner.Contains("Beta"),"backup-and-formatting-are-explicit-in-release-banner");
         Require(panel.Selection.Repairs.Order().SequenceEqual(InstallerOptions.Defaults.Repairs.Order()), "repair-defaults-match-language");
         Require(!panel.RepairsExpander.IsExpanded, "device-repairs-start-collapsed");
+        Require(panel.SystemUpdatePolicyNote.Visibility == Visibility.Visible
+            && panel.SystemUpdatePolicyNote.Text.Contains("SteamOS 系统更新暂时暂停")
+            && panel.Describe().Contains("Steam 客户端和游戏更新照常"), "system-update-policy-is-disclosed-in-options-and-plan");
         Require(catalog.Repairs.Where(x => x.Available && x.Id is not ("refind" or "flathub-ustc")).All(x => panel.Selection.Repairs.Contains(x.Id)), "all-available-device-repairs-selected");
         Require(panel.Selection.Plugins.Order().SequenceEqual(catalog.Plugins.Where(x => x.Default).Select(x => x.Id).Order()), "plugin-defaults-match-catalog");
         Require(catalog.Repairs.All(x => x.Id != "waydroid") && catalog.Plugins.Any(x => x.Id == "waydroid"), "third-party-waydroid-is-in-third-party-category");

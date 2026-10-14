@@ -6,9 +6,32 @@
 
 为 **ONEXPLAYER 3 掌机**提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 **Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）**。
 
-当前整合版为 **OXP3 SteamOS 0.1.0 Beta**，基于 **SteamOS 3.10**。
+当前整合版为 **OXP3 SteamOS 0.1.1（stable 渠道）**，基于 **SteamOS 3.10**。这里的 stable 指本项目整合版渠道；完整全新安装与首次开箱配置尚未验收，自动跨版本适配尚未实现。请先阅读[0.1.1 发布说明](windows-installer/docs/RELEASE_0.1.1.md)。
 
 发现问题，请发送邮件至 **[dan@devdan.cc](mailto:dan@devdan.cc)**，或提交 [GitHub Issue](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues)。
+
+<details>
+<summary>查看安装器截图</summary>
+
+**安装位置 · 磁盘与分区选择**
+
+![安装器选择磁盘与未分配空间](windows-installer/docs/screenshots/installer-location.png)
+
+**选择安装内容 · 设备适配与插件**
+
+![安装器选择设备适配与预装插件](windows-installer/docs/screenshots/installer-components.png)
+
+**启动器设置 · rEFInd 双系统菜单**
+
+![安装器设置默认启动系统与菜单等待时间](windows-installer/docs/screenshots/installer-boot-options.png)
+
+**安装进度 · 写入、读回核对与详细日志**
+
+![安装器进度与详细日志界面示例](windows-installer/docs/screenshots/installer-progress-preview.png)
+
+截图来自安装器实际界面；磁盘布局、安装进度及日志为预览示例，未执行安装。
+
+</details>
 
 <details>
 <summary>如何正确报告 Bug</summary>
@@ -136,12 +159,12 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 ## 4. 安装方法
 
-完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前为 **0.1.0 Beta 预发布**，完整实机验收仍在进行；使用前请阅读对应版本说明。
+完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前整合版为 **0.1.1 stable**；该渠道标签不代表所有硬件功能均已验收。完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现；使用前请阅读[0.1.1 发布说明](windows-installer/docs/RELEASE_0.1.1.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
 3. 为目标 GPT 磁盘准备至少 **64 GiB 连续未分配空间**，并为 Windows 中的系统准备工作空间预留至少 **45 GiB** 可用空间，建议 **64 GiB**。
-4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件。支持内置硬盘双系统安装；外部 SD / SSD 安装为 Beta。
+4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
 5. 核对目标磁盘、分区方案与安装选项，可按需启用 rEFInd 启动菜单，确认后开始安装。
 6. 安装完成后，按应用提示启动 SteamOS，并检查游戏模式、桌面、按键和插件。
 

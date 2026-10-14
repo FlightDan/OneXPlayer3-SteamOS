@@ -45,3 +45,13 @@ Windows EFI 测试入口只是可辨识的 EFI 程序，不是真实 Windows 系
 已安装系统的独立更新组件：`dist/refind-gamepad-update-20261014.zip`，包含完整 rEFInd 组件载荷及 `GAMEPAD-UPDATE.txt`。按说明从新包运行 `configure --payload .` 可更新有本工具事务记录的旧安装，无需重装系统。
 
 上游说明：[rEFInd](https://www.rodsbooks.com/refind/)、[SteamOS A/B chainloader](https://github.com/evlaV/steamos-efi)。
+
+## 2026-10-14 手柄驱动扫描修复
+
+用户反馈最新本地包 `20261014-210439` 的启动菜单中十字键与 A/B 不可用。实机检查确认驱动、按键配置和管理事务齐全；配置却使用了不被随包 rEFInd 0.14.2 识别的 `driver_dirs`。驱动位于独立目录，也不在 `EFI/BOOT/drivers_x64` 默认扫描位置，因此该配置不能让 rEFInd 加载它。
+
+生产配置、向导导出、示例和 QEMU 测试已统一使用 `scan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64`。Python 的 7 项配置与事务测试通过，新增回归直接读取随包 EFI 二进制的关键字表，避免再次只检查文件存在或重复错误模板。
+
+安装器编译无警告、无错误；81 项 WPF 启动器检查和 2 项 QEMU 倒计时/键盘确认测试通过。独立复核未发现遗漏的部署或打包路径。证据见 `logs/refind-scanfix-20261014.json`，这些检查不代替实体手柄验收。
+
+实机已备份旧事务、管理脚本及菜单配置，再用安装器事务更新管理脚本和两份 `refind.conf`。默认 SteamOS、2 秒等待、原始启动文件备份和固件启动项均保留。用户安排晚点统一实测，十字键/A/B 尚未验收通过。当前固件优先项是直接启动 SteamOS 的入口；测试 rEFInd 时应选择 `SteamOS (OXP3)`。

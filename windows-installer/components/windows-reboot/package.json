@@ -1,6 +1,6 @@
 {
   "name": "oxp3-restart-windows",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": { "build": "rollup -c", "typecheck": "tsc --noEmit" },

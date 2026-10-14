@@ -138,7 +138,8 @@ public static partial class InstallationController
             {
                 Phase("components", InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…"), "02.01");
                 var expected = 2 * (request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
-                    + (request.Options.SetDeckPassword || request.Options.EnableSsh ? 1 : 0));
+                    + (request.Options.SetDeckPassword || request.Options.EnableSsh ? 1 : 0)
+                    + (InstallerOptions.RequiresSystemUpdatePolicy(request.Options) ? 1 : 0));
                 var componentMessage = InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…");
                 void ComponentLog(string text)
                 {
@@ -241,7 +242,7 @@ public static partial class InstallationController
             token.ThrowIfCancellationRequested();
             if(request.Physical)
             {
-                var desktop = SteamOSDesktop.Install(request.Kind, deployment, log);
+                var desktop = SteamOSDesktop.Install(request.Kind, deployment, log, state.Options?.InstallerLanguage ?? InstallerI18n.Language);
                 state = state with { DesktopRebootScript = desktop.Path, DesktopRebootWarning = desktop.Warning };
                 state=state with {Status="awaiting-device-boot",Stage="awaiting-device-boot",UpdatedUtc=DateTime.UtcNow}; Save(journal,state);
                 report(new("complete","已完成磁盘写入及读回，请通过掌机启动菜单选择 SteamOS，完成首次实机启动验证。",progress.Complete(), "04.99"));

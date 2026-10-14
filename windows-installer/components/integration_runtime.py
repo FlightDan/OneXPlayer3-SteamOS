@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from integration import VERSION,KERNEL,release,restore,trusted_tree
 from file_transaction import atomic_write,snapshot
+from system_update_policy import verify as verify_update_policy, SERVICES as OS_UPDATE_SERVICES
 
 def run(*args): return subprocess.run(args,check=True,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=45).stdout
 
@@ -61,6 +62,11 @@ def execute():
         for name,value in installed.items():
             if value['status']!='files_installed': continue
             try:
+                if name=='system-update-policy':
+                    verify_update_policy('/')
+                    for unit in OS_UPDATE_SERVICES:
+                        if run('systemctl','show',unit,'-p','LoadState','--value').strip()!='masked':
+                            raise RuntimeError('SteamOS update service is not paused: '+unit)
                 if name in result['options']['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc'): device_guard()
                 if name=='input': run('depmod','-a',KERNEL) # No live HID unbind; next boot uses the installed module.
                 if name=='gyro':

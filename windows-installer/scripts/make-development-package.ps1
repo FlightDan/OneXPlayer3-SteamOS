@@ -1,11 +1,13 @@
-param([string]$Stamp = (Get-Date -Format 'yyyyMMdd-HHmmss'), [ValidateSet('zip','tar')][string]$Format = 'tar', [switch]$PublicBeta, [string]$SourceCommit = '')
+param([string]$Stamp = (Get-Date -Format 'yyyyMMdd-HHmmss'), [ValidateSet('zip','tar')][string]$Format = 'tar', [Alias('PublicBeta')][switch]$PublicRelease, [string]$SourceCommit = '')
 $ErrorActionPreference = 'Stop'
 if ($Stamp -notmatch '^\d{8}-\d{6}$') { throw 'Invalid package version' }
-if ($PublicBeta -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public beta must identify its source commit.' }
+if ($PublicRelease -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public release must identify its source commit.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $releasePath = Join-Path $projectRoot 'components/release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-if ($release.schema -ne 1 -or $release.version -notmatch '^\d+\.\d+\.\d+-beta$' -or $release.channel -ne 'beta') { throw 'Invalid integration release metadata' }
+$validStable = $release.version -match '^\d+\.\d+\.\d+$' -and $release.channel -eq 'stable'
+$validBeta = $release.version -match '^\d+\.\d+\.\d+-beta$' -and $release.channel -eq 'beta'
+if ($release.schema -ne 1 -or !($validStable -or $validBeta)) { throw 'Invalid integration release metadata' }
 $integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
 $wifiFiles = @($integrationManifest.wifi.files | Where-Object { $_.target -eq 'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode' })
 if ($wifiFiles.Count -ne 1) { throw 'This package must retain the accepted Wi-Fi c106 firmware.' }
@@ -24,8 +26,8 @@ function Copy-PackageTree([string]$source, [string]$relative) {
     $target = Join-Path $destination $relative
     New-Item -ItemType Directory -Force $target | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and $_.Extension -notin @('.pyc','.pdb') }) {
-        if ($PublicBeta -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
-        if ($PublicBeta -and $relative -eq 'scripts' -and $item.Name -eq 'collect-desktop-runtime.py') { continue }
+        if ($PublicRelease -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
+        if ($relative -eq 'scripts' -and $item.Name -eq 'collect-desktop-runtime.py') { continue }
         $relativeFile = [IO.Path]::GetRelativePath($source, $item.FullName)
         $fileTarget = Join-Path $target $relativeFile
         New-Item -ItemType Directory -Force (Split-Path $fileTarget -Parent) | Out-Null
@@ -77,7 +79,7 @@ foreach ($name in 'hdr-test.py','hdr-test.sh','shared-state-test.py','shared-sta
 }
 Copy-PackageTree (Join-Path $projectRoot 'components') 'components'
 Copy-Item -LiteralPath $releasePath -Destination (Join-Path $destination 'release.json')
-@{ schema = 1; release = $release; build_id = $Stamp; source_commit = $SourceCommit; package_channel = $(if ($PublicBeta) { 'public-beta' } else { 'development' }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
+@{ schema = 1; release = $release; build_id = $Stamp; source_commit = $SourceCommit; package_channel = $(if ($PublicRelease) { if ($release.channel -eq 'stable') { 'public-release' } else { 'public-beta' } } else { 'development' }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
 Copy-PackageTree (Join-Path $projectRoot 'cache/plugins') 'cache/plugins'
 foreach ($name in 'secret-input-check.sh','refind-image.sh','refind-image.py','integration.sh','integration-image.py','integration-check.sh','integration-delta-check.sh','integration-verify.sh','integration-verify.py','upgrade-source.sh','upgrade-source.py','physical-readiness.sh','physical-readiness.py','resize-prepared.sh','resize_prepared.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }
@@ -105,16 +107,20 @@ foreach ($name in 'read-disks.ps1','format-remaining.ps1','partition-delete-poli
 foreach ($name in 'SteamOSInstaller.exe','Launch.cmd','README.md','IMPLEMENTATION_STATUS.md') { Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination (Join-Path $destination $name) }
 Copy-PackageTree (Join-Path $projectRoot 'licenses') 'licenses'
 Copy-PackageTree (Join-Path $projectRoot 'docs') 'docs'
-if ($PublicBeta) {
-    # Keep all current task dependencies, including new guest tasks that the
-    # historical development package's explicit lists may not yet contain.
-    Copy-PackageTree (Join-Path $projectRoot 'guest') 'guest'
-    Copy-PackageTree (Join-Path $projectRoot 'scripts') 'scripts'
+# Development test ZIPs need the same current task dependencies as beta ZIPs.
+# Historical explicit lists alone omit newer tasks such as capacity-check.
+Copy-PackageTree (Join-Path $projectRoot 'guest') 'guest'
+Copy-PackageTree (Join-Path $projectRoot 'scripts') 'scripts'
+if ($PublicRelease) {
     $workspaceRoot = Split-Path $projectRoot -Parent
     foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.md','ROADMAP.md','GIT_WORKSPACE.md')) {
         Copy-Item -LiteralPath (Join-Path $workspaceRoot $name) -Destination (Join-Path $destination $name)
     }
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RELEASE_0.1.0_BETA.md') -Destination (Join-Path $destination 'READ_FIRST.md')
+    $releaseDoc = 'docs/RELEASE_' + $release.version.Replace('-', '_').ToUpperInvariant() + '.md'
+    Copy-Item -LiteralPath (Join-Path $projectRoot $releaseDoc) -Destination (Join-Path $destination 'READ_FIRST.md')
+    $readFirst = Join-Path $destination 'READ_FIRST.md'
+    $readFirstContent = [IO.File]::ReadAllText($readFirst).Replace('(../IMPLEMENTATION_STATUS.md)', '(IMPLEMENTATION_STATUS.md)').Replace('(INSTALLATION_GUIDE.md)', '(docs/INSTALLATION_GUIDE.md)')
+    [IO.File]::WriteAllText($readFirst, $readFirstContent, [Text.UTF8Encoding]::new($false))
     # The installed package uses the existing flat runtime layout, while the
     # GitHub source keeps windows-installer as a subdirectory.
     $publicDocs = @((Join-Path $destination 'README.md'), (Join-Path $destination 'THIRD_PARTY_NOTICES.md')) + @(Get-ChildItem (Join-Path $destination 'docs') -Filter '*.md' -File | ForEach-Object FullName)
@@ -133,7 +139,7 @@ QEMU, its Windows DLL dependencies, EDK2, Alpine packages, 7-Zip and .NET source
 No WSL2, SDK, Node.js or installed VM software is needed to run the prepared app.
 '@ | Set-Content -LiteralPath (Join-Path $destination 'DEVELOPMENT_PACKAGE.txt') -Encoding utf8
 }
-$prefix = if ($PublicBeta) { 'oxp3-steamos-installer' } else { 'oxp3-development' }
+$prefix = if ($PublicRelease) { 'oxp3-steamos-installer' } else { 'oxp3-development' }
 $archive = Join-Path $projectRoot "dist/$prefix-$($release.version)-$stamp.$Format"
 & 'C:\Program Files\7-Zip\7z.exe' a "-t$Format" $archive (Join-Path $destination '*') | Select-Object -Last 5
 if ($LASTEXITCODE -ne 0) { throw 'Package creation failed' }

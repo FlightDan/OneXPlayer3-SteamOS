@@ -6,7 +6,7 @@ import subprocess
 import sys
 sys.path.insert(0,'/mnt/payload/components')
 from integration import stage
-from offload_mounts import mount_opt
+from offload_mounts import mount_opt, mount_etc
 if Path('/sys/class/dmi/id/sys_vendor').read_text().strip()!='QEMU': raise RuntimeError('Managed VM required')
 table=json.loads(subprocess.check_output(['sfdisk','--json','/dev/vdc']))['partitiontable']
 parts={p.get('name'):p['node'] for p in table['partitions']}
@@ -41,6 +41,7 @@ for slot in ('A','B'):
         if was!='ro=true': raise RuntimeError('Prepared root is not protected')
         subprocess.run(['btrfs','property','set','-ts',str(root),'ro','false'],check=True)
         mount(parts['var-'+slot],root/'var'); mount(parts['home'],root/'home')
+        mount_etc(root,mounts)
         mount_opt(root,mounts)
         if 'gm7-resume' in options['repairs']: mount(parts['efi-'+slot],root/'efi','-t','vfat')
         result=stage(root,'/mnt/payload',options,slot,password_hash,target_disk=target_disk)

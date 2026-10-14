@@ -1,5 +1,8 @@
 OXP3 启动菜单手柄更新组件
 
+2026-10-14 修正：驱动扫描配置必须使用 scan_driver_dirs，旧版 driver_dirs 不被随包 rEFInd 识别。
+本组件已加入修复源码并写入当前测试机配置；十字键/A/B 的实际效果仍待用户统一验收。
+
 按键：十字键 / 左摇杆选择，A / Start 确认，B 返回。
 驱动：UsbXbox360Dxe v1.8.0，许可与来源见随附文件。
 适用于本安装助手已安装且有 EFI/OXP3-rEFInd/state.json 的 rEFInd。
@@ -24,7 +27,7 @@ OXP3 启动菜单手柄更新组件
 卸载整个 rEFInd 并恢复安装前的 SteamOS fallback：
   sudo python3 ./manage.py uninstall --esp /esp
 
-驱动可能生成 EFI/Xbox360/driver_*.log，卸载不会删除日志。
-若其他 EFI 分区已有 EFI/Xbox360/config.ini，驱动可能读取那份配置，请检查日志。
+普通版驱动不生成诊断日志；没有日志不能证明驱动未加载。调试版的 EFI/Xbox360/driver_*.log 不由卸载操作删除。
+若其他 EFI 分区已有 EFI/Xbox360/config.ini，驱动可能读取那份配置。
 更新后试验选择、确认、松手停止移动，以及启动 SteamOS / Windows 后手柄仍正常。
-本包尚未写入任何真实设备的 EFI 分区。
+已保存实机配置修复记录，尚未完成启动阶段实体手柄验收。

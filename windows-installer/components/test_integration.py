@@ -56,7 +56,7 @@ class IntegrationChecks(unittest.TestCase):
         stage(self.root,PAYLOAD,self.options,'B')
         launcher=self.root/'home/deck/Desktop/Return.desktop'
         self.assertIn('Exec=/usr/bin/steamos-session-select gamescope',launcher.read_text())
-        self.assertIn('Name[zh_CN]=\u8fd4\u56de\u6e38\u620f\u6a21\u5f0f',launcher.read_text(encoding='utf-8'))
+        self.assertIn('Name=\u8fd4\u56de\u6e38\u620f\u6a21\u5f0f',launcher.read_text(encoding='utf-8'))
         self.assertEqual(launcher.stat().st_uid,1000)
         self.root.chmod(0o755)
         require_access(self.root,{'home/deck/Desktop/Return.desktop':os.R_OK|os.X_OK})
@@ -277,6 +277,9 @@ class IntegrationChecks(unittest.TestCase):
         (self.root/'usr/share/applications').mkdir(parents=True)
         (self.root/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
         (self.root/'usr/bin').mkdir(parents=True,exist_ok=True)
+        units=self.root/'usr/lib/systemd/system'; units.mkdir(parents=True,exist_ok=True)
+        for unit in ('atomupd.service','rauc.service'):
+            (units/unit).write_text('[Service]\nExecStart=/usr/bin/fixture\n')
         for tool in ('python3','efibootmgr','systemctl','pkexec','kdialog'):
             (self.root/'usr/bin'/tool).write_bytes(b'fixture tool')
         p=self.root/'etc/inputplumber/capability_maps.d/onexplayer_type3.yaml'; p.parent.mkdir(parents=True)
@@ -433,6 +436,9 @@ class IntegrationChecks(unittest.TestCase):
         for name in ('passwd','os-release'): (other/'etc'/name).write_bytes((self.root/'etc'/name).read_bytes())
         (other/'usr/share/applications').mkdir(parents=True)
         (other/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
+        units=other/'usr/lib/systemd/system'; units.mkdir(parents=True)
+        for unit in ('atomupd.service','rauc.service'):
+            (units/unit).write_text('[Service]\nExecStart=/usr/bin/fixture\n')
         (other/'home').mkdir(); subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
         try:
             stage(other,PAYLOAD,self.options,'B')
@@ -440,5 +446,18 @@ class IntegrationChecks(unittest.TestCase):
             self.assertEqual(restore(other,'B','keyboard'),[])
             self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
         finally: subprocess.run(['umount',str(other/'home')],check=True)
+
+    def test_mandatory_update_policy_stage_restore_and_missing_vendor_refusal(self):
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(result['components']['system-update-policy']['status'],'files_installed')
+        from system_update_policy import verify
+        self.assertTrue(verify(self.root)['paused'])
+        self.assertEqual(restore(self.root,'A','system-update-policy'),[])
+        self.assertFalse((self.root/'etc/systemd/system/atomupd.service').exists())
+        self.assertFalse((self.root/'etc/systemd/system/rauc.service').exists())
+        (self.root/'usr/lib/systemd/system/rauc.service').unlink()
+        with self.assertRaisesRegex(RuntimeError,'missing'):
+            stage(self.root,PAYLOAD,self.options,'A')
 
 if __name__=='__main__': unittest.main()

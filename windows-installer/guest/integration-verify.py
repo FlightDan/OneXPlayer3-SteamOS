@@ -8,7 +8,9 @@ import subprocess
 import sys
 sys.path.insert(0,'/mnt/payload/components')
 from runtime_access import verify_runtime_access
-from offload_mounts import mount_opt
+from integration import shared_managed, VERSION, release
+from system_update_policy import verify as verify_update_policy
+from offload_mounts import mount_opt, mount_etc
 table=json.loads(subprocess.check_output(['sfdisk','--json','/dev/vdc']))['partitiontable']
 parts={p.get('name'):p['node'] for p in table['partitions']}
 options=json.loads(Path('/mnt/payload/selection.json').read_text())
@@ -24,6 +26,7 @@ for slot in ('A','B'):
         assert subprocess.check_output(['btrfs','property','get','-ts',str(root),'ro'],text=True).strip()=='ro=true'
         mount(parts['var-'+slot],root/'var','-t','ext4','-o','ro,noload')
         mount(parts['home'],root/'home','-t','ext4','-o','ro,noload')
+        mount_etc(root,mounts,readonly=True)
         mount_opt(root,mounts,readonly=True)
         users=[line.split(':') for line in (root/'etc/passwd').read_text().splitlines() if line.startswith('deck:')]
         assert len(users)==1 and users[0][5]=='/home/deck'
@@ -40,6 +43,10 @@ for slot in ('A','B'):
         launcher=root/'home/deck/Desktop/Return.desktop'
         assert launcher.is_file() and launcher.stat().st_uid==owner[0]
         assert os.access(launcher,os.X_OK)
+        if shared_managed(state,'desktop-session','home/deck/Desktop/Return.desktop'):
+            assert 'Exec=/usr/bin/steamos-session-select gamescope' in launcher.read_text()
+            expected_name='Return to Gaming Mode' if options['installer_language']=='en-US' else '返回游戏模式'
+            assert 'Name='+expected_name in launcher.read_text(encoding='utf-8')
         print('OXP_DECK_RUNTIME_ACCESS='+json.dumps({'slot':slot,'paths':checked,'passed':True}),flush=True)
         installed={name for name,result in results['components'].items() if result['status']=='files_installed'}
         if 'decky' in installed:
@@ -90,6 +97,9 @@ for slot in ('A','B'):
                 assert 'nvme.noacpi=1' in (root/'etc/default/grub.d/oxp3-nvme.cfg').read_text()
         expected_components=set(options['repairs']+options['plugins'])|({'kde-language'} if options['kde_language']!='system' else set())
         if options.get('set_deck_password',False) or options.get('enable_ssh',False): expected_components.add('deck-access')
+        if expected_components and all(release(root).get(k)==v for k,v in VERSION.items()):
+            expected_components.add('system-update-policy')
+            verify_update_policy(root)
         assert set(results['components'])==expected_components
         if results['components']: assert (root/'usr/local/lib/oxp3-integration/slot').read_text().strip()==slot
         if 'gamescope-env' in installed:
@@ -107,6 +117,27 @@ for slot in ('A','B'):
         for name,result in results['components'].items():
             if result['status']=='files_installed':
                 for relative in result.get('files',[]): assert (root/relative).is_file(),relative
+        if 'waydroid' in installed:
+            launcher=root/'home/deck/Desktop/oxp3-waydroid-setup.desktop'
+            menu=root/'home/deck/.local/share/applications/oxp3-waydroid-setup.desktop'
+            assert launcher.read_bytes()==menu.read_bytes(), 'Waydroid desktop/menu entries differ'
+            expected_name='Install Waydroid' if options['installer_language']=='en-US' else '安装 Waydroid'
+            assert 'Name='+expected_name in launcher.read_text(encoding='utf-8')
+            assert 'Name[' not in launcher.read_text(encoding='utf-8')
+            assert 'Exec=konsole -e sudo waydroid init -s GAPPS' in launcher.read_text()
+            assert launcher.stat().st_mode & 0o111, 'Waydroid desktop entry is not executable'
+            deck=next(line.split(':') for line in (root/'etc/passwd').read_text().splitlines() if line.startswith('deck:'))
+            assert launcher.stat().st_uid==int(deck[2]), 'Waydroid desktop entry is not deck-owned'
+        if 'windows-reboot' in installed:
+            launcher=root/'home/deck/Desktop/oxp3-reboot-windows.desktop'
+            assert launcher.is_file() and launcher.stat().st_uid==owner[0]
+            assert launcher.stat().st_mode & 0o111, 'Windows restart desktop entry is not executable'
+            expected_name='Restart into Windows' if options['installer_language']=='en-US' else '重启进入 Windows'
+            assert 'Name='+expected_name in launcher.read_text(encoding='utf-8')
+            assert 'Name[' not in launcher.read_text(encoding='utf-8')
+            assert 'Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-windows-reboot/desktop.py' in launcher.read_text()
+        if 'keyboard' in installed:
+            assert not any(path.endswith('oxp3-steam-keyboard.desktop') for path in results['components']['keyboard']['files']), 'Keyboard shortcuts should not be installed'
         if (root/'etc/os-release').read_text().find('3.8.14')>=0:
             for name in ('hdr','desktop-hdr','wifi','input','manager','fan-driver','waydroid'):
                 if name in results['components']: assert results['components'][name]['status']=='not_installed'

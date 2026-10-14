@@ -82,6 +82,7 @@ public partial class MainWindow
     {
         UpgradeLabel.Text = PartitionInventory.L("目标系统：", "Target system: ") + $"SteamOS {OfficialSystem.Version} · build {OfficialSystem.Build}";
         Upgrade310.IsEnabled = UsePrepared.IsChecked != true;
+        optionsPanel.RefreshSystemUpdatePolicyNote();
         SystemVersionNote.Text = UsePrepared.IsChecked == true ? SystemVersionSummary() : Upgrade310.IsChecked == true
             ? PartitionInventory.L("先在本页下载并缓存此版本，安装时替换恢复镜像内的系统，匹配设备适配。", "Download and cache this version here first; installation replaces the recovery image system to match device support.")
             : PartitionInventory.L("保留恢复镜像内的系统。部分设备修复/适配需要上方版本，版本不匹配的项目无法安装。", "Keep the recovery image system. Some device repairs require the version above; incompatible items cannot be installed.");

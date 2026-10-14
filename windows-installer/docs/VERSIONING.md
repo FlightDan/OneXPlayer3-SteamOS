@@ -1,22 +1,23 @@
-# OXP3 SteamOS 整合版版本
+# OXP3 SteamOS integration version
 
-2026-10-14 起，整合版正式编号为 **OXP3 SteamOS 0.1.0 Beta**。
+The current project integration release is **OXP3 SteamOS 0.1.1**, on the **stable** project channel, dated 2026-10-14.
 
-唯一版本来源是 `components/release.json`：机器识别值为 `0.1.0-beta`，界面显示为 `0.1.0 Beta`。这是本项目设备适配、组件部署和配套安装助手的整合版本；SteamOS 自身的版本独立记录，默认安装目标仍为 3.10 / build 20260924.1000。
+`components/release.json` is the version source: machine version `0.1.1`, display version `0.1.1`, channel `stable`. This identifies the ONEXPLAYER 3 integration and its companion installer. SteamOS has its own system version and update branch. The default target remains **SteamOS 3.10 / build 20260924.1000**; the official image's `STEAMOS_DEFAULT_UPDATE_BRANCH` is `stable`. When an installation includes device fixes, plugins or account configuration, the installer pauses SteamOS system updates in both A/B slots while leaving Steam client and game updates available.
 
-安装助手从编译时嵌入的同一份文件显示版本。后续开发包使用 `oxp3-development-0.1.0-beta-YYYYMMDD-HHMMSS.zip` 或 `.tar` 命名，包根保存 `release.json` 和包含构建编号的 `build-info.json`；打包目录仍按构建时间区分。每次打包必须使用新的构建编号。
+The installer displays the integration version embedded at build time. Development packages use the integration version and a fresh build timestamp, for example `oxp3-development-0.1.1-YYYYMMDD-HHMMSS.zip` or `.tar`; the package root contains `release.json` and `build-info.json` with the build identifier. Each package build receives a new identifier.
 
-后续系统部署在 `/home/.oxp3-installer/integration/A/result.json` 和 `B/result.json` 中记录整合版 `release`、实际系统 `system` 和逐项组件结果。选择组件并部署运行库时，系统内也保存 `/usr/local/lib/oxp3-integration/release.json`。版本标记表示部署来源；实际启用及成功情况以组件结果为准。
+Deployment records in `/home/.oxp3-installer/integration/A/result.json` and `B/result.json` store the integration `release`, actual system `system` and per-component results. When selected components and the runtime are deployed, `/usr/local/lib/oxp3-integration/release.json` also records the integration release. The version identifies the deployment source; component results determine which changes were actually enabled and succeeded.
 
-镜像准备时，在用户主文件夹生成 `/home/deck/OXP3-SteamOS-Version.md`。文件只包含英文标题 `OXP3 SteamOS Version` 和整合版号 `0.1.0 Beta`。打开主文件夹即可找到；不创建桌面文件。内容从同一份 `release.json` 生成，文件属于 deck 用户，沿用共享 home 文件的备份和冲突保护。
+Image preparation creates `/home/deck/OXP3-SteamOS-Version.md` in the user's home folder. It contains the English title `OXP3 SteamOS Version` and integration version `0.1.1`; it is not placed on the desktop. The file is generated from the same release metadata, owned by `deck`, and uses the existing shared-home backup and conflict protections.
 
-已有测试包 `oxp3-development-20261014-011613.zip` / `oxp3-development-20261014-013814.zip`、此前生成的镜像和已经安装的设备不会自动获得该标记。整合版登记及本次文档整理未重打历史包，也未部署到设备；最新交付状态见 [README](../README.md)。
+The prior **0.1.0 Beta** (`0.1.0-beta`, channel `beta`) and its ZIPs, prepared images and installed systems remain historical. Updating source or documentation does not change an existing package or installed system.
 
-## 后续编号
+The `0.1.1 stable` label names this project's integration channel. It does not claim that every device feature is validated: a complete fresh installation through first-boot setup has not been tested, automatic cross-version adaptation is not implemented, and the independent Waydroid dependency issue remains. See the [0.1.1 release notes](RELEASE_0.1.1.md) for the current scope.
 
-- 修复问题、小幅配置或文案调整：`0.1.1 Beta`、`0.1.2 Beta`。
-- 增加功能：`0.2.0 Beta`。
-- 结束 Beta 并完成正式版验收后，再确定正式版本号。
-- 插件、固件、内核和 SteamOS 底座保留各自版本，不能用整合版号替代兼容性检查。
+## Future version numbers
 
-发布变更时更新版本来源并重新构建安装助手。每个版本记录变更内容、适用底座和验证结果。组件补丁更新、在线检查更新及一键升级流程仍待实现；本次版本登记不代表这些能力已经可用。
+- A patch release keeps the stable channel and increments the patch number, such as `0.1.2`.
+- A feature release increments the minor number, such as `0.2.0`.
+- SteamOS, plugins, firmware and kernels retain their own versions; the integration version never replaces compatibility checks.
+
+For each release, update the version metadata and rebuild the installer. Record changes, target system and validation scope in release notes. Component patch updates, online release checks and one-click upgrades are not implemented.

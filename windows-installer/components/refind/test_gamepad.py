@@ -1,5 +1,6 @@
 """Controller payload lifecycle tests on disposable directories, without firmware."""
 import json
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -40,7 +41,7 @@ class GamepadDeploymentTests(unittest.TestCase):
         self.assertEqual((self.root/m.GAMEPAD_CONFIG).read_bytes(), (self.payload/'gamepad.ini').read_bytes())
         self.assertEqual((self.root/m.OWN/m.GAMEPAD_DRIVER).read_bytes(), (self.payload/m.GAMEPAD_DRIVER).read_bytes())
         config = (self.root/'EFI/BOOT/refind.conf').read_text()
-        self.assertIn('driver_dirs /EFI/OXP3-rEFInd/drivers_x64', config)
+        self.assertIn('scan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64', config)
         self.assertNotIn('enable_touch', config)
 
     def test_upgrade_old_journal_then_restore_original(self):
@@ -57,6 +58,17 @@ class GamepadDeploymentTests(unittest.TestCase):
         m.verify(self.root)
         m.uninstall(self.root)
         self.assertTrue(all(m.read(self.root, n) is None for n in new_names))
+
+    def test_driver_scan_directive_is_recognized_by_bundled_refind(self):
+        config = m.configuration('SteamOS', 5, self.esp, None).decode()
+        scan_line = next(line for line in config.splitlines()
+                         if 'OXP3-rEFInd/drivers_x64' in line)
+        directive = scan_line.split()[0]
+        # Check against the executable's actual token table, not just our template.
+        binary = (self.payload / 'refind_x64.efi').read_bytes()
+        tokens = set(re.findall(r'[a-z_]{5,}', binary.decode('utf-16-le', errors='ignore')))
+        self.assertIn(directive, tokens)
+        self.assertNotIn('\ndriver_dirs ', config)
 
     def test_existing_controller_config_is_preserved(self):
         target = self.root/m.GAMEPAD_CONFIG

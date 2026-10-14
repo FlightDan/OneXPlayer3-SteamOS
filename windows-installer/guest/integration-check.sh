@@ -9,9 +9,16 @@ python3 -B /mnt/payload/tasks/test_offload_mounts.py
 python3 -B /mnt/payload/components/test_file_transaction.py
 python3 -B /mnt/payload/components/test_runtime_access.py
 python3 -B /mnt/payload/components/test_runtime_activation.py
+python3 -B /mnt/payload/components/test_system_update_policy.py
 if [ -f /mnt/payload/selection.json ]; then
-    checks=$(python3 -B -c 'import json; value=json.load(open("/mnt/payload/selection.json")); assert value in ({"checks":"nonfatal"},{"checks":"permissions"}); print(value["checks"])')
-    if [ "$checks" = permissions ]; then
+    checks=$(python3 -B -c 'import json; value=json.load(open("/mnt/payload/selection.json")); assert value in ({"checks":"nonfatal"},{"checks":"permissions"},{"checks":"startup"}); print(value["checks"])')
+    if [ "$checks" = startup ]; then
+        python3 -B /mnt/payload/components/test_integration.py \
+            IntegrationChecks.test_mandatory_update_policy_stage_restore_and_missing_vendor_refusal \
+            IntegrationChecks.test_cross_slot_home_original_and_recovery \
+            IntegrationChecks.test_directory_modes_do_not_inherit_secret_umask \
+            IntegrationChecks.test_desktop_return_launcher_repeat_and_existing_marker
+    elif [ "$checks" = permissions ]; then
         python3 -B /mnt/payload/components/test_integration.py \
             IntegrationChecks.test_directory_modes_do_not_inherit_secret_umask \
             IntegrationChecks.test_runtime_bundle_directories_ignore_restrictive_umask \

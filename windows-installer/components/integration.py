@@ -36,6 +36,22 @@ def managed_plugin_files(files):
 
 RETURN_TO_GAME=b'[Desktop Entry]\nType=Application\nName=Return to Gaming Mode\nName[zh_CN]=\xe8\xbf\x94\xe5\x9b\x9e\xe6\xb8\xb8\xe6\x88\x8f\xe6\xa8\xa1\xe5\xbc\x8f\nExec=/usr/bin/steamos-session-select gamescope\nIcon=steam\nTerminal=false\nCategories=Game;\n'
 
+def desktop_names(files, language):
+    """Pin installed launcher names to the installer choice, independently of KDE."""
+    for path, entry in files.items():
+        if not path.endswith('.desktop'): continue
+        lines=entry['data'].decode('utf-8').splitlines()
+        start=next((i for i,line in enumerate(lines) if line=='[Desktop Entry]'),None)
+        if start is None: continue
+        end=next((i for i in range(start+1,len(lines)) if lines[i].startswith('[')),len(lines))
+        body=lines[start+1:end]
+        values=dict(line.split('=',1) for line in body if '=' in line)
+        name=values.get('Name[zh_CN]',values.get('Name')) if language=='zh-CN' else values.get('Name')
+        if name is None: continue
+        body=[('Name='+name if line.startswith('Name=') else line) for line in body if not line.startswith('Name[')]
+        entry['data']=('\n'.join(lines[:start+1]+body+lines[end:])+'\n').encode('utf-8')
+    return files
+
 def shared_managed(state, component, relative):
     record=state.parent/'shared'/component/'state.json'
     if not record.exists(): return False
@@ -352,8 +368,6 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                 if not (root/'usr/share/applications/org.kde.plasma.keyboard.desktop').is_file(): raise RuntimeError('Plasma Keyboard dependency is not installed')
                 relative='home/deck/.config/kwinrc'
                 files={relative:{'data':config_file(root,relative,'Wayland',{'InputMethod':'/usr/share/applications/org.kde.plasma.keyboard.desktop','VirtualKeyboardMode':'1'}),'user':True}}
-                desktop=b'[Desktop Entry]\nType=Application\nName=On-screen keyboard\nName[zh_CN]=\xe5\xb1\x8f\xe5\xb9\x95\xe9\x94\xae\xe7\x9b\x98\nExec=steam steam://open/keyboard\nIcon=input-keyboard\nCategories=Utility;\n'
-                for target in ('home/deck/Desktop/oxp3-steam-keyboard.desktop','home/deck/.local/share/applications/oxp3-steam-keyboard.desktop'): files[target]={'data':desktop,'user':True}
             elif name=='multifunction':
                 relative='etc/inputplumber/capability_maps.d/oxp3-installer.yaml'
                 mapping=root/relative
@@ -390,7 +404,11 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                             continue
                         relative=PurePosixPath(*path.parts[1:]).as_posix()
                         files['usr/local/lib/oxp3-waydroid/'+relative]={'data':bundle.extractfile(member).read()}
-                files['home/deck/.local/share/applications/oxp3-waydroid-setup.desktop']={'data':b'[Desktop Entry]\nType=Application\nName=Waydroid Android setup\nName[zh_CN]=Waydroid Android \xe5\x88\x9d\xe5\xa7\x8b\xe8\xae\xbe\xe7\xbd\xae\nExec=konsole -e sudo waydroid init -s GAPPS\nIcon=waydroid\nCategories=System;\n','user':True}
+                desktop='[Desktop Entry]\nType=Application\nName=Install Waydroid\nName[zh_CN]=安装 Waydroid\nExec=konsole -e sudo waydroid init -s GAPPS\nIcon=waydroid\nTerminal=false\nCategories=System;\n'.encode('utf-8')
+                # The applications directory only adds a menu entry. KDE's
+                # desktop also needs its own executable, deck-owned launcher.
+                files['home/deck/Desktop/oxp3-waydroid-setup.desktop']={'data':desktop,'mode':0o755,'user':True}
+                files['home/deck/.local/share/applications/oxp3-waydroid-setup.desktop']={'data':desktop,'user':True}
             elif name in options['plugins']:
                 archives=list((payload/'plugins'/name).glob('*.zip'))
                 if len(archives)!=1: raise RuntimeError('Plugin resource is missing or ambiguous')
@@ -403,7 +421,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             # transaction may contain partial files and must stop deployment.
             if files:
                 applying=True
-                files=managed_plugin_files(files)
+                files=desktop_names(managed_plugin_files(files),options['installer_language'])
                 apply_files(root,state,name,files,owner)
             services+=metadata.get('units',[])
             if name=='input' and 'inputplumber.service' not in services: services.append('inputplumber.service')
@@ -421,12 +439,22 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         apply_files(root,state,'kde-language',{relative:{'data':data,'user':True}},owner)
         reports['kde-language']={'status':'files_installed','language':language,'activation':'next-login'}
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'kde-language',**reports['kde-language']}),flush=True)
+    # The supported image must survive the first online session. Official
+    # stable updates replace the root and otherwise discard these repairs.
+    if reports and compatible:
+        from system_update_policy import files as update_policy_files, verify as verify_update_policy
+        policy=update_policy_files(root)
+        apply_files(root,state,'system-update-policy',policy,owner)
+        verify_update_policy(root)
+        reports['system-update-policy']={'status':'files_installed','activation':'boot-prepared',
+            'files':list(policy),'steam_client_updates':'unchanged','steam_game_updates':'unchanged'}
+        print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'system-update-policy',**reports['system-update-policy']}),flush=True)
     # The version note lives in shared home and is tracked once across A/B slots.
     # Fresh reconstructed homes do not inherit the recovery image's KDE launcher.
     launcher='home/deck/Desktop/Return.desktop'
     if not (root/launcher).exists() or shared_managed(state,'desktop-session',launcher):
-        apply_files(root,state,'desktop-session',{
-            launcher:{'data':RETURN_TO_GAME,'mode':0o755,'user':True}},owner)
+        apply_files(root,state,'desktop-session',desktop_names({
+            launcher:{'data':RETURN_TO_GAME,'mode':0o755,'user':True}},options['installer_language']),owner)
     apply_files(root,state,'release-note',{
         'home/deck/OXP3-SteamOS-Version.md':{
             'data':render_release_note(bundle_release).encode('utf-8'),
@@ -438,7 +466,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         result={'schema':1,'release':bundle_release,'system':release(root),'options':options,'components':reports,'services':services,'slot':slot}
         atomic_write(state/'result.json',(json.dumps(result)+'\n').encode(),0o600,0,0)
         return result
-    for name in ('integration_runtime.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
+    for name in ('integration_runtime.py','system_update_policy.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
         runtime['usr/local/lib/oxp3-integration/'+name]={'data':(payload/'components'/name).read_bytes()}
     runtime['usr/local/lib/oxp3-integration/slot']={'data':(slot+'\n').encode()}
     for name in ('installer.py','generate.py','upstream.lua','UPSTREAM_LICENSE'):

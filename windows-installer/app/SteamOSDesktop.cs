@@ -33,12 +33,13 @@ internal static class SteamOSDesktop
             .Replace("\r\n", "\n").Replace("\n", "\r\n");
     }
 
-    internal static string Write(string desktop, string content)
+    internal static string Write(string desktop, string content, string language = "zh-CN")
     {
         if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop)) throw new IOException("Windows desktop folder is unavailable.");
+        var name = language == "en-US" ? "Restart to SteamOS" : "重启到 SteamOS";
         for (var index = 1; index <= 100; index++)
         {
-            var path = Path.Combine(desktop, index == 1 ? "重启到 SteamOS.bat" : $"重启到 SteamOS ({index}).bat");
+            var path = Path.Combine(desktop, index == 1 ? name + ".bat" : $"{name} ({index}).bat");
             if (File.Exists(path))
             {
                 if (File.ReadAllText(path) == content) return path;
@@ -56,11 +57,11 @@ internal static class SteamOSDesktop
         throw new IOException("No unused desktop script filename is available.");
     }
 
-    internal static DesktopRebootResult Install(InstallationTargetKind kind, string deployment, Action<string> log)
+    internal static DesktopRebootResult Install(InstallationTargetKind kind, string deployment, Action<string> log, string language)
     {
         try
         {
-            var path = Write(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Build(kind, deployment));
+            var path = Write(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Build(kind, deployment), language);
             log("DESKTOP_STEAMOS_SCRIPT=" + path);
             return new(path, null);
         }

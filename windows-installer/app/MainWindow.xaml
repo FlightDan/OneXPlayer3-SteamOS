@@ -60,7 +60,7 @@
        <StackPanel Margin="0,0,8,0"><TextBlock Text="内置硬盘 · 双系统" Style="{StaticResource Title}" TextWrapping="Wrap"/><TextBlock Text="保留 Windows，选择空闲区域或删除不用的数据分区来安装。" Style="{StaticResource Muted}"/></StackPanel>
       </RadioButton>
       <RadioButton x:Name="ExternalTarget" GroupName="Target" Style="{StaticResource Target}" Checked="ChoiceChanged" AutomationProperties.Name="外部 SD 卡或 SSD，完整 SteamOS">
-       <StackPanel Margin="0,0,8,0"><TextBlock Text="外部 SD 卡 / SSD（beta）" Style="{StaticResource Title}" TextWrapping="Wrap"/><TextBlock Text="系统装在外部设备，保留已有分区。" Style="{StaticResource Muted}"/></StackPanel>
+       <StackPanel Margin="0,0,8,0"><TextBlock Text="外部 SD 卡 / SSD" Style="{StaticResource Title}" TextWrapping="Wrap"/><TextBlock Text="系统装在外部设备，保留已有分区。" Style="{StaticResource Muted}"/></StackPanel>
       </RadioButton>
       </Grid>
       <Border x:Name="PartitionCard" Style="{StaticResource Card}"><local:PartitionPicker x:Name="PartitionSelector"/></Border>
@@ -143,7 +143,7 @@
    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <TextBlock Text="继续前，请确认数据安全" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,16"/>
     <ScrollViewer Grid.Row="1" PanningMode="VerticalOnly" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
-     <TextBlock Text="Beta 测试阶段 · 请先备份重要数据" FontSize="17" FontWeight="SemiBold" Foreground="#A34727" TextWrapping="Wrap"/>
+     <TextBlock Text="安装前请先备份重要数据" FontSize="17" FontWeight="SemiBold" Foreground="#A34727" TextWrapping="Wrap"/>
      <TextBlock x:Name="SafetyTarget" Margin="0,14,0,14" TextWrapping="Wrap"/>
      <TextBlock x:Name="SafetyMessage" TextWrapping="Wrap" LineHeight="24"/>
     </StackPanel></ScrollViewer>

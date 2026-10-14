@@ -24,6 +24,8 @@ const definePlugin = (fn) => {
 
 const status = callable('status');
 const reboot = callable('reboot');
+const managerStatus = callable('manager_status');
+const rebootManager = callable('reboot_manager');
 const t = (zh, en) => /^(zh|schinese|tchinese)/i.test(document.documentElement.lang || navigator.language) ? zh : en;
 function unwrap(reply) {
     if (!reply.ok || reply.data === undefined)
@@ -32,6 +34,7 @@ function unwrap(reply) {
 }
 function Content() {
     const [info, setInfo] = SP_REACT.useState(null);
+    const [managerInfo, setManagerInfo] = SP_REACT.useState(null);
     const [busy, setBusy] = SP_REACT.useState(false);
     const [message, setMessage] = SP_REACT.useState('');
     const lock = SP_REACT.useRef(false);
@@ -61,26 +64,41 @@ function Content() {
     async function refresh() {
         await task(async () => {
             setInfo(null);
-            const result = unwrap(await status());
-            if (mounted.current)
-                setInfo(result);
+            setManagerInfo(null);
+            const [windowsReply, managerReply] = await Promise.all([status(), managerStatus()]);
+            if (mounted.current) {
+                setInfo(windowsReply.ok ? unwrap(windowsReply) : {
+                    ready: false, target: null, reason: windowsReply.error || t('操作失败', 'Operation failed'),
+                });
+                setManagerInfo(managerReply.ok ? unwrap(managerReply) : {
+                    ready: false, target: null, reason: managerReply.error || t('操作失败', 'Operation failed'),
+                });
+            }
         });
     }
-    function confirm() {
-        if (lock.current || confirming.current || !info?.ready || !info.target)
+    function confirm(destination) {
+        const selected = destination === 'windows' ? info : managerInfo;
+        if (lock.current || confirming.current || !selected?.ready || !selected.target)
             return;
         confirming.current = true;
-        const target = info.target;
-        DFL.showModal(SP_JSX.jsx(DFL.ConfirmModal, { bDestructiveWarning: true, strTitle: t('重启进入 Windows？', 'Restart into Windows?'), strDescription: t('将关闭当前会话。请先保存游戏和文件。仅下一次启动进入 Windows。', 'Your session will close. Save games and files first. Only the next boot will enter Windows.'), strOKButtonText: t('重启', 'Restart'), strCancelButtonText: t('取消', 'Cancel'), onOK: () => void task(async () => {
-                unwrap(await reboot(target, true));
+        const target = selected.target;
+        DFL.showModal(SP_JSX.jsx(DFL.ConfirmModal, { bDestructiveWarning: true, strTitle: destination === 'windows' ? t('重启进入 Windows？', 'Restart into Windows?')
+                : t('重启到启动管理器？', 'Restart into boot manager?'), strDescription: destination === 'windows'
+                ? t('将关闭当前会话。请先保存游戏和文件。仅下一次启动进入 Windows。', 'Your session will close. Save games and files first. Only the next boot will enter Windows.')
+                : t('将关闭当前会话。请先保存游戏和文件。下一次启动进入 SteamOS 启动项对应的启动管理器。', 'Your session will close. Save games and files first. The next boot will use the boot manager at the SteamOS entry.'), strOKButtonText: t('重启', 'Restart'), strCancelButtonText: t('取消', 'Cancel'), onOK: () => void task(async () => {
+                unwrap(await (destination === 'windows' ? reboot(target, true) : rebootManager(target, true)));
                 requested.current = true;
                 if (mounted.current)
-                    setMessage(t('已请求重启，正在进入 Windows…', 'Restart requested. Starting Windows…'));
+                    setMessage(destination === 'windows'
+                        ? t('已请求重启，正在进入 Windows…', 'Restart requested. Starting Windows…')
+                        : t('已请求重启，正在进入启动管理器…', 'Restart requested. Starting boot manager…'));
             }) }), undefined, { fnOnClose: () => { confirming.current = false; } });
     }
     return SP_JSX.jsxs(DFL.PanelSection, { title: t('系统切换', 'Switch system'), children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", "aria-live": "polite", style: { overflowWrap: 'anywhere' }, children: busy ? t('正在处理…', 'Working…') : info?.ready
                         ? t('Windows 启动项已就绪', 'Windows boot entry is ready')
-                        : info?.reason || t('请刷新启动状态', 'Refresh the boot status') }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { disabled: busy || !info?.ready, onClick: confirm, children: t('重启进入 Windows', 'Restart into Windows') }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { disabled: busy, onClick: () => void refresh(), children: t('刷新启动状态', 'Refresh boot status') }) }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", "aria-live": "polite", style: { overflowWrap: 'anywhere' }, children: message }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: t('仅影响下一次启动，之后按原默认顺序启动。', 'Only affects the next boot. Later boots follow your default order.') })] });
+                        : info?.reason || t('请刷新启动状态', 'Refresh the boot status') }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !info?.ready, onClick: () => confirm('windows'), children: t('重启进入 Windows', 'Restart into Windows') }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", "aria-live": "polite", style: { overflowWrap: 'anywhere' }, children: busy ? t('正在处理…', 'Working…') : managerInfo?.ready
+                        ? t('SteamOS 启动管理器入口已就绪', 'SteamOS boot-manager entry is ready')
+                        : managerInfo?.reason || t('请刷新启动状态', 'Refresh the boot status') }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !managerInfo?.ready, onClick: () => confirm('manager'), children: t('重启到启动管理器', 'Restart into boot manager') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => void refresh(), children: t('刷新启动状态', 'Refresh boot status') }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", "aria-live": "polite", style: { overflowWrap: 'anywhere' }, children: message }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: t('仅影响下一次启动，之后按原默认顺序启动。', 'Only affects the next boot. Later boots follow your default order.') })] });
 }
 var index = definePlugin(() => ({
     name: 'Restart into Windows',

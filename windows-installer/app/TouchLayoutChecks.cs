@@ -78,7 +78,8 @@ internal static class TouchLayoutChecks
         Require(!TargetRed(), "preset-repairs-invalid-capacity-state");
         Click("NextButton");
         Require(Find<Grid>("SafetyOverlay").IsVisible && !Find<Grid>("WizardShell").IsEnabled && Find<StackPanel>("TargetPage").IsVisible, "next-opens-blocking-backup-confirmation-before-navigation");
-        Require(Find<TextBlock>("SafetyMessage").Text.Contains("Beta") && Find<TextBlock>("SafetyTarget").Text.Contains("Disk"), "warning-identifies-beta-and-target");
+        var safetyText = Find<TextBlock>("SafetyMessage").Text;
+        Require((safetyText.Contains("格式化") || safetyText.Contains("formats")) && Find<TextBlock>("SafetyTarget").Text.Contains("Disk"), "warning-identifies-formatting-and-target");
         Click("SafetyCancel");
         Require(!Find<Grid>("SafetyOverlay").IsVisible && Find<StackPanel>("TargetPage").IsVisible, "cancel-remains-on-target");
         Click("NextButton"); Click("SafetyContinue");

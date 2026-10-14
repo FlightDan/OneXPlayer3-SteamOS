@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
 using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -62,6 +64,12 @@ internal static class BootSetupChecks
             Find<RadioButton>("InternalTarget").IsChecked = true;
             panel.InstallChoice.IsChecked = true;
             Require(panel.MakeDefaultBoot && panel.Selection != null, "refind-and-firmware-default-both-selected-" + english);
+            var scanLine = panel.Configuration().Split('\n').Single(line => line.Contains("OXP3-rEFInd/drivers_x64"));
+            var directive = scanLine.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+            var refindTokens = Regex.Matches(Encoding.Unicode.GetString(File.ReadAllBytes(Path.Combine(Backend.Root, "components/refind/refind_x64.efi"))), "[a-z_]{5,}")
+                .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
+            Require(refindTokens.Contains(directive), "driver-scan-directive-recognized-by-bundled-refind-" + english);
+            Require(!panel.Configuration().Contains("\ndriver_dirs "), "unrecognized-driver-directive-not-exported-" + english);
             Capture(Find<Grid>("WindowRoot"), Path.Combine(directory, $"boot-options-{(english ? "en" : "zh")}.png"));
             panel.InstallChoice.IsChecked = false; window.PreviewStep(0);
         }

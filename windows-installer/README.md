@@ -2,14 +2,16 @@
 
 在 Windows 中准备 SteamOS，安装到选定的 GPT 未分配空间。支持内置盘与 Windows 共存、外部 SD / SSD 完整系统、OXP3 设备适配与插件预装，以及可选的 rEFInd 双系统启动菜单。
 
-当前整合版为 **OXP3 SteamOS 0.1.0 Beta**（`0.1.0-beta`）；默认系统目标为 **SteamOS 3.10 / build 20260924.1000**。本文与 [安装指南](docs/INSTALLATION_GUIDE.md) 按 **2026-10-14 当前代码**整理。普通启动已开放真实安装与分区删除，写入完成后仍需在掌机验证启动和硬件功能。
+当前整合版为 **OXP3 SteamOS 0.1.1 stable**（`0.1.1`，渠道 `stable`）；默认系统目标为 **SteamOS 3.10 / build 20260924.1000**。本文与 [安装指南](docs/INSTALLATION_GUIDE.md) 按 **2026-10-14 当前代码**整理。stable 是本项目的整合版渠道标签，不代表所有设备流程或硬件均已验收；完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现。详见[0.1.1 发布说明](docs/RELEASE_0.1.1.md)。
+
+Valve 官方 SteamOS 3.10 镜像的更新分支仍为 `stable`；这与本项目整合版的 `stable` 渠道相互独立。包含修复、插件或账户配置的新安装会暂时暂停 **SteamOS 系统更新**，保留 Steam 客户端和游戏更新。账户、SSH 和启动服务写入 SteamOS 的持久 `/etc` 层，A/B 槽保护在写入前强制复核。此政策防止 stable 更新替换当前 3.10 并丢失设备修复；恢复系统更新前需要对应版本的适配方案。故障定因、实机 B 槽恢复和验证范围见 [首次启动与更新保护](docs/FIRSTBOOT_INPUT_DECKY.md)。
 
 ## 快速开始
 
 1. 备份目标数据，保存 BitLocker 恢复密钥（如启用），准备恢复介质并连接电源。
 2. 完整解压工具包，运行根目录 `SteamOSInstaller.exe`，处理 Windows 管理员提示。保留所有配套目录。
 3. 在配置页中选择工作空间。实盘安装至少预留 **45 GiB** 可用空间，建议 **64 GiB**；额外下载、源镜像和旧任务另占空间，后续阶段还会复查实际需求。
-4. 首次打开安装位置自动读取磁盘，读取时按钮旁显示“正在读取…”。选择至少 **64 GiB 连续未分配空间**，可选 **64G、100G、使用全部空间**或输入有效容量；界面单位均为 GiB。外部 SD / SSD 为 beta。
+4. 首次打开安装位置自动读取磁盘，读取时按钮旁显示“正在读取…”。选择至少 **64 GiB 连续未分配空间**，可选 **64G、100G、使用全部空间**或输入有效容量；界面单位均为 GiB。外部 SD / SSD 的验证范围见实现状态。
 5. 按“安装位置 → 准备系统（恢复镜像 → 3.10 镜像）→ 选择安装内容 → 确认方案 → 启动器安装 → 安装进度 → 完成”操作。3.10 `.raucb` 下载或本地选择后可继续，点击“开始安装”后才联网重建；按需选择组件和 rEFInd。
 6. 完成后导出日志、保存任务记录，通过设备 UEFI 启动菜单分别验证 SteamOS 和 Windows。
 
@@ -54,9 +56,9 @@
 
 固件写入前保存 `firmware-before.json`，读回核对后保存 `firmware-result.json`；失败时仅在固件状态仍匹配本次写入的情况下恢复原顺序。真实固件重启和 Windows / BitLocker 行为待实机验收。当前源码和新构建包含此改动，已有 ZIP 不会更新。
 
-## 当前 Beta 运行包
+## 当前 0.1.1 stable 运行包
 
-完整便携运行包通过 [GitHub Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 发布为 0.1.0 Beta 预发布，文件名为 `oxp3-steamos-installer-0.1.0-beta-<构建编号>.zip`。包含设置初始密码后的公共目录权限修复、安装完成后重启和 Windows 桌面的 SteamOS 启动入口。先前 development ZIP 保留为本地历史构建；完整解压新包后使用根目录 `SteamOSInstaller.exe`。重新打包不会自动修复已经安装的系统或旧准备镜像，实机启动仍待复测。修复与本地验证范围见 [权限回归说明](docs/PERMISSION_REGRESSION.md)，使用前先读 [Beta 运行包说明](docs/RELEASE_0.1.0_BETA.md)。
+当前完整便携运行包版本为 **0.1.1 stable**，通过 [GitHub Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。此前的 **0.1.0 Beta** 与 development ZIP 均为历史构建，不会因源码或文档更新而改变。完整解压当前 ZIP 后，从根目录运行 `SteamOSInstaller.exe`。重新打包不会自动修复已经安装的系统或旧准备镜像。stable 渠道标签不表示完整全新安装、首次开箱配置或所有硬件均已验收；自动跨版本适配尚未实现，Waydroid 仍保留独立依赖问题。功能变更与验证范围见[0.1.1 发布说明](docs/RELEASE_0.1.1.md)；历史 Beta 包说明仍保留在 [0.1.0 Beta 发布说明](docs/RELEASE_0.1.0_BETA.md)。
 
 当前源码包含工作空间与容量选择、剩余空间 NTFS 格式化、受保护的 Linux／未识别分区删除、详细日志导出、整合版标记，以及下表修复。源代码、已生成 ZIP 和实机验收状态应分别核对。
 

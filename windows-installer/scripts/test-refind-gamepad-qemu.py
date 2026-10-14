@@ -20,7 +20,7 @@ def prepare(directory, source, default, timeout, graphical):
     config.parent.mkdir(parents=True)
     shutil.copyfile(source/'gamepad.ini', config)
     with (esp/'EFI/BOOT/refind.conf').open('a', encoding='ascii') as stream:
-        stream.write('\ndriver_dirs /EFI/OXP3-rEFInd/drivers_x64\n')
+        stream.write('\nscan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64\n')
     return esp
 
 

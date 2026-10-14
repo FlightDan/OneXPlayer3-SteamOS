@@ -10,6 +10,7 @@ internal static class ComponentOutcome
         var expected = options.Repairs.Concat(options.Plugins).ToHashSet();
         if (options.KdeLanguage != "system") expected.Add("kde-language");
         if (options.SetDeckPassword || options.EnableSsh) expected.Add("deck-access");
+        if (InstallerOptions.RequiresSystemUpdatePolicy(options)) expected.Add("system-update-policy");
         foreach (var slot in new[] { "A", "B" })
         {
             var records = results.Where(x => x.GetProperty("slot").GetString() == slot).ToArray();

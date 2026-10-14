@@ -151,8 +151,8 @@
     {
       "id": "windows-reboot",
       "name": "重启进入 Windows · Decky 按钮与桌面快捷方式",
-      "version": "0.1.1",
-      "state": "device_reboot_confirmed_installer_integrated",
+      "version": "0.1.2",
+      "state": "boot_manager_added_live_validation_pending",
       "default": true,
       "dependencies": ["decky"],
       "source": "windows-installer/docs/WINDOWS_REBOOT.md"

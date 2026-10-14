@@ -35,8 +35,17 @@ class Plugin:
     async def status(self):
         return await self._call('status')
 
+    async def manager_status(self):
+        return await self._call('status-manager')
+
     async def reboot(self, expected, confirmed=False):
         import re
         if confirmed is not True or not isinstance(expected, str) or not re.fullmatch('[0-9A-F]{4}', expected):
             return {'ok': False, 'error': 'Confirm the restart first. / 请先确认重启。'}
         return await self._call('reboot', expected)
+
+    async def reboot_manager(self, expected, confirmed=False):
+        import re
+        if confirmed is not True or not isinstance(expected, str) or not re.fullmatch('[0-9A-F]{4}', expected):
+            return {'ok': False, 'error': 'Confirm the restart first. / 请先确认重启。'}
+        return await self._call('reboot-manager', expected)

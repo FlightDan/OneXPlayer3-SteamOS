@@ -26,6 +26,7 @@ REAL_PREFLIGHT = boot.preflight
 plugin = load('windows_plugin', 'main.py')
 desktop = load('windows_desktop', 'desktop.py')
 WINDOWS = 'Boot000A* Windows Boot Manager\tHD(1,GPT,abc,0,0)/File(\\EFI\\Microsoft\\Boot\\bootmgfw.efi)\n'
+MANAGER = 'Boot6000* SteamOS (OXP3)\tHD(1,GPT,def,0,0)/File(\\EFI\\BOOT\\BOOTX64.EFI)\n'
 
 
 class Firmware:
@@ -90,6 +91,52 @@ class BootChecks(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'changed'): boot.Controller(fw).reboot('000A')
         self.assertEqual(fw.calls, [[boot.EFI, '-v']])
 
+    def test_manager_status_selects_steamos_fallback_and_is_read_only(self):
+        for path in ('File(\\EFI\\BOOT\\BOOTX64.EFI)', '\\EFI\\BOOT\\BOOTX64.EFI',
+                     '\\EFI\\BOOT\\BOOTX64.EFI0100'):
+            fw = Firmware(WINDOWS + MANAGER.replace('File(\\EFI\\BOOT\\BOOTX64.EFI)', path))
+            value = boot.Controller(fw).status('manager')
+            self.assertTrue(value['ready']); self.assertEqual(value['target'], '6000')
+            self.assertEqual(fw.calls, [[boot.EFI, '-v']]); self.assertIsNone(fw.next)
+
+    def test_manager_does_not_select_unrelated_fallback_or_direct_steamos_loader(self):
+        for entries in (MANAGER.replace('SteamOS (OXP3)', 'USB Disk'),
+                        MANAGER.replace('BOOT\\BOOTX64.EFI', 'steamos\\steamcl.efi'),
+                        MANAGER.replace('BOOTX64.EFI', 'BOOTX64.EFI.bad'),
+                        MANAGER.replace('BOOTX64.EFI', 'BOOTX64.EFI.backup')):
+            self.assertFalse(boot.Controller(Firmware(entries)).status('manager')['ready'])
+
+    def test_manager_missing_disabled_ambiguous_and_changed_never_write(self):
+        for entries in (WINDOWS, MANAGER.replace('6000*', '6000'),
+                        MANAGER + MANAGER.replace('6000', '6001'), MANAGER.replace('6000', '6001')):
+            fw = Firmware(entries)
+            with self.assertRaises(RuntimeError): boot.Controller(fw).reboot('6000', 'manager')
+            self.assertEqual(fw.calls, [[boot.EFI, '-v']])
+
+    def test_manager_rechecks_target_and_verifies_one_shot_before_reboot(self):
+        fw = Firmware(WINDOWS + MANAGER)
+        self.assertTrue(boot.Controller(fw).reboot('6000', 'manager')['reboot_requested'])
+        self.assertEqual(fw.calls, [[boot.EFI, '-v'], [boot.EFI, '-n', '6000'],
+                                    [boot.EFI, '-v'], [boot.SYSTEMCTL, 'reboot']])
+        fw = Firmware(WINDOWS + MANAGER)
+        with self.assertRaisesRegex(RuntimeError, 'changed'):
+            boot.Controller(fw).reboot('000A', 'manager')
+        self.assertEqual(fw.calls, [[boot.EFI, '-v']])
+
+    def test_manager_failure_restores_bootnext_and_unverified_write_never_reboots(self):
+        for previous in (None, '000A'):
+            fw = Firmware(MANAGER, previous=previous, fail='reboot')
+            with self.assertRaises(RuntimeError): boot.Controller(fw).reboot('6000', 'manager')
+            self.assertEqual(fw.next, previous)
+        fw = Firmware(MANAGER, ignore_write=True)
+        with self.assertRaisesRegex(RuntimeError, 'verification'):
+            boot.Controller(fw).reboot('6000', 'manager')
+        self.assertNotIn([boot.SYSTEMCTL, 'reboot'], fw.calls)
+
+    def test_explicit_managed_refind_path_is_supported(self):
+        entries = MANAGER.replace('SteamOS (OXP3)', 'rEFInd').replace('BOOT\\BOOTX64.EFI', 'OXP3-rEFInd\\refind_x64.efi')
+        self.assertEqual(boot.Controller(Firmware(entries)).status('manager')['target'], '6000')
+
     def test_arguments_cannot_be_shell_commands_or_other_boot_entries(self):
         for expected in ('000A;reboot', '--delete-bootnum', '', 10, '000a'):
             fw = Firmware()
@@ -141,6 +188,18 @@ class BootChecks(unittest.TestCase):
             with patch.object(plugin.asyncio, 'create_subprocess_exec') as run:
                 self.assertFalse(asyncio.run(instance.reboot(entry, confirmed))['ok'])
                 run.assert_not_called()
+
+    def test_manager_rpc_requires_confirmation_and_calls_only_fixed_action(self):
+        instance = plugin.Plugin()
+        for entry, confirmed in (('6000', False), ('6000', 'true'), ('; reboot', True)):
+            with patch.object(plugin.asyncio, 'create_subprocess_exec') as run:
+                self.assertFalse(asyncio.run(instance.reboot_manager(entry, confirmed))['ok'])
+                run.assert_not_called()
+        from unittest.mock import AsyncMock
+        with patch.object(instance, '_call', new_callable=AsyncMock, return_value={'ok': True}) as call:
+            asyncio.run(instance.manager_status()); call.assert_called_once_with('status-manager')
+            call.reset_mock()
+            asyncio.run(instance.reboot_manager('6000', True)); call.assert_called_once_with('reboot-manager', '6000')
 
     def test_desktop_cancel_only_reads_status(self):
         with patch.object(desktop, 'helper', return_value={'ready': True, 'target': '000A'}) as call, \

@@ -21,7 +21,13 @@ internal static class SteamOSDesktopChecks
         Require(!content.Replace("\r\n", "").Contains('\n'), "cmd-crlf-line-endings");
         var desktop = Path.Combine(directory, "中文 desktop & 'quoted' % !"); Directory.CreateDirectory(desktop);
         var path = SteamOSDesktop.Write(desktop, content);
+        Require(Path.GetFileName(path) == "重启到 SteamOS.bat", "chinese-desktop-name");
         Require(File.ReadAllText(path) == content && SteamOSDesktop.Write(desktop, content) == path, "unicode-desktop-and-idempotent-write");
+        var english = SteamOSDesktop.Write(desktop, content, "en-US");
+        Require(Path.GetFileName(english) == "Restart to SteamOS.bat" && SteamOSDesktop.Write(desktop, content, "en-US") == english, "english-desktop-name-and-idempotent-write");
+        File.WriteAllText(english, "user English content");
+        var englishSecond = SteamOSDesktop.Write(desktop, content, "en-US");
+        Require(Path.GetFileName(englishSecond) == "Restart to SteamOS (2).bat" && File.ReadAllText(english) == "user English content", "preserve-existing-english-user-file");
         File.WriteAllText(path, "user content");
         var second = SteamOSDesktop.Write(desktop, content);
         Require(path != second && File.ReadAllText(path) == "user content", "preserve-existing-user-file");

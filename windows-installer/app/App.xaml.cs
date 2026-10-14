@@ -64,6 +64,7 @@ public partial class App : Application
                 else if (e.Args.Length == 2 && e.Args[1] == "workspace-checks") { log.AppendLine(await WorkspaceChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "secret-input-checks") { log.AppendLine(await SecretInputChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "runtime-permission-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"permissions\"}")); }
+                else if (e.Args.Length == 2 && e.Args[1] == "startup-integration-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"startup\"}")); }
                 else if (e.Args.Length == 2 && e.Args[1] == "workspace-path") { log.AppendLine(InstallerWorkspace.DirectoryPath); }
                 else if (e.Args.Length == 3 && e.Args[1] == "prepare-accepted-3.10") log.AppendLine("ACCEPTED_SOURCE="+await OfficialSystem.CheckPreparationAsync(e.Args[2],text=>log.AppendLine(text),CancellationToken.None));
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-gpt-native-checks") log.AppendLine("GPT_NATIVE_CHECK="+await PhysicalInstallation.CheckSparseGptOwnedAsync());

@@ -115,7 +115,7 @@ hideui hints,badges
 showtools {tools}
 dont_scan_tools gptsync_x64.efi,gptsync_ia32.efi,gptsync.efi
 # Xbox-compatible controller: D-pad/left stick select, A confirms, B returns.
-driver_dirs /EFI/OXP3-rEFInd/drivers_x64
+scan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64
 big_icon_size 256
 small_icon_size 96
 menuentry "SteamOS" {{

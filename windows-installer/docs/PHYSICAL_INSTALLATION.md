@@ -1,6 +1,6 @@
 # 实际安装与系统准备
 
-当前代码：2026-10-14，**OXP3 SteamOS 0.1.0 Beta**。操作流程见 [安装指南](INSTALLATION_GUIDE.md)，历史 ZIP 与当前代码差异见 [README](../README.md)。
+当前代码：2026-10-14，**OXP3 SteamOS 0.1.1 stable**。stable 是项目整合版渠道标签；完整全新安装与首次开箱配置仍待测试，自动跨版本适配尚未实现。操作流程见 [安装指南](INSTALLATION_GUIDE.md)，当前版本变更见 [发布说明](RELEASE_0.1.1.md)，历史 ZIP 与当前代码差异见 [README](../README.md)。
 
 ## 目标与容量
 

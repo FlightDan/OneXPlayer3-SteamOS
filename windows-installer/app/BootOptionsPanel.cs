@@ -83,7 +83,7 @@ public sealed class BootOptionsPanel : StackPanel
         if (ForeverChoice.IsChecked != true && (!int.TryParse(Seconds.Text, out seconds) || seconds is < 1 or > 3600))
             throw new InvalidOperationException(PartitionInventory.L("等待时间请填写 1–3600 秒，或选择一直等待。", "Enter 1–3600 seconds, or choose Wait for selection."));
         var system = WindowsChoice.IsChecked == true ? "Windows" : "SteamOS";
-        return $"# Settings only; merge into target-specific refind.conf.\n# Menu entries must be named Windows and SteamOS.\n# Requires bundled UsbXbox360Dxe driver and EFI/Xbox360/config.ini.\ndefault_selection \"{system}\"\ntimeout {seconds}\ndriver_dirs /EFI/OXP3-rEFInd/drivers_x64\nbig_icon_size 256\nsmall_icon_size 96\n";
+        return $"# Settings only; merge into target-specific refind.conf.\n# Menu entries must be named Windows and SteamOS.\n# Requires bundled UsbXbox360Dxe driver and EFI/Xbox360/config.ini.\ndefault_selection \"{system}\"\ntimeout {seconds}\nscan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64\nbig_icon_size 256\nsmall_icon_size 96\n";
     }
     internal void WriteConfiguration(string path) => File.WriteAllText(path, Configuration());
     internal RefindChoice? Selection

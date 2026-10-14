@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 
 const slots = [], effects = [], dialogs = [], calls = [];
-let cursor = 0, ready = true, rpcError = '', bootError = '';
+let cursor = 0, ready = true, managerReady = true, rpcError = '', bootError = '';
 const hook = init => {
   const index = cursor++;
   if (!(index in slots)) slots[index] = init;
@@ -17,6 +17,10 @@ const context = vm.createContext({
       calls.push([name, ...args]);
       if (name === 'status') return rpcError ? { ok: false, error: rpcError } : {
         ok: true, data: { ready, target: ready ? '000A' : null, reason: ready ? '' : '未找到 Windows 启动项。' },
+      };
+      if (name === 'manager_status') return {
+        ok: true, data: { ready: managerReady, target: managerReady ? '6000' : null,
+          reason: managerReady ? '' : '未找到 SteamOS 启动管理器入口。' },
       };
       return bootError ? { ok: false, error: bootError } : { ok: true, data: { reboot_requested: true } };
     } }),
@@ -47,15 +51,25 @@ const button = label => nodes(render()).find(node => node.type === 'button' && n
 const content = () => JSON.stringify(render());
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 render(); for (const effect of effects) effect(); await settle();
-assert.deepEqual(calls, [['status']], 'Mount only reads status');
+assert.deepEqual(calls, [['status'], ['manager_status']], 'Mount only reads both statuses');
 assert.equal(button('重启进入 Windows').disabled, false, 'Steam page language takes precedence');
 button('重启进入 Windows').onClick(); button('重启进入 Windows').onClick();
 assert.equal(dialogs.length, 1, 'Double click opens only one confirmation');
-assert.equal(calls.length, 1, 'Opening a dialog never reboots');
+assert.equal(calls.length, 2, 'Opening a dialog never reboots');
 dialogs[0].options.fnOnClose();
-assert.equal(calls.length, 1, 'Cancellation never reboots');
+assert.equal(calls.length, 2, 'Cancellation never reboots');
+button('重启到启动管理器').onClick();
+assert.equal(dialogs.at(-1).node.props.strTitle, '重启到启动管理器？');
+dialogs.at(-1).options.fnOnClose();
+assert.equal(calls.length, 2, 'Cancelling boot manager never reboots');
+managerReady = false; button('刷新启动状态').onClick(); await settle();
+assert.equal(button('重启到启动管理器').disabled, true);
+assert.equal(button('重启进入 Windows').disabled, false);
+assert.match(content(), /未找到 SteamOS 启动管理器/);
+managerReady = true;
 ready = false; button('刷新启动状态').onClick(); await settle();
 assert.equal(button('重启进入 Windows').disabled, true); assert.match(content(), /未找到 Windows/);
+assert.equal(button('重启到启动管理器').disabled, false, 'Missing Windows does not disable boot manager');
 ready = true; rpcError = 'UEFI read failed'; button('刷新启动状态').onClick(); await settle();
 assert.equal(button('重启进入 Windows').disabled, true); assert.match(content(), /UEFI read failed/);
 rpcError = ''; button('刷新启动状态').onClick(); await settle();
@@ -68,6 +82,19 @@ bootError = ''; button('重启进入 Windows').onClick(); dialogs.at(-1).node.pr
 assert.deepEqual(calls.at(-1), ['reboot', '000A', true]);
 assert.match(content(), /已请求重启/); assert.equal(button('重启进入 Windows').disabled, true);
 assert.equal(button('刷新启动状态').disabled, true, 'Controls stay disabled after reboot was accepted');
+assert.equal(button('重启到启动管理器').disabled, true);
 context.document.documentElement.lang = 'en';
 assert.ok(button('Restart into Windows'));
-console.log('WINDOWS_REBOOT_UI=passed; read-only mount, bilingual controls, confirmation/cancel, missing target, visible errors, duplicate requests, accepted reboot state');
+assert.ok(button('Restart into boot manager'));
+slots.length = effects.length = dialogs.length = calls.length = 0;
+context.document.documentElement.lang = 'zh-CN';
+render(); for (const effect of effects) effect(); await settle();
+button('重启到启动管理器').onClick(); button('重启进入 Windows').onClick();
+assert.equal(dialogs.length, 1, 'Only one destination can be confirmed at a time');
+dialogs[0].node.props.onOK(); dialogs[0].node.props.onOK(); await settle();
+assert.deepEqual(calls.filter(call => call[0].startsWith('reboot')), [['reboot_manager', '6000', true]]);
+assert.match(content(), /正在进入启动管理器/);
+assert.equal(button('重启进入 Windows').disabled, true);
+assert.equal(button('重启到启动管理器').disabled, true);
+assert.equal(button('刷新启动状态').disabled, true);
+console.log('WINDOWS_REBOOT_UI=passed; both destinations, read-only mount, bilingual controls, confirmation/cancel, independent availability, duplicate requests, accepted reboot state');

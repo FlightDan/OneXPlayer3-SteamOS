@@ -181,7 +181,7 @@ public partial class MainWindow : Window
             PageSubtitle.Text=PartitionInventory.L("请核对下面的目标磁盘与写入范围。","Review the target disk and write range below.");
         }
         ReviewExecutionNote.Text = physicalInstallation
-            ? PartitionInventory.L("Beta 测试阶段。安装会格式化目标范围内新建的 SteamOS 分区，原有内容将被清空。请保存好重要数据。开始写入时将请求管理员权限。", "Beta software. Installation formats the new SteamOS partitions in the target range, erasing their contents. Back up important data. Administrator permission is requested before writing.")
+            ? PartitionInventory.L("安装会格式化目标范围内新建的 SteamOS 分区，原有内容将被清空。请保存好重要数据。开始写入时将请求管理员权限。", "Installation formats the new SteamOS partitions in the target range, erasing their contents. Back up important data. Administrator permission is requested before writing.")
             : PartitionInventory.L("演练只写入独立虚拟盘，不会写入所选实际设备。", "Rehearsal writes only an independent virtual disk, not the selected physical device.");
         ReviewLayout.Text += "\n\n" + optionsPanel.Describe();
         RefreshWorkspace();
@@ -231,7 +231,7 @@ public partial class MainWindow : Window
         bootPanel.SetFirmwareContext(physicalInstallation && Kind == InstallationTargetKind.InternalShared);
         PhysicalConsent.IsChecked=false;
         StopButton.Content=physicalInstallation?PartitionInventory.L("停止安装","Stop installation"):InstallerI18n.T("停止演练");
-        ModeBanner.Text=physicalInstallation?PartitionInventory.L("Beta 测试阶段 · 请先备份重要数据。安装将格式化目标 SteamOS 分区。","Beta · Back up important data. Installation formats the target SteamOS partitions."):PartitionInventory.L("开发演练 · 仅写入独立虚拟盘，不写入实际设备。","Developer rehearsal · Writes only an independent virtual disk, not a physical device.");
+        ModeBanner.Text=physicalInstallation?PartitionInventory.L("请先备份重要数据。安装将格式化目标 SteamOS 分区。","Back up important data. Installation formats the target SteamOS partitions."):PartitionInventory.L("开发演练 · 仅写入独立虚拟盘，不写入实际设备。","Developer rehearsal · Writes only an independent virtual disk, not a physical device.");
         ProgressStopNote.Text = physicalInstallation ? PartitionInventory.L("停止会保留已写入的分区。请等待当前操作结束，不要关闭电源。关闭窗口会先进行清理，清理结束后自动关闭。", "Stopping preserves partitions already written. Wait for the current operation to end; do not power off. Closing the window starts cleanup; the window closes automatically when cleanup finishes.") : PartitionInventory.L("可以停止演练。正在写入时，会先结束当前操作并卸载测试盘。不要关闭电源。关闭窗口会先进行清理，清理结束后自动关闭。", "You can stop the rehearsal. A write operation will finish and the test disk will detach first. Do not power off. Closing the window starts cleanup; the window closes automatically when cleanup finishes.");
         PartitionCard.Visibility = Kind == InstallationTargetKind.InternalShared || physicalInstallation ? Visibility.Visible : Visibility.Collapsed;
         PlanningScope.Text = Kind == InstallationTargetKind.InternalShared
@@ -302,8 +302,8 @@ public partial class MainWindow : Window
             $"未分配范围：起点 {target.Start / (double)PartitionInventory.GiB:F2} GiB · 所选容量 {PartitionInventory.SizeText(selection.Capacity)}",
             $"Unallocated range: starts at {target.Start / (double)PartitionInventory.GiB:F2} GiB · Selected capacity {PartitionInventory.SizeText(selection.Capacity)}");
         SafetyMessage.Text = PartitionInventory.L(
-            "安装将格式化此范围内新建的 SteamOS 分区，分区内原有内容会被清空，无法通过安装助手恢复。已有 Windows 和其他分区将保留。\n\n此项目仍处于 Beta 测试阶段，可能存在缺陷。请先备份重要数据并准备恢复介质。\n\n此处确认后进入系统准备，最后核对方案并点击“开始安装”才会执行安装。",
-            "Installation formats the new SteamOS partitions in this range. Their contents will be erased and cannot be restored by this installer. Existing Windows and other partitions are preserved.\n\nThis project is still in Beta and may contain defects. Back up important data and prepare recovery media.\n\nContinue to system preparation. Installation begins only after the final review and Install SteamOS.");
+            "安装将格式化此范围内新建的 SteamOS 分区，分区内原有内容会被清空，无法通过安装助手恢复。已有 Windows 和其他分区将保留。\n\n请先备份重要数据并准备恢复介质。\n\n此处确认后进入系统准备，最后核对方案并点击“开始安装”才会执行安装。",
+            "Installation formats the new SteamOS partitions in this range. Their contents will be erased and cannot be restored by this installer. Existing Windows and other partitions are preserved.\n\nBack up important data and prepare recovery media.\n\nContinue to system preparation. Installation begins only after the final review and Install SteamOS.");
         WizardShell.IsEnabled = false; SafetyOverlay.Visibility = Visibility.Visible; SafetyCancel.Focus();
     }
     private void CancelSafety(object sender, RoutedEventArgs e)
@@ -440,7 +440,9 @@ public partial class MainWindow : Window
             {
                 var failed = group.Where(x => x.GetProperty("status").GetString() != "files_installed").ToArray();
                 var label = names.TryGetValue(group.Key, out var item) ? (InstallerI18n.Language == "en-US" ? item.En : item.Zh)
-                    : group.Key == "deck-access" ? PartitionInventory.L("账户与 SSH 设置", "Account and SSH settings") : PartitionInventory.L("KDE 语言", "KDE language");
+                : group.Key == "deck-access" ? PartitionInventory.L("账户与 SSH 设置", "Account and SSH settings")
+                : group.Key == "system-update-policy" ? PartitionInventory.L("SteamOS 系统更新", "SteamOS system updates") : PartitionInventory.L("KDE 语言", "KDE language");
+                if (group.Key == "system-update-policy" && failed.Length == 0) return label + ": " + InstallerOptions.SystemUpdatePolicyDisclosure;
                 return label + ": " + (failed.Length == 0 ? PartitionInventory.L("文件已部署；首次启动核对激活", "files installed; activation checked at first boot")
                     : PartitionInventory.L("已跳过 / 不可用：", "skipped / unavailable: ") + string.Join("; ", failed.Select(x =>
                         PartitionInventory.L("系统槽 ", "slot ") + x.GetProperty("slot").GetString() + " — " + InstallerI18n.Diagnostic(x.GetProperty("reason").GetString()!))));

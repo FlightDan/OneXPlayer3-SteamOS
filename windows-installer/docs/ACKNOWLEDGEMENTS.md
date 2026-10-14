@@ -35,4 +35,4 @@ BE201 固件固定来源为 linux-firmware 提交 `2ab4ce216003ee2c2396c69e19455
 
 rEFInd 主题使用的 Steam 图形来源于 Simple Icons；Outfit 与 DM Mono 字体保留各自 SIL Open Font License，具体文件和来源见 [主题来源记录](../components/refind/SOURCE.md)。Steam 和 Windows 标识用于说明对应启动系统，不表示相关厂商为本项目背书。
 
-致谢不替代许可证。各组件分别遵守其随附许可，原作者署名与许可文本继续保留；不能把整个安装包统一标为 MIT。运行时和对应源码材料的现有记录与未完成项见 [第三方运行时清单](../licenses/README.md) 及该目录的 `runtime-inventory.json`。当前包仍是本地 Beta 测试交付，公开分发材料尚需完成核对。
+致谢不替代许可证。各组件分别遵守其随附许可，原作者署名与许可文本继续保留；不能把整个安装包统一标为 MIT。运行时和对应源码材料的现有记录与未完成项见 [第三方运行时清单](../licenses/README.md) 及该目录的 `runtime-inventory.json`。当前版本为 0.1.1 正式发布，第三方运行时及对应源码材料仍按清单记录各自的许可和待核对项。

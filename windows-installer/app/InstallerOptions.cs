@@ -20,6 +20,11 @@ public static class InstallerOptions
         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, PropertyNameCaseInsensitive = true })
         ?? throw new IOException("Missing installer option catalog.");
     public static bool IsDefault(OptionItem item) => item.Available && (item.Id == "flathub-ustc" ? InstallerI18n.Language == "zh-CN" : item.Default);
+    public static bool RequiresSystemUpdatePolicy(SelectedOptions options) => options.Repairs.Length > 0 || options.Plugins.Length > 0
+        || options.KdeLanguage != "system" || options.SetDeckPassword || options.EnableSsh;
+    public static string SystemUpdatePolicyDisclosure => PartitionInventory.L(
+        "SteamOS 系统更新暂时暂停，以保留当前设备修复；Steam 客户端和游戏更新照常。恢复系统更新前需检查修复兼容性。",
+        "SteamOS system updates will be paused temporarily to preserve the selected device fixes. Steam client and game updates will continue as usual. Check repair compatibility before resuming system updates.");
     public static SelectedOptions Defaults => new(1, Catalog.Repairs.Where(IsDefault).Select(x => x.Id).ToArray(),
         Catalog.Plugins.Where(IsDefault).Select(x => x.Id).ToArray(), InstallerI18n.Language, "system");
     public static void Validate(SelectedOptions value)
@@ -55,6 +60,7 @@ public sealed class InstallerOptionsPanel : StackPanel
     private readonly TextBlock deckPasswordLabel = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock deckPasswordConfirmLabel = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock accessNote = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray, Margin = new Thickness(0, 2, 0, 4) };
+    private readonly TextBlock systemUpdatePolicyNote = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray, Margin = new Thickness(0, 6, 0, 8), LineHeight = 21 };
     private readonly List<(TextBlock Block, string Zh, string En)> labels = new();
     private readonly OptionCatalog catalog = InstallerOptions.Catalog;
     private readonly TextBlock repairHeading = new() { FontSize = 17, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
@@ -65,6 +71,7 @@ public sealed class InstallerOptionsPanel : StackPanel
     internal Expander RepairsExpander { get; } = new() { IsExpanded = false, HorizontalContentAlignment = HorizontalAlignment.Stretch };
     internal IReadOnlyDictionary<string, CheckBox> OptionBoxes => boxes;
     internal ComboBox KdeChoice => kde;
+    internal TextBlock SystemUpdatePolicyNote => systemUpdatePolicyNote;
     public event EventHandler? Changed;
     private IEnumerable<OptionItem> DeviceRepairs => catalog.Repairs.Where(x => x.Id is not ("flathub-ustc" or "refind"));
     public InstallerOptionsPanel()
@@ -75,6 +82,7 @@ public sealed class InstallerOptionsPanel : StackPanel
         RepairsExpander.Header = repairHeading;
         RepairsExpander.Content = repairs;
         Children.Add(RepairsExpander);
+        Children.Add(systemUpdatePolicyNote);
         allRepairs.Click += (_, _) =>
         {
             updatingRepairs = true;
@@ -205,6 +213,12 @@ public sealed class InstallerOptionsPanel : StackPanel
         UpdateRepairSummary();
         foreach (var item in catalog.Repairs.Concat(catalog.Plugins).Where(x => boxes.ContainsKey(x.Id))) ((TextBlock)boxes[item.Id].Content).Text = InstallerI18n.Language == "en-US" ? item.En : item.Zh;
         foreach (var (block, zh, en) in labels) block.Text = InstallerI18n.Language == "en-US" ? en : zh;
+        RefreshSystemUpdatePolicyNote();
+    }
+    internal void RefreshSystemUpdatePolicyNote()
+    {
+        systemUpdatePolicyNote.Text = InstallerOptions.SystemUpdatePolicyDisclosure;
+        systemUpdatePolicyNote.Visibility = InstallerOptions.RequiresSystemUpdatePolicy(Selection) ? Visibility.Visible : Visibility.Collapsed;
     }
     public string Describe()
     {
@@ -212,6 +226,7 @@ public sealed class InstallerOptionsPanel : StackPanel
         return string.Join("\n", catalog.Repairs.Concat(catalog.Plugins).Where(x => selected.Contains(x.Id)).Select(x => InstallerI18n.Language == "en-US" ? x.En : x.Zh))
             + "\nKDE: " + ((ComboBoxItem)kde.SelectedItem).Content
             + "\n" + (InstallerI18n.Language == "en-US" ? "Set deck password: " : "设置 deck 密码：") + (Selection.SetDeckPassword ? (InstallerI18n.Language == "en-US" ? "Yes" : "是") : (InstallerI18n.Language == "en-US" ? "No" : "否"))
-            + "\nSSH: " + (Selection.EnableSsh ? (InstallerI18n.Language == "en-US" ? "Enabled" : "启用") : (InstallerI18n.Language == "en-US" ? "Disabled" : "关闭"));
+            + "\nSSH: " + (Selection.EnableSsh ? (InstallerI18n.Language == "en-US" ? "Enabled" : "启用") : (InstallerI18n.Language == "en-US" ? "Disabled" : "关闭"))
+            + (InstallerOptions.RequiresSystemUpdatePolicy(Selection) ? "\n" + InstallerOptions.SystemUpdatePolicyDisclosure : "");
     }
 }

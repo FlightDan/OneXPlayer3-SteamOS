@@ -11,6 +11,6 @@ timeout 5
 
 # Requires the bundled UsbXbox360Dxe.efi and EFI/Xbox360/config.ini.
 # D-pad or left stick selects; A/Start confirms; B returns.
-driver_dirs /EFI/OXP3-rEFInd/drivers_x64
+scan_driver_dirs /EFI/OXP3-rEFInd/drivers_x64
 big_icon_size 256
 small_icon_size 96
