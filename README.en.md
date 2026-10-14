@@ -171,12 +171,12 @@ This is an unofficial, community-maintained project and is not affiliated with V
 
 Thanks to the following projects and their contributors:
 
-Special thanks to **HANA** for the original device adaptation project, and to the testers who provided devices, logs and feedback from real hardware.
+Special thanks to **HANA** for the original device adaptation project **[onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup)**, and to the testers who provided devices, logs and feedback from real hardware.
 
-- **Device support**: [onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup), [InputPlumber](https://github.com/ShadowBlip/InputPlumber), [Linux](https://kernel.org/), [KDE / KWin](https://invent.kde.org/plasma/kwin), [Gamescope](https://github.com/ValveSoftware/gamescope), [SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager) and [MangoHud](https://github.com/flightlessmango/MangoHud).
-- **XeSS runtime environment**: [xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux), [OptiScaler](https://github.com/optiscaler/OptiScaler), [Mesa](https://gitlab.freedesktop.org/mesa/mesa), [Intel Graphics Compiler](https://github.com/intel/intel-graphics-compiler) and [Intel compute-runtime / ocloc](https://github.com/intel/compute-runtime). Also thanks to [Intel XeSS](https://github.com/intel/xess) for its SDK and runtime components, governed by their own terms.
+- **Device support**: [InputPlumber](https://github.com/ShadowBlip/InputPlumber), [Linux](https://kernel.org/), [KDE / KWin](https://invent.kde.org/plasma/kwin), [Gamescope](https://github.com/ValveSoftware/gamescope), [SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager) and [MangoHud](https://github.com/flightlessmango/MangoHud).
+- **XeSS support**: [Intel XeSS](https://github.com/intel/xess), [xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux), [OptiScaler](https://github.com/optiscaler/OptiScaler) and [supporting XeSS runtime components](THIRD_PARTY_NOTICES.md).
 - **Plugin framework**: [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader).
-- **Android support**: [Waydroid](https://github.com/waydroid/waydroid) and [steamos-waydroid-bundle](https://github.com/pjohno/steamos-waydroid-bundle).
-- **Installer foundations**: [.NET](https://github.com/dotnet/runtime), [QEMU](https://www.qemu.org/), [EDK II](https://github.com/tianocore/edk2), [Alpine Linux](https://alpinelinux.org/), [7-Zip](https://www.7-zip.org/), [aria2](https://github.com/aria2/aria2), [desync](https://github.com/folbricht/desync), [kmscon](https://github.com/Aetf/kmscon) and [libtsm](https://github.com/Aetf/libtsm).
+- **Android support**: [Waydroid](https://github.com/waydroid/waydroid) ([SteamOS integration](https://github.com/pjohno/steamos-waydroid-bundle)).
+- **Dual boot**: [rEFInd](https://www.rodsbooks.com/refind/), [UsbXbox360Dxe](https://github.com/jlobue10/UsbXbox360Dxe).
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for plugin sources, roles and license scope.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party project sources, roles and license scope.
