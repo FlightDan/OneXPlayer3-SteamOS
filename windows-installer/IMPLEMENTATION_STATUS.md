@@ -4,6 +4,8 @@
 
 ## 已实现
 
+- 实盘安装及恢复成功后自动生成 Windows 桌面“重启到 SteamOS.bat”，自包含调用系统 PowerShell；内置安装核对本次登记的固件入口，确认后写一次性 BootNext 并重启，外部安装进入 UEFI 设置供选择设备。同名用户文件保留，创建失败在完成页及日志提示。构建通过，7 项生成检查、23 项 PowerShell 事务/实际 BAT 引导检查及既有 68 项完成页回归通过；不写真实固件、不执行重启，UAC 交互和实机切换待验收。证据：`logs/desktop-reboot-generation-checks.json`、`logs/desktop-reboot-checks.json`、`logs/installation-result-checks.json`；旧 ZIP 不会自动更新。
+
 - `windows-reboot` 默认预装项已同步 0.1.1：Decky 正确 root 权限、1em 菜单图标、KDE 支持的确认框参数和实机 efibootmgr 格式兼容，用户已确认实机重启进入 Windows 成功。A/B 部署与恢复、打包前载荷完整性检查已接入；见 [组件说明](docs/WINDOWS_REBOOT.md)。全新安装仍待验收，历史 ZIP 不会自动更新。
 
 - 2026-10-14 首次启动排故已整合：自动启动已选的 InputPlumber，统一 root 拥有且 deck 可读的 Decky 插件目录、创建 Steam 连接标记、生成 UTF-8 返回游戏模式入口，并在安装/复核时使用实际 `/opt` 共享挂载。实机修复后用户确认手柄及 Decky 恢复；新包整套重新安装仍待验收。见 [首次启动修复](docs/FIRSTBOOT_INPUT_DECKY.md)。

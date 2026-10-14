@@ -126,7 +126,7 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 
 ## 4. Installation
 
-Packaged applications will be available under **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. **The final installer package has not been released yet.** The planned workflow below is subject to the instructions for the relevant release.
+The complete Windows x64 installer ZIP is provided through **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. The current release is a **0.1.0 Beta prerelease**, with full physical-device acceptance still in progress. Read the matching release notes before use.
 
 1. Download the Windows installer ZIP from Releases, extract it completely and keep its companion files together.
 2. Back up existing data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Resume protection after installation once Windows boots normally.

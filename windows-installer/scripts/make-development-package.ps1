@@ -1,6 +1,7 @@
-param([string]$Stamp = (Get-Date -Format 'yyyyMMdd-HHmmss'), [ValidateSet('zip','tar')][string]$Format = 'tar')
+param([string]$Stamp = (Get-Date -Format 'yyyyMMdd-HHmmss'), [ValidateSet('zip','tar')][string]$Format = 'tar', [switch]$PublicBeta, [string]$SourceCommit = '')
 $ErrorActionPreference = 'Stop'
 if ($Stamp -notmatch '^\d{8}-\d{6}$') { throw 'Invalid package version' }
+if ($PublicBeta -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public beta must identify its source commit.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $releasePath = Join-Path $projectRoot 'components/release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
@@ -22,7 +23,8 @@ New-Item -ItemType Directory -Force $destination | Out-Null
 function Copy-PackageTree([string]$source, [string]$relative) {
     $target = Join-Path $destination $relative
     New-Item -ItemType Directory -Force $target | Out-Null
-    foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and $_.Extension -ne '.pyc' }) {
+    foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and $_.Extension -notin @('.pyc','.pdb') }) {
+        if ($PublicBeta -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
         $relativeFile = [IO.Path]::GetRelativePath($source, $item.FullName)
         $fileTarget = Join-Path $target $relativeFile
         New-Item -ItemType Directory -Force (Split-Path $fileTarget -Parent) | Out-Null
@@ -74,7 +76,7 @@ foreach ($name in 'hdr-test.py','hdr-test.sh','shared-state-test.py','shared-sta
 }
 Copy-PackageTree (Join-Path $projectRoot 'components') 'components'
 Copy-Item -LiteralPath $releasePath -Destination (Join-Path $destination 'release.json')
-@{ schema = 1; release = $release; build_id = $Stamp } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
+@{ schema = 1; release = $release; build_id = $Stamp; source_commit = $SourceCommit; package_channel = $(if ($PublicBeta) { 'public-beta' } else { 'development' }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
 Copy-PackageTree (Join-Path $projectRoot 'cache/plugins') 'cache/plugins'
 foreach ($name in 'secret-input-check.sh','refind-image.sh','refind-image.py','integration.sh','integration-image.py','integration-check.sh','integration-delta-check.sh','integration-verify.sh','integration-verify.py','upgrade-source.sh','upgrade-source.py','physical-readiness.sh','physical-readiness.py','resize-prepared.sh','resize_prepared.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }
@@ -102,13 +104,32 @@ foreach ($name in 'read-disks.ps1','format-remaining.ps1','partition-delete-poli
 foreach ($name in 'SteamOSInstaller.exe','Launch.cmd','README.md','IMPLEMENTATION_STATUS.md') { Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination (Join-Path $destination $name) }
 Copy-PackageTree (Join-Path $projectRoot 'licenses') 'licenses'
 Copy-PackageTree (Join-Path $projectRoot 'docs') 'docs'
+if ($PublicBeta) {
+    $workspaceRoot = Split-Path $projectRoot -Parent
+    foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.md','ROADMAP.md','GIT_WORKSPACE.md')) {
+        Copy-Item -LiteralPath (Join-Path $workspaceRoot $name) -Destination (Join-Path $destination $name)
+    }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RELEASE_0.1.0_BETA.md') -Destination (Join-Path $destination 'READ_FIRST.md')
+    # The installed package uses the existing flat runtime layout, while the
+    # GitHub source keeps windows-installer as a subdirectory.
+    $publicDocs = @((Join-Path $destination 'README.md'), (Join-Path $destination 'THIRD_PARTY_NOTICES.md')) + @(Get-ChildItem (Join-Path $destination 'docs') -Filter '*.md' -File | ForEach-Object FullName)
+    foreach ($document in $publicDocs) {
+        $content = [IO.File]::ReadAllText($document)
+        $content = $content.Replace('(../ROADMAP.md)', '(ROADMAP.md)').Replace('(../GIT_WORKSPACE.md)', '(GIT_WORKSPACE.md)')
+        $content = $content.Replace('(../../ROADMAP.md)', '(../ROADMAP.md)').Replace('(../../GIT_WORKSPACE.md)', '(../GIT_WORKSPACE.md)').Replace('(../../LICENSE)', '(../LICENSE)').Replace('(../../THIRD_PARTY_NOTICES.md)', '(../THIRD_PARTY_NOTICES.md)')
+        $content = $content.Replace('(windows-installer/licenses/', '(licenses/')
+        [IO.File]::WriteAllText($document, $content, [Text.UTF8Encoding]::new($false))
+    }
+} else {
 @'
 Local development package. Do not publish as a completed installer.
 No SteamOS or Android system image, private research evidence, credentials or user configuration is included.
 QEMU, its Windows DLL dependencies, EDK2, Alpine packages, 7-Zip and .NET sources/licenses require a complete redistribution inventory before a public release.
 No WSL2, SDK, Node.js or installed VM software is needed to run the prepared app.
 '@ | Set-Content -LiteralPath (Join-Path $destination 'DEVELOPMENT_PACKAGE.txt') -Encoding utf8
-$archive = Join-Path $projectRoot "dist/oxp3-development-$($release.version)-$stamp.$Format"
+}
+$prefix = if ($PublicBeta) { 'oxp3-steamos-installer' } else { 'oxp3-development' }
+$archive = Join-Path $projectRoot "dist/$prefix-$($release.version)-$stamp.$Format"
 & 'C:\Program Files\7-Zip\7z.exe' a "-t$Format" $archive (Join-Path $destination '*') | Select-Object -Last 5
 if ($LASTEXITCODE -ne 0) { throw 'Package creation failed' }
 Get-Item $archive | Select-Object FullName,Length

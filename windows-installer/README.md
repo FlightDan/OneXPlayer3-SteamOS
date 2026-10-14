@@ -13,6 +13,8 @@
 5. 按“安装位置 → 准备系统（恢复镜像 → 3.10 镜像）→ 选择安装内容 → 确认方案 → 启动器安装 → 安装进度 → 完成”操作。3.10 `.raucb` 下载或本地选择后可继续，点击“开始安装”后才联网重建；按需选择组件和 rEFInd。
 6. 完成后导出日志、保存任务记录，通过设备 UEFI 启动菜单分别验证 SteamOS 和 Windows。
 
+实盘安装完成后自动在 Windows 当前用户桌面生成 **重启到 SteamOS.bat**。双击后处理管理员提示并确认重启；内置安装指定下一次启动 `SteamOS (OXP3)`（安装了 rEFInd 时先进入菜单），外部安装进入 UEFI 设置供手动选择外部盘。脚本独立运行，保留默认启动顺序；生成失败会在完成页提示，不影响已完成的系统写入。
+
 没有足够空间时，可对允许删除的数据分区执行“删除选定分区…”。**这是单独确认后立即执行的删除，清空整个分区，退出安装器不能撤销。** 工具不自动缩小 Windows 分区。首次使用请完整阅读 [安装与测试指南](docs/INSTALLATION_GUIDE.md)。
 
 ## 当前能力与边界
@@ -52,9 +54,9 @@
 
 固件写入前保存 `firmware-before.json`，读回核对后保存 `firmware-result.json`；失败时仅在固件状态仍匹配本次写入的情况下恢复原顺序。真实固件重启和 Windows / BitLocker 行为待实机验收。当前源码和新构建包含此改动，已有 ZIP 不会更新。
 
-## 当前本地测试包
+## 当前 Beta 运行包
 
-当前未发布公开下载。本次本地重打包为 `oxp3-development-0.1.0-beta-20261014-172424.zip`，构建编号 `20261014-172424`，包含设置初始密码后公共目录权限错误的修正及实际 `deck` 身份访问复核。先前 ZIP 保留为历史构建；完整解压新包后使用根目录 `SteamOSInstaller.exe`。重新打包不会自动修复已经安装的系统或旧准备镜像，实机启动仍待复测。修复与本地验证范围见 [权限回归说明](docs/PERMISSION_REGRESSION.md)。
+完整便携运行包通过 [GitHub Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 发布为 0.1.0 Beta 预发布，文件名为 `oxp3-steamos-installer-0.1.0-beta-<构建编号>.zip`。包含设置初始密码后的公共目录权限修复、安装完成后重启和 Windows 桌面的 SteamOS 启动入口。先前 development ZIP 保留为本地历史构建；完整解压新包后使用根目录 `SteamOSInstaller.exe`。重新打包不会自动修复已经安装的系统或旧准备镜像，实机启动仍待复测。修复与本地验证范围见 [权限回归说明](docs/PERMISSION_REGRESSION.md)，使用前先读 [Beta 运行包说明](docs/RELEASE_0.1.0_BETA.md)。
 
 当前源码包含工作空间与容量选择、剩余空间 NTFS 格式化、受保护的 Linux／未识别分区删除、详细日志导出、整合版标记，以及下表修复。源代码、已生成 ZIP 和实机验收状态应分别核对。
 

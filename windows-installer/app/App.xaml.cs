@@ -48,6 +48,7 @@ public partial class App : Application
             {
                 if (e.Args.Length == 2 && e.Args[1] == "native-volume-checks") { log.AppendLine(NativeVolumeChecks.Run()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "installer-restart-checks") { log.AppendLine(await InstallerRestartChecks.RunAsync()); }
+                else if (e.Args.Length == 2 && e.Args[1] == "desktop-reboot-checks") { log.AppendLine(SteamOSDesktopChecks.Run()); }
                 else if (e.Args.Length is 2 or 3 && e.Args[1] == "installation-progress-checks") { log.AppendLine(InstallationProgressChecks.Run(e.Args.Length == 3 ? e.Args[2] : null)); }
                 else if (e.Args.Length == 2 && e.Args[1] == "official-system-progress-checks") { log.AppendLine(await OfficialSystemProgressChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-recovery-checks") { log.AppendLine(await PhysicalRecoveryChecks.RunAsync()); }

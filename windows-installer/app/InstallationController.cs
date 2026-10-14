@@ -11,7 +11,8 @@ namespace OxpInstaller;
 public sealed record InstallationRequest(InstallationTargetKind Kind, string Source, bool Prepared, SelectedOptions? Options = null, PartitionSelection? PlannedPartition = null, bool Physical = false, bool UpgradeTo310 = false, RefindChoice? Refind = null, string? InitialDeckPassword = null, bool MakeDefaultBoot = false);
 public sealed record InstallationProgress(string Stage, string Message, double? Percent = null, string? Step = null);
 public sealed record InstallationSession(int Schema, string Id, InstallationTargetKind Kind, string Source, bool Prepared,
-    string Status, string Stage, string? Deployment, string? Error, DateTime UpdatedUtc, SelectedOptions? Options = null, bool Physical = false, RefindChoice? Refind = null, bool MakeDefaultBoot = false);
+    string Status, string Stage, string? Deployment, string? Error, DateTime UpdatedUtc, SelectedOptions? Options = null, bool Physical = false, RefindChoice? Refind = null, bool MakeDefaultBoot = false,
+    string? DesktopRebootScript = null, string? DesktopRebootWarning = null);
 public sealed record PartitionJob(int Schema, string Nonce, string Scope, InstallationTargetKind Kind, MediaSource Source, string? RecoveryState = null, PhysicalPlan? PhysicalPlan = null);
 public sealed record PartitionJobResult(string Status, string? Error);
 
@@ -240,6 +241,8 @@ public static partial class InstallationController
             token.ThrowIfCancellationRequested();
             if(request.Physical)
             {
+                var desktop = SteamOSDesktop.Install(request.Kind, deployment, log);
+                state = state with { DesktopRebootScript = desktop.Path, DesktopRebootWarning = desktop.Warning };
                 state=state with {Status="awaiting-device-boot",Stage="awaiting-device-boot",UpdatedUtc=DateTime.UtcNow}; Save(journal,state);
                 report(new("complete","已完成磁盘写入及读回，请通过掌机启动菜单选择 SteamOS，完成首次实机启动验证。",progress.Complete(), "04.99"));
                 return state;

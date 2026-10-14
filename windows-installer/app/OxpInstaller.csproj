@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../components/release.json" LogicalName="OxpInstaller.release.json" />
+    <EmbeddedResource Include="RestartToSteamOS.bat" LogicalName="OxpInstaller.RestartToSteamOS.bat" />
   </ItemGroup>
   <Target Name="CreatePortableLauncher" AfterTargets="Build" DependsOnTargets="_GetAppHostPaths">
     <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"

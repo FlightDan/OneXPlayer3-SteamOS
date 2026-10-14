@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 
 namespace OxpInstaller;
 
@@ -12,7 +13,15 @@ public partial class MainWindow
     private void RefreshBootPrerequisites()
     {
         BootPrerequisitesTitle.Text = PartitionInventory.L("安装前：关闭安全启动，准备恢复密钥", "Before installing: Secure Boot and recovery key");
-        BootPrerequisitesMessage.Text = PartitionInventory.L(BootPrerequisitesZh, BootPrerequisitesEn);
+        var message = PartitionInventory.L(BootPrerequisitesZh, BootPrerequisitesEn);
+        var instruction = PartitionInventory.L("安装前，请先在 BIOS / UEFI 中关闭安全启动", "Before installing, disable Secure Boot in BIOS / UEFI");
+        var warning = PartitionInventory.L("关闭安全启动或更改启动顺序可能导致硬盘无法自动解锁", "disabling Secure Boot or changing the boot order may prevent automatic drive unlocking");
+        var warningStart = message.IndexOf(warning, StringComparison.Ordinal);
+        BootPrerequisitesMessage.Inlines.Clear();
+        BootPrerequisitesMessage.Inlines.Add(new Run(instruction) { FontWeight = FontWeights.Bold, TextDecorations = TextDecorations.Underline });
+        BootPrerequisitesMessage.Inlines.Add(new Run(message[instruction.Length..warningStart]));
+        BootPrerequisitesMessage.Inlines.Add(new Run(warning) { FontWeight = FontWeights.Bold, TextDecorations = TextDecorations.Underline });
+        BootPrerequisitesMessage.Inlines.Add(new Run(message[(warningStart + warning.Length)..]));
         BootPrerequisitesConsent.Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = PartitionInventory.L("我已关闭安全启动；如启用加密，已保存恢复密钥并暂停保护", "Secure Boot is off; if encryption is enabled, I have saved the recovery key and suspended protection") };
         BootPrerequisitesExit.Content = PartitionInventory.L("退出，先做准备", "Exit to prepare");
         BootPrerequisitesContinue.Content = PartitionInventory.L("进入安装位置", "Choose installation location");

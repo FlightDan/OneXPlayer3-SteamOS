@@ -1,6 +1,6 @@
 # GitHub 上传准备
 
-更新：2026-10-14。用户已授权把当前安装器源码上传到已有的 [FlightDan/OneXPlayer3-SteamOS](https://github.com/FlightDan/OneXPlayer3-SteamOS) 仓库。首次上传保持私有，改为公开需等待用户确认。完整流程测试已按用户要求停止，排故转入单独会话；之前的局部通过记录不能作为本轮完整安装通过的结论。
+更新：2026-10-14。当前安装器源码已上传到 [FlightDan/OneXPlayer3-SteamOS](https://github.com/FlightDan/OneXPlayer3-SteamOS)。用户已进一步确认公开仓库并发布完整 ZIP，本次以 0.1.0 Beta 预发布交付，保留第三方许可与源码材料的实际状态。完整流程测试已按用户要求停止，排故转入单独会话；之前的局部通过记录不能作为本轮完整安装通过的结论。
 
 ## 拟上传目录
 

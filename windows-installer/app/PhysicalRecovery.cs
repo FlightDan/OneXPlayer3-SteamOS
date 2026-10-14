@@ -82,6 +82,8 @@ public static partial class InstallationController
         {
             state=state with{Status="running",Stage="recovering",Error=null,UpdatedUtc=DateTime.UtcNow};Save(sessionPath,state);
             await PhysicalInstallation.ApplyAsync(source,recovery.Plan,state.Deployment,log,token,resume:true);
+            var desktop = SteamOSDesktop.Install(state.Kind, state.Deployment, log);
+            state = state with { DesktopRebootScript = desktop.Path, DesktopRebootWarning = desktop.Warning };
             state=state with{Status="awaiting-device-boot",Stage="awaiting-device-boot",UpdatedUtc=DateTime.UtcNow};Save(sessionPath,state);
             log("INSTALL_STATUS=awaiting-device-boot");return state.Deployment;
         }

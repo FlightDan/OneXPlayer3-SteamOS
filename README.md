@@ -126,7 +126,7 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 ## 4. 安装方法
 
-打包应用将在 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供下载。**当前最终安装包尚未发布**；以下为拟发布流程，具体要求以对应版本说明为准。
+完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前为 **0.1.0 Beta 预发布**，完整实机验收仍在进行；使用前请阅读对应版本说明。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。

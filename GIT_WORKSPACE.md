@@ -32,7 +32,8 @@ Upload uses a separate checkout and an allowlisted source snapshot; the local
 development repository and its internal history are not pushed.
 
 Local ZIP files are historical builds. They are not updated when the source or
-documentation changes, and there is no public download yet. The current two-image
+documentation changes. A complete portable beta ZIP is provided through GitHub
+Releases, with its exact source commit recorded in build-info.json. The current two-image
 subpages and deferred RAUC reconstruction must be checked against each package's
 build-info.json. Full workflow validation is pending separate troubleshooting.
 See [the installer README](windows-installer/README.md) for delivery differences.
@@ -54,7 +55,7 @@ Export a fresh candidate for each upload so later code fixes are included.
 Original project content uses AGPL-3.0-only unless otherwise noted; third-party
 terms remain applicable. Full workflow and device acceptance, and binary
 redistribution materials, remain requirements for a formal installer release.
-The initial source upload remains private until the user confirms public visibility.
+The user has confirmed public visibility and a complete beta ZIP release.
 
 ## Local history archive
 
