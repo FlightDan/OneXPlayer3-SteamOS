@@ -1,0 +1,86 @@
+# Opti2XMX
+
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+**A Decky plugin for per-game OptiScaler management and Intel XeSS XMX setup on SteamOS.**
+
+Version **0.2.1** · Experimental preview · AGPL-3.0-only license
+
+## Features
+
+- Install OptiScaler 0.9.4 or 0.7.9, migrate recognized existing installations, and roll back changes.
+- Enable or restore a per-game XMX setup for compatible Intel hardware.
+- Toggle Opti injection separately, retaining XMX settings and backups.
+- Configure upscaling, frame-generation output and GPU identity; open the Opti overlay.
+- Chinese and English interface, following Steam's language.
+- Download progress reports actual bytes, known totals and extraction/installation stages. Unknown totals do not display a percentage. Busy and error messages remain visible.
+
+Closing the panel does not cancel the backend installation. Reopening attaches to the active operation; pending launch setup remains available for confirmation or recovery. Progress reconnects use a five-second read-only timeout and retain the last snapshot with a retry notice. Installation commands are never automatically retried.
+
+The installer's maintained source is `windows-installer/components/opti2xmx`. To rebuild after installing the locked JavaScript dependencies: `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/rollup/dist/bin/rollup -c`, and `node test_frontend.mjs`. Run `python3 -B -m unittest discover -v` on Linux for backend fixtures. These tests use temporary fixtures and do not validate a live Decky interface or game compatibility.
+
+This is an independent, unofficial project. It is not affiliated with Intel, Valve, Decky or OptiScaler.
+
+## Screenshots
+
+Main controls (English interface):
+
+![Opti2XMX main controls showing XMX acceleration and Opti injection](assets/screenshots/main-en.png)
+
+Advanced settings (English interface):
+
+![Opti2XMX advanced settings showing upscaling, frame generation and GPU identity](assets/screenshots/advanced-en.png)
+
+## Requirements
+
+- Native Steam on Linux/SteamOS, Decky Loader, and a Proton game launched at least once.
+- For XMX: compatible Intel hardware **and a separately prepared XMX runtime, patched ANV and compiler stack**. Installing this plugin alone does not enable XMX. See [runtime setup](docs/RUNTIME.md).
+- System `7z` for OptiScaler extraction; `xdotool` for the overlay shortcut. XMX checks also use `bash`, `ldd` and `vulkaninfo`.
+
+The XMX route has been developed on an Intel ONEXPLAYER 3. AMD Steam Deck hardware cannot provide Intel XMX acceleration. Broad hardware/game compatibility and Decky Store acceptance are not established.
+
+## Install
+
+Build the ZIP using the commands below, or use `opti2xmx-0.2.1.zip` when provided on the repository's [Releases page](https://github.com/FlightDan/Opti2XMX/releases).
+In Decky settings, enable developer mode and use **Install Plugin from ZIP File** (wording may vary by Loader version). Choose the built ZIP, then open Opti2XMX.
+
+The plugin runs as the Steam user and does not modify games just by loading. No upstream DLLs, private runtime binaries, game files or generated compiler caches are bundled.
+
+## Use
+
+1. Exit the game and select it in Opti2XMX.
+2. For a game without native XeSS, install OptiScaler or migrate a recognized existing Opti installation. Native XeSS games can use the XMX route directly.
+3. With the runtime prepared, enable **XMX acceleration**. The plugin writes and reads back Steam launch options.
+4. Use **Opti injection** to enable or disable the managed injector. For native XeSS Frame Generation, turn Opti injection off before testing.
+5. Restart the game after changing settings. Advanced settings include SR/FG output, GPU identity, version selection, rollback and uninstall.
+
+Turn XMX off before installing, changing versions, rolling back or removing Opti. Version changes require Opti injection to be enabled. Do not run another injector manager over an active managed setup.
+
+## Limits and recovery
+
+XMX requires a compatible XeSS path; this is not a global Gamescope upscaler. FSR1 and arbitrary custom upscalers are not automatically supported. Frame generation depends on the game, runtime, driver and Proton. OptiScaler 0.9.4 supports XeFG output, but its XeFG input path is not implemented. A successful installation does not prove XMX execution, image quality or a performance gain.
+
+Per-game journals live in `~/.local/share/opti2xmx/games/<appid>/`; Opti backups in `~/.local/share/opti2xmx/opti/<appid>/`. Pending operations offer completion or rollback. Unexpected DLL modifications block restoration instead of overwriting them. Uninstalling the Decky plugin does **not** restore games or delete backups: restore games through the plugin first, with games stopped.
+
+Downloads use official GitHub releases by default. Optional third-party mirrors (`ghfast.top`, `gh-proxy.com`) receive the public asset URL; no account credentials are sent. Their availability and contents are outside this project's control.
+
+## Build and test
+
+Use Node.js 20+, pnpm 9 and Python 3.10+. Backend tests require Linux and an ordinary, non-root user.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm build
+node test_frontend.mjs
+python3 -m unittest -v test_manager.Tests test_opti.Lifecycle test_per_game.BackupTests
+python3 package_plugin.py
+```
+
+The archive is written to `opti2xmx-0.2.1.zip`. It contains the Python backend, built frontend, documentation and licenses. Fixture tests cover restoration, interrupted operations and conflicting files; they do not replace real game and hardware testing.
+
+## Development and credits
+
+This project was developed with AI assistance. Contributions should be reviewed and tested on the target system. When reporting a bug, include plugin/Decky/SteamOS versions, GPU, game, Proton version and reproduction steps; remove personal paths and account details from logs.
+
+Built with [Decky](https://github.com/SteamDeckHomebrew/decky-loader), using [OptiScaler](https://github.com/optiscaler/OptiScaler) and the separately provisioned [xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux) runtime. See [third-party notices](THIRD_PARTY_NOTICES.md).

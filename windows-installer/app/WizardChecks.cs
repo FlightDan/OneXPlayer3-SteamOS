@@ -35,15 +35,17 @@ public static class WizardChecks
         Click("NextButton");
         Require(Find<StackPanel>("ContentPage").IsVisible && Find<TextBlock>("ValidationMessage").Text.Length > 0, "dependency-error-belongs-to-contents-page");
         options.OptionBoxes["decky"].IsChecked = true; Click("NextButton");
-        Require(Find<StackPanel>("ReviewPage").IsVisible, "contents-advance-to-review");
+        Require(Find<StackPanel>("StoragePage").IsVisible, "contents-advance-to-optional-storage");
+        Click("NextButton");
+        Require(Find<StackPanel>("ReviewPage").IsVisible, "empty-storage-advances-to-review");
         Click("NextButton");
         Require(Find<StackPanel>("BootPage").IsVisible && window.CompletedSession == null, "review-advances-to-boot-options-without-installing");
         Click("BackButton");
         Require(((SolidColorBrush)Find<TextBlock>("NavSource").Foreground).Color != Color.FromRgb(255, 139, 139), "configured-source-clears-red-status");
         Click("BackButton"); Require(Find<TextBox>("ImagePath").Text == prepared, "back-retains-reviewed-source");
-        Click("BackButton"); Click("BackButton"); Find<RadioButton>("ExternalTarget").IsChecked = true; Click("NextButton"); Click("NextButton"); Click("NextButton");
+        Click("TargetTab"); Find<RadioButton>("ExternalTarget").IsChecked = true; Click("NextButton"); Click("NextButton"); Click("NextButton"); Click("NextButton");
         Require(Find<TextBlock>("ReviewTarget").Text.Contains("外部完整系统") && Find<TextBlock>("ReviewLayout").Text.Contains("清空"), "external-review-describes-full-system-and-erase-semantics");
-        Click("BackButton"); Click("BackButton"); Find<CheckBox>("UsePrepared").IsChecked = false;
+        Click("SourceTab"); Find<CheckBox>("UsePrepared").IsChecked = false;
         Require(Find<TextBox>("ImagePath").Text.Length == 0, "source-kind-change-invalidates-old-path");
         Find<TextBox>("ImagePath").Text = "示例系统镜像.img";
         Find<CheckBox>("Upgrade310").IsChecked = false;
@@ -51,7 +53,7 @@ public static class WizardChecks
         Find<CheckBox>("Upgrade310").IsChecked = true;
         var layouts = new List<object>();
         foreach (var size in new[] { new Size(1060, 790), new Size(850, 620), new Size(1280, 800) })
-        foreach (var step in Enumerable.Range(0, 7))
+        foreach (var step in Enumerable.Range(0, 8))
         {
             window.Width = size.Width; window.Height = size.Height; window.UpdateLayout();
             window.PreviewStep(step); var root = (FrameworkElement)window.Content;
@@ -87,7 +89,7 @@ public static class WizardChecks
         Find<RadioButton>("EnglishLanguage").IsChecked = true;
         Require(Find<TextBlock>("IncompleteHeading").Text == "Some items are incomplete" && Find<TextBlock>("IncompleteItems").Text.Contains("Location:"), "incomplete-summary-supports-english");
         Find<RadioButton>("ChineseLanguage").IsChecked = true;
-        foreach (var pair in new[] { ("BootTab", "BootPage"), ("ContentTab", "ContentPage"), ("ReviewTab", "ReviewPage"), ("TargetTab", "TargetPage"), ("ProgressTab", "ProgressPage"), ("SourceTab", "SourcePage"), ("ResultTab", "ResultPage"), ("TargetTab", "TargetPage") })
+        foreach (var pair in new[] { ("BootTab", "BootPage"), ("ContentTab", "ContentPage"), ("StorageTab", "StoragePage"), ("ReviewTab", "ReviewPage"), ("TargetTab", "TargetPage"), ("ProgressTab", "ProgressPage"), ("SourceTab", "SourcePage"), ("ResultTab", "ResultPage"), ("TargetTab", "TargetPage") })
         {
             Click(pair.Item1);
             Require(Find<StackPanel>(pair.Item2).IsVisible, "arbitrary-navigation-" + pair.Item1);

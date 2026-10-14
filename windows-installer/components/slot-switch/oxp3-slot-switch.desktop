@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SteamOS Slot Switch / OS Recovery
+Name[zh_CN]=SteamOS 槽位切换 / 系统回退
+Exec=/usr/bin/python3 -I -B /home/.oxp3-slot-switch/desktop.py
+Icon=system-reboot
+Terminal=false
+Categories=System;

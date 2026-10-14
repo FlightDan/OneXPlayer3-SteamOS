@@ -16,7 +16,7 @@ from directory_transaction import DirectoryTransaction
 
 PLUGINS = {
     'steamgriddb': ('SteamGridDB', '1.8.1', 'decky-steamgriddb'),
-    'protondb': ('ProtonDB Badges', '1.2.0', 'protondb-decky'),
+    'protondb': ('ProtonDB Badges', '1.3.4', 'protondb-decky'),
 }
 UNIT = b'''# OXP3 managed offline Decky files; activation is a separate step.
 [Unit]
@@ -69,7 +69,9 @@ def extract_plugin(archive, destination, plugin_id):
     package_metadata = json.loads((plugin / 'package.json').read_text())
     if metadata['name'] != name or package_metadata['version'] != version:
         raise RuntimeError('Pinned plugin metadata does not match the selected component')
-    for relative in ('main.py', 'dist/index.js'):
+    required_files = ('main.py', 'dist/index.js')
+    if plugin_id == 'protondb': required_files += ('settings.py',)
+    for relative in required_files:
         if not (plugin / relative).is_file(): raise RuntimeError('Missing plugin runtime file: ' + relative)
     return plugin
 

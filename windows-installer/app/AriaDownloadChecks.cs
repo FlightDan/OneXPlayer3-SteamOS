@@ -67,13 +67,21 @@ public static class AriaDownloadChecks
     private static async Task CheckPanelAsync(Server server, List<string> events)
     {
         void Require(bool ok, string name) { if (!ok) throw new IOException("CHECK FAILED: " + name); events.Add(name); }
-        var window = new MainWindow();
+        var window = new MainWindow(rehearsal: true);
+        ((PartitionPicker)window.FindName("PartitionSelector")).AutomaticReadEnabled = false;
         var host = (System.Windows.Controls.StackPanel)window.FindName("DownloadHost");
         var panel = (ImageDownloadPanel)host.Children[0];
         var body = (System.Windows.Controls.StackPanel)panel.Content;
-        var source = body.Children.OfType<System.Windows.Controls.ComboBox>().Single();
-        var address = body.Children.OfType<System.Windows.Controls.TextBox>().Single();
-        var agreement = body.Children.OfType<System.Windows.Controls.CheckBox>().Single();
+        IEnumerable<T> Controls<T>(System.Windows.DependencyObject node) where T : System.Windows.DependencyObject
+        {
+            if (node is T match) yield return match;
+            foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(node).OfType<System.Windows.DependencyObject>())
+                foreach (var descendant in Controls<T>(child)) yield return descendant;
+        }
+        // Address and consent are nested in the copy/terms action rows.
+        var source = Controls<System.Windows.Controls.ComboBox>(body).Single();
+        var address = Controls<System.Windows.Controls.TextBox>(body).Single();
+        var agreement = Controls<System.Windows.Controls.CheckBox>(body).Single();
         var next = (System.Windows.Controls.Button)window.FindName("NextButton");
         Require(address.IsReadOnly && agreement.IsChecked != true, "native-panel-official-readonly-consent-unchecked");
         source.SelectedIndex = source.Items.Count - 1; address.Text = server.Url + "/panel.img";

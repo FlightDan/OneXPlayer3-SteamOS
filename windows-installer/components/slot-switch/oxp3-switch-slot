@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 -I -B /home/.oxp3-slot-switch/boot.py "$@"

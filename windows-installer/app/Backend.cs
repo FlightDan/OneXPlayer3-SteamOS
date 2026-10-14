@@ -131,7 +131,7 @@ public static class Backend
         if (task == "plugin-test")
         {
             CopyDirectory(Path.Combine(Root, "components"), Path.Combine(payload, "components"));
-            foreach (var (component, filename) in new[] { ("decky", "PluginLoader"), ("steamgriddb", "steamgriddb-1.8.1.zip"), ("protondb", "protondb-1.2.0.zip") })
+            foreach (var (component, filename) in new[] { ("decky", "PluginLoader"), ("steamgriddb", "steamgriddb-1.8.1.zip"), ("protondb", "protondb-1.3.4.zip") })
             {
                 var destination = Path.Combine(payload, "plugins", component); Directory.CreateDirectory(destination);
                 File.Copy(Path.Combine(Root, "cache/plugins", component, filename), Path.Combine(destination, filename), false);

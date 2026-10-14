@@ -48,13 +48,15 @@ Sources below follow the metadata and notices in the locally integrated archives
 | 插件 / Plugin | 版本 / Version | 来源 / Source | 用途 / Role |
 | --- | --- | --- | --- |
 | SteamGridDB | 1.8.1 | [SteamGridDB/decky-steamgriddb](https://github.com/SteamGridDB/decky-steamgriddb) | 游戏封面与素材 / Game artwork |
-| ProtonDB Badges | 1.2.0 | [bschelst/protondb-decky](https://github.com/bschelst/protondb-decky) | Proton 兼容性徽章 / Proton compatibility badges |
-| TabMaster | 2.15.1 | [Tormak9970/TabMaster](https://github.com/Tormak9970/TabMaster) | 游戏库标签管理 / Library tab management |
+| ProtonDB Badges | 1.3.4 | [bschelst/protondb-decky](https://github.com/bschelst/protondb-decky) | Proton 兼容性徽章 / Proton compatibility badges |
+| TabMaster | 2.15.1+oxp3.1 (local patch of 2.15.1) | [Tormak9970/TabMaster](https://github.com/Tormak9970/TabMaster) | 游戏库标签管理与缺失成就缓存兼容 / Library tabs with absent achievement-cache compatibility |
 | CSS Loader | 2.1.2 | [suchmememanyskill/SDH-CssLoader](https://github.com/suchmememanyskill/SDH-CssLoader) | Steam 界面主题 / Steam UI themes |
 | AutoFlatpaks | 1.6.8 | [jurassicplayer/decky-autoflatpaks](https://github.com/jurassicplayer/decky-autoflatpaks) | Flatpak 更新管理 / Flatpak update management |
 | Deck Settings | 1.2.6 | [DeckSettings/decky-game-settings](https://github.com/DeckSettings/decky-game-settings) | 社区游戏配置 / Community game settings |
-| HLTB for Deck | 2.0.10 | [morwy/hltb-for-deck](https://github.com/morwy/hltb-for-deck) | 游戏时长信息 / Game completion times |
+| HLTB for Deck | 2.0.12 | [morwy/hltb-for-deck](https://github.com/morwy/hltb-for-deck) | 游戏时长信息 / Game completion times |
 | Animation Changer | 1.3.2 | [TheLogicMaster/SDH-AnimationChanger](https://github.com/TheLogicMaster/SDH-AnimationChanger) | 启动与休眠动画管理 / Boot and suspend animations |
+
+TabMaster `2.15.1+oxp3.1` is built locally from the official Decky store 2.15.1 archive. Its TypeScript patch, unified diffs, and build notes are included in [the compatibility patch source](windows-installer/components/tabmaster-compat/README.txt).
 
 ## Android / Android support
 

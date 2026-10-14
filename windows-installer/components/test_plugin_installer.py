@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
-from plugin_installer import PluginInstaller, PLUGINS
+from plugin_installer import PluginInstaller, PLUGINS, extract_plugin
 
 
 class PluginOperationChecks(unittest.TestCase):
@@ -17,7 +17,7 @@ class PluginOperationChecks(unittest.TestCase):
         for plugin_id in PLUGINS: self.package(plugin_id)
         self.installer = PluginInstaller(self.root, self.resources)
 
-    def package(self, plugin_id, unsafe=False):
+    def package(self, plugin_id, unsafe=False, include_settings=True):
         name, version, folder = PLUGINS[plugin_id]
         directory = self.resources / plugin_id; directory.mkdir(exist_ok=True)
         with zipfile.ZipFile(directory / (plugin_id + '-' + version + '.zip'), 'w') as archive:
@@ -25,6 +25,7 @@ class PluginOperationChecks(unittest.TestCase):
             archive.writestr(folder + '/package.json', json.dumps({'version': version}))
             archive.writestr(folder + '/main.py', 'plugin backend fixture')
             archive.writestr(folder + '/dist/index.js', 'plugin frontend fixture')
+            if plugin_id == 'protondb' and include_settings: archive.writestr(folder + '/settings.py', 'plugin settings fixture')
             if unsafe: archive.writestr('../escape.py', 'refuse')
 
     def tearDown(self): self.temporary.cleanup()
@@ -35,6 +36,12 @@ class PluginOperationChecks(unittest.TestCase):
         with self.assertRaises(RuntimeError): self.installer.rollback('decky')
         self.installer.rollback('protondb'); self.installer.rollback('decky')
         self.assertFalse(self.installer.unit.exists())
+
+    def test_protondb_release_requires_settings_file(self):
+        self.package('protondb', include_settings=False)
+        archive = self.resources / 'protondb/protondb-1.3.4.zip'
+        with self.assertRaisesRegex(RuntimeError, 'settings.py'):
+            extract_plugin(archive, self.root / 'staging-protondb', 'protondb')
 
     def test_single_failure_retry_does_not_reinstall_other_plugins(self):
         self.installer.apply('decky'); self.installer.apply('steamgriddb')

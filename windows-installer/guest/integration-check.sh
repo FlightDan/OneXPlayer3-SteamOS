@@ -5,14 +5,49 @@ mkfs.ext4 -q -F /dev/vda
 mkdir -p /mnt/integration-test-scratch
 mount /dev/vda /mnt/integration-test-scratch
 export TMPDIR=/mnt/integration-test-scratch
+if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"shared-storage"})'; then
+    python3 -B /mnt/payload/components/test_shared_storage.py -v
+    umount /mnt/integration-test-scratch
+    printf '\nOXP_TASK_RESULT=passed\n'
+    exit 0
+fi
+if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"home-ownership"})'; then
+    python3 -B /mnt/payload/components/test_integration.py -v \
+        IntegrationChecks.test_fresh_home_allows_deck_to_create_steam \
+        IntegrationChecks.test_root_owned_home_parents_are_repaired_without_recursive_chown \
+        IntegrationChecks.test_user_directory_rejects_symlinks_and_foreign_owners
+    umount /mnt/integration-test-scratch
+    printf '\nOXP_TASK_RESULT=passed\n'
+    exit 0
+fi
+if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"desktop-language"})'; then
+    python3 -B /mnt/payload/components/test_integration.py \
+        IntegrationChecks.test_desktop_language_presets_stage_and_restore \
+        IntegrationChecks.test_kde_preserves_unrelated_settings \
+        IntegrationChecks.test_disabled_items_do_not_install
+    umount /mnt/integration-test-scratch
+    printf '\nOXP_TASK_RESULT=passed\n'
+    exit 0
+fi
 python3 -B /mnt/payload/tasks/test_offload_mounts.py
 python3 -B /mnt/payload/components/test_file_transaction.py
 python3 -B /mnt/payload/components/test_runtime_access.py
 python3 -B /mnt/payload/components/test_runtime_activation.py
 python3 -B /mnt/payload/components/test_system_update_policy.py
+python3 -B /mnt/payload/components/test_slot_switch.py
+python3 -B /mnt/payload/components/test_decky_order.py
 if [ -f /mnt/payload/selection.json ]; then
-    checks=$(python3 -B -c 'import json; value=json.load(open("/mnt/payload/selection.json")); assert value in ({"checks":"nonfatal"},{"checks":"permissions"},{"checks":"startup"}); print(value["checks"])')
-    if [ "$checks" = startup ]; then
+    checks=$(python3 -B -c 'import json; value=json.load(open("/mnt/payload/selection.json")); assert value in ({"checks":"nonfatal"},{"checks":"permissions"},{"checks":"startup"},{"checks":"slot-switch"}); print(value["checks"])')
+    if [ "$checks" = slot-switch ]; then
+        python3 -B /mnt/payload/components/test_integration.py IntegrationChecks.test_slot_switch_shared_lifecycle
+        test "$(cat /sys/block/vdc/ro)" = 1
+        mkdir -p /mnt/official-slot-source
+        mount -t btrfs -o ro,rescue=nologreplay /dev/vdc /mnt/official-slot-source
+        mount --bind /mnt/integration-test-scratch /mnt/official-slot-source/tmp
+        python3 -B /mnt/payload/components/test_official_slot_boot.py /mnt/official-slot-source
+        umount /mnt/official-slot-source/tmp
+        umount /mnt/official-slot-source
+    elif [ "$checks" = startup ]; then
         python3 -B /mnt/payload/components/test_integration.py \
             IntegrationChecks.test_mandatory_update_policy_stage_restore_and_missing_vendor_refusal \
             IntegrationChecks.test_cross_slot_home_original_and_recovery \

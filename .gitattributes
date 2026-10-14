@@ -3,6 +3,7 @@
 *.xaml text eol=lf
 *.py text eol=lf
 *.sh text eol=lf
+windows-installer/components/slot-switch/oxp3-switch-slot text eol=lf
 *.mjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf

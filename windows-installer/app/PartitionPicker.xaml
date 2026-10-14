@@ -22,9 +22,14 @@
    <TextBlock x:Name="CapacityLabel" FontWeight="SemiBold"/>
    <WrapPanel Margin="0,8,0,4"><TextBox x:Name="CapacityInput" Width="130" TextChanged="CapacityChanged" Margin="0,0,0,8"/><TextBlock Text="GiB" VerticalAlignment="Center" Margin="8,0,16,8"/><Button x:Name="Capacity64Button" Content="64G" Tag="64" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="Capacity100Button" ToolTipService.ShowOnDisabled="True" Content="100G" Tag="100" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="AllSpaceButton" Click="UseAll" Margin="0,0,0,8"/></WrapPanel>
    <TextBlock x:Name="CapacityHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,4,0,10"/>
-   <!-- Temporarily hidden pending post-release investigation of the remaining-space NTFS action. -->
-   <Button x:Name="FormatRemainingButton" Visibility="Collapsed" Click="FormatRemaining" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,8" ToolTipService.ShowOnDisabled="True"/>
-   <TextBlock x:Name="FormatRemainingHint" Visibility="Collapsed" TextWrapping="Wrap" Foreground="#61728A" Margin="0,0,0,12"/>
+    <TextBlock x:Name="PlacementLabel" FontWeight="SemiBold"/>
+    <WrapPanel Margin="0,8,0,8">
+     <RadioButton x:Name="AlignLeft" GroupName="InstallationPlacement" IsChecked="True" Checked="PlacementChanged" MinHeight="44" MinWidth="128" VerticalContentAlignment="Center" Margin="0,0,16,8"/>
+     <RadioButton x:Name="AlignRight" GroupName="InstallationPlacement" Checked="PlacementChanged" MinHeight="44" MinWidth="96" VerticalContentAlignment="Center" Margin="0,0,0,8"/>
+    </WrapPanel>
+    <TextBlock x:Name="PlacementHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,0,0,12"/>
+   <Button x:Name="FormatRemainingButton" Click="FormatRemaining" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,8" ToolTipService.ShowOnDisabled="True"/>
+   <TextBlock x:Name="FormatRemainingHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,0,0,12"/>
   </StackPanel>
   <StackPanel x:Name="ChangesHost"/>
  </StackPanel>

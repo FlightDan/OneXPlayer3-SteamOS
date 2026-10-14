@@ -25,7 +25,13 @@ New-Item -ItemType Directory -Force $destination | Out-Null
 function Copy-PackageTree([string]$source, [string]$relative) {
     $target = Join-Path $destination $relative
     New-Item -ItemType Directory -Force $target | Out-Null
-    foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and $_.Extension -notin @('.pyc','.pdb') }) {
+    foreach ($item in Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {
+        $_.FullName -notmatch '(^|[\\/])(__pycache__|node_modules)([\\/]|$)' -and
+        $_.Extension -notin @('.pyc','.pdb') -and
+        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])protondb([\\/])' -and $_.Name -match '\.zip$' -and $_.Name -ne 'protondb-1.3.4.zip') -and
+        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])hltb([\\/])' -and $_.Name -match '\.zip$' -and $_.Name -ne 'hltb-2.0.12.zip') -and
+        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])tabmaster([\\/])' -and $_.Name -match '\.zip$')
+    }) {
         if ($PublicRelease -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
         if ($relative -eq 'scripts' -and $item.Name -eq 'collect-desktop-runtime.py') { continue }
         $relativeFile = [IO.Path]::GetRelativePath($source, $item.FullName)
@@ -96,7 +102,7 @@ foreach ($resource in 'waydroid','oxp3-controls','hdr') {
         Copy-Item -LiteralPath (Join-Path $source $name) -Destination (Join-Path $target $name)
     }
 }
-foreach ($item in @(@('decky','PluginLoader'), @('steamgriddb','steamgriddb-1.8.1.zip'), @('protondb','protondb-1.2.0.zip'))) {
+foreach ($item in @(@('decky','PluginLoader'), @('steamgriddb','steamgriddb-1.8.1.zip'), @('protondb','protondb-1.3.4.zip'), @('tabmaster','tabmaster-2.15.1+oxp3.1.zip'), @('hltb','hltb-2.0.12.zip'))) {
     $directory = Join-Path $destination "cache/plugins/$($item[0])"
     New-Item -ItemType Directory -Force $directory | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "cache/plugins/$($item[0])/$($item[1])") -Destination $directory
@@ -119,7 +125,7 @@ if ($PublicRelease) {
     $releaseDoc = 'docs/RELEASE_' + $release.version.Replace('-', '_').ToUpperInvariant() + '.md'
     Copy-Item -LiteralPath (Join-Path $projectRoot $releaseDoc) -Destination (Join-Path $destination 'READ_FIRST.md')
     $readFirst = Join-Path $destination 'READ_FIRST.md'
-    $readFirstContent = [IO.File]::ReadAllText($readFirst).Replace('(../IMPLEMENTATION_STATUS.md)', '(IMPLEMENTATION_STATUS.md)').Replace('(INSTALLATION_GUIDE.md)', '(docs/INSTALLATION_GUIDE.md)')
+    $readFirstContent = [IO.File]::ReadAllText($readFirst).Replace('(../IMPLEMENTATION_STATUS.md)', '(IMPLEMENTATION_STATUS.md)').Replace('(INSTALLATION_GUIDE.md)', '(docs/INSTALLATION_GUIDE.md)').Replace('(screenshots/', '(docs/screenshots/').Replace('(REGRESSION_', '(docs/REGRESSION_')
     [IO.File]::WriteAllText($readFirst, $readFirstContent, [Text.UTF8Encoding]::new($false))
     # The installed package uses the existing flat runtime layout, while the
     # GitHub source keeps windows-installer as a subdirectory.
@@ -128,7 +134,7 @@ if ($PublicRelease) {
         $content = [IO.File]::ReadAllText($document)
         $content = $content.Replace('(../ROADMAP.md)', '(ROADMAP.md)').Replace('(../GIT_WORKSPACE.md)', '(GIT_WORKSPACE.md)')
         $content = $content.Replace('(../../ROADMAP.md)', '(../ROADMAP.md)').Replace('(../../GIT_WORKSPACE.md)', '(../GIT_WORKSPACE.md)').Replace('(../../LICENSE)', '(../LICENSE)').Replace('(../../THIRD_PARTY_NOTICES.md)', '(../THIRD_PARTY_NOTICES.md)')
-        $content = $content.Replace('(windows-installer/licenses/', '(licenses/')
+        $content = $content.Replace('(windows-installer/', '(')
         [IO.File]::WriteAllText($document, $content, [Text.UTF8Encoding]::new($false))
     }
 } else {

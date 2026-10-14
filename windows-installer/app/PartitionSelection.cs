@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace OxpInstaller;
 
 // A read-only plan. This is deliberately not a physical-disk write capability.
-public sealed record PartitionSelection(string Snapshot, bool Example, int Disk, long Start, long Capacity)
+public sealed record PartitionSelection(string Snapshot, bool Example, int Disk, long Start, long Capacity, bool AlignRight = false)
 {
     public SpaceChoice Target()
     {
@@ -13,7 +13,7 @@ public sealed record PartitionSelection(string Snapshot, bool Example, int Disk,
             ?? throw new InvalidOperationException(PartitionInventory.L("请重新选择有效的未分配空间。", "Select an eligible unallocated region again."));
         if (Capacity < PartitionInventory.Minimum || Capacity > gap.Size || Capacity % PartitionInventory.MiB != 0)
             throw new InvalidOperationException(PartitionInventory.L("安装容量必须在 64 GiB 与所选空间上限之间，且按 MiB 对齐。", "Capacity must be between 64 GiB and the selected region size, aligned to MiB."));
-        var target = gap with { Size = Capacity };
+        var target = gap with { Start = AlignRight ? checked(gap.Start + gap.Size - Capacity) : gap.Start, Size = Capacity };
         DiskPlanning.Layout(target);
         return target;
     }
@@ -114,10 +114,12 @@ public static class PartitionInventory
         var segments = new List<LayoutSegment>();
         foreach (var row in disk.Rows)
         {
-            if (row.Start != target.Start || row.Space == null) { segments.Add(new(row.Name, row.Start, row.Size, row.Type == "—" ? "free" : "keep")); continue; }
+            if (row.Start != selection.Start || row.Space == null) { segments.Add(new(row.Name, row.Start, row.Size, row.Type == "—" ? "free" : "keep")); continue; }
+            if (target.Start > row.Start) segments.Add(new(L("剩余未分配", "Remaining unallocated"), row.Start, target.Start - row.Start, "free"));
             var layout = JsonSerializer.SerializeToElement(DiskPlanning.Layout(target));
             foreach (var p in layout.EnumerateArray()) segments.Add(new(p.GetProperty("name").GetString()!, p.GetProperty("start").GetInt64(), p.GetProperty("size").GetInt64(), "new"));
-            if (row.Size > target.Size) segments.Add(new(L("剩余未分配", "Remaining unallocated"), target.Start + target.Size, row.Size - target.Size, "free"));
+            var targetEnd = checked(target.Start + target.Size); var rowEnd = checked(row.Start + row.Size);
+            if (rowEnd > targetEnd) segments.Add(new(L("剩余未分配", "Remaining unallocated"), targetEnd, rowEnd - targetEnd, "free"));
         }
         return segments.ToArray();
     }

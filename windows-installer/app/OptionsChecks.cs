@@ -11,11 +11,13 @@ public static class OptionsChecks
     public static string Run(MainWindow window)
     {
         var events = new List<string>();
+        var desktopLanguageDefaults = CheckDesktopLanguageDefaults(events);
         void Require(bool condition, string name) { if (!condition) throw new IOException(name); events.Add(name); }
         // This UI check uses synthetic layouts, so suppress the automatic hardware inventory.
         typeof(PartitionPicker).GetField("automaticReadAttempted", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .SetValue((PartitionPicker)window.FindName("PartitionSelector"), true);
         window.WindowState = WindowState.Normal; window.ShowActivated = false; window.Show();
+        BootSetupChecks.Acknowledge(window);
         Color ContentColor() => ((SolidColorBrush)((TextBlock)window.FindName("NavContent")).Foreground).Color;
         Require(ContentColor() == Color.FromRgb(148, 169, 195), "unvisited-content-starts-neutral");
         ((Button)window.FindName("ContentTab")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -102,7 +104,47 @@ public static class OptionsChecks
             Require(((ScrollViewer)window.FindName("PageScroll")).ActualHeight > 140, "options-scrollable-at-" + size.Width);
         }
         CheckAcceptedReview(window, events);
-        return JsonSerializer.Serialize(new { passed = true, events }, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.Serialize(new { passed = true, events, desktopLanguageDefaults }, new JsonSerializerOptions { WriteIndented = true });
+    }
+    private static List<JsonElement> CheckDesktopLanguageDefaults(List<string> events)
+    {
+        var original = InstallerI18n.Language;
+        var defaults = new List<JsonElement>();
+        void Require(bool condition, string name) { if (!condition) throw new IOException(name); events.Add(name); }
+        try
+        {
+            foreach (var language in new[] { "zh-CN", "en-US" })
+            {
+                InstallerI18n.SetLanguage(language);
+                var panel = new InstallerOptionsPanel();
+                var expected = language == "zh-CN" ? "zh_CN" : "en_US";
+                Require(panel.Selection.KdeLanguage == expected && InstallerOptions.Defaults.KdeLanguage == expected,
+                    "desktop-default-follows-installer-" + language);
+                var selection = panel.Selection;
+                InstallerOptions.Validate(selection);
+                defaults.Add(JsonSerializer.SerializeToElement(selection, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }));
+                var changes = 0; panel.Changed += (_, _) => changes++;
+                InstallerI18n.SetLanguage(language == "zh-CN" ? "en-US" : "zh-CN"); panel.Refresh();
+                Require(panel.Selection.KdeLanguage == (language == "zh-CN" ? "en_US" : "zh_CN"),
+                    "untouched-desktop-follows-language-switch-" + language);
+                Require(changes == 1, "automatic-desktop-language-notifies-plan-" + language);
+                changes = 0;
+                foreach (var manual in new[] { "system", "zh_TW", "zh_CN", "en_US" })
+                {
+                    panel.KdeChoice.SelectedItem = panel.KdeChoice.Items.Cast<ComboBoxItem>().Single(x => (string)x.Tag == manual);
+                    Require(changes > 0, "manual-desktop-language-notifies-plan-" + language + "-" + manual);
+                    changes = 0;
+                    InstallerI18n.SetLanguage("zh-CN"); panel.Refresh();
+                    InstallerI18n.SetLanguage("en-US"); panel.Refresh();
+                    Require(panel.Selection.KdeLanguage == manual && changes == 0,
+                        "manual-desktop-language-survives-switches-" + language + "-" + manual);
+                    var roundtrip = JsonSerializer.Deserialize<SelectedOptions>(JsonSerializer.Serialize(panel.Selection))!;
+                    Require(roundtrip.KdeLanguage == manual, "desktop-language-roundtrip-" + language + "-" + manual);
+                }
+            }
+        }
+        finally { InstallerI18n.SetLanguage(original); }
+        return defaults;
     }
     private static void CheckAcceptedReview(MainWindow window, List<string> events)
     {

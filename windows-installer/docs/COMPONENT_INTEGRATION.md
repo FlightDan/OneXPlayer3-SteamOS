@@ -1,5 +1,11 @@
 # 安装修复与第三方预装
 
+2026-10-15 TabMaster 修复：固定使用官方 Decky 商店的 2.15.1 原始归档，并构建本地兼容版 `2.15.1+oxp3.1`。补丁仅在 Steam 成就缓存尚未初始化时安全读取两个 `mapCache` 值；`GetAchievementProgress` 保持原样，以便 Steam 继续排入缓存更新。补丁 TypeScript、统一差异和说明随源码保存；安装器固定新归档，检查版本和 `dist/index.js` 中的补丁运行时代码。旧安装包不会自动更新。
+
+2026-10-14 插件修复：离线资源固定为上游预构建的 ProtonDB Badges 1.3.4 和 HLTB for Deck 2.0.12，随新安装包携带，不依赖安装时下载。实机确认 ProtonDB 使用新版 `useParams` 接口，HLTB 已成功取得《黑神话：悟空》和《博德之门 3》的时长数据。CSS Loader 2.1.2 保持原版代码；安装时提前创建 deck 拥有的 `homebrew/themes`，保留 root 拥有的插件代码目录，修复初始化权限错误。六项隔离 Linux 组件测试和 Windows 构建通过；既有安装包不会自动更新。
+
+新增默认开启的 `slot-switch`，在 KDE 桌面和应用菜单提供“SteamOS 槽位切换 / 系统回退”。恢复程序保存在 root 拥有的共享 home 目录；确认后选择另一槽并重启，不恢复共享用户数据。旧包和已安装系统不会自动更新入口；真实掌机重启验收待完成，见[槽位切换说明](SLOT_SWITCH.md)。
+
 新增默认开启的 `windows-reboot` 组件，依赖 Decky，随源码携带前端、受限重启程序、polkit 规则与桌面快捷方式。使用现有 A/B 文件事务与共享 home 原件记录；安装和首启不修改 BootNext，用户确认后才设置一次性 Windows 启动。实机切换待验，见 [重启进入 Windows](WINDOWS_REBOOT.md)。
 
 2026-10-14 首次启动修正：InputPlumber 自动启动、root 插件目录与普通用户读取、Steam 的 Decky 连接标记、UTF-8 返回游戏模式入口，以及 `/opt` 实际共享挂载均已进入安装与复核流程。参见 [首次启动修复及验证范围](FIRSTBOOT_INPUT_DECKY.md)。旧安装包不会自动包含这些改动。
@@ -17,6 +23,8 @@
 最新整合：Opti2XMX 0.2.1 已加入默认修复，含独立 XMX / Opti 注入开关、版本管理和中英文文案。默认共 17 项修复及 10 项第三方预装；另选 KDE 语言会增加一条语言配置记录。详见 [Opti2XMX 说明](OPTI2XMX_INTEGRATION.md)。此前的 26 项验证是加入 Opti2XMX 前的结果；用户已确认 Wi-Fi 为硬件问题，最终包保留 c106 固件。
 
 正常安装向导已接入设备修复和第三方插件预装。设备适配默认开启，可以逐项关闭；依赖缺失会明确拒绝。第三方预装包含 Decky、SteamGridDB、ProtonDB、TabMaster、CSS Loader、AutoFlatpaks、Deck Settings、HLTB、Animation Changer 与 Waydroid。另有“SteamOS 桌面模式 应用商店 · 中科大 Flathub 源（可选）”，中文界面初始开启、英文初始关闭，手动选择后切换语言不再改动。
+
+ProtonDB Badges 1.3.4 和 HLTB for Deck 2.0.12 使用各自上游 GitHub 发布的预构建 ZIP；资源准备脚本固定版本和直链。TabMaster `2.15.1+oxp3.1` 从官方商店归档 `2.15.1` 可重复构建，详见 [补丁源码与差异](../components/tabmaster-compat/README.txt)；安装器检查该补丁版本及前端运行时代码。
 
 所选可选组件在写入前发现资源缺失、归档无效、版本不兼容或依赖未安装时，自动记录 `not_installed`、`safe_to_skip: true` 和原因，继续安装其他组件及 SteamOS。Decky 不可用时，其依赖插件也会跳过。当前预装使用离线缓存；网络问题导致资源没有备齐时适用同一规则。完成页优先列出“已跳过 / 不可用”的组件、A/B 槽位及原因，文件部署成功的组件仍需首次启动核对激活。
 

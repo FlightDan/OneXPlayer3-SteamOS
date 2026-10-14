@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "date": "2026-10-14",
+  "component": "slot-switch",
+  "isolated_build": "passed",
+  "installer_options_checks": "passed",
+  "linux_slot_checks": {"passed": 17, "failed": 0, "skipped": 0},
+  "shared_ab_file_lifecycle": "passed",
+  "official_bootconf_selection": {"A_to_B": "passed", "B_to_A": "passed", "future_timestamp": "passed", "current_config_preserved": "passed"},
+  "qemu_task_result": "passed",
+  "local_transcript": "20261014T154119979-integration-check.txt",
+  "hardware_deployed": false,
+  "real_reboot_tested": false,
+  "graphical_dialog_tested_on_device": false
+}

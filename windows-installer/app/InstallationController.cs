@@ -56,6 +56,7 @@ public static partial class InstallationController
         }
         if(request.Physical && (request.PlannedPartition==null || request.PlannedPartition.Example)) throw new IOException("实际安装必须选择真实磁盘的未分配空间。 / Select real unallocated disk space.");
         if (request.Options != null) InstallerOptions.Validate(request.Options);
+        SharedStorage.ValidateSelection(request.Options?.StorageMounts, request.PlannedPartition?.Snapshot);
         if (request.Options?.SetDeckPassword == true)
         {
             var password = request.InitialDeckPassword;
@@ -81,6 +82,13 @@ public static partial class InstallationController
         CancellationToken token, Action<InstallationSession>? created = null)
     {
         ValidateRequest(request); token.ThrowIfCancellationRequested();
+        if (request.Physical && request.Options?.StorageMounts is { Length: > 0 } mounts)
+        {
+            using var inventoryTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            inventoryTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var fresh = await Backend.PowerShellAsync("read-disks.ps1", [], _ => { }, inventoryTimeout.Token);
+            SharedStorage.Revalidate(mounts, request.PlannedPartition!.Snapshot, fresh);
+        }
         Directory.CreateDirectory(Work);
         var id = Guid.NewGuid().ToString("N"); var directory = Path.Combine(Work, "install-session-" + id); Directory.CreateDirectory(directory);
         var journal = Path.Combine(directory, "session.json");
@@ -139,6 +147,7 @@ public static partial class InstallationController
                 Phase("components", InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…"), "02.01");
                 var expected = 2 * (request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
                     + (request.Options.SetDeckPassword || request.Options.EnableSsh ? 1 : 0)
+                    + (request.Options.StorageMounts is { Length: > 0 } ? 1 : 0)
                     + (InstallerOptions.RequiresSystemUpdatePolicy(request.Options) ? 1 : 0));
                 var componentMessage = InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…");
                 void ComponentLog(string text)

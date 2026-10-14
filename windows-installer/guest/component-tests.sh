@@ -3,9 +3,11 @@ set -eu
 . /mnt/payload/tasks/common.sh
 cd /mnt/payload/components
 python3 -B -m unittest -v test_windows_reboot.py
+python3 -B -m unittest -v test_slot_switch.py
 python3 -B -m unittest -v test_file_transaction.py
 python3 -B -m unittest -v test_directory_transaction.py
 python3 -B -m unittest -v test_plugin_installer.py
+python3 -B -m unittest -v test_decky_order.py
 cd /mnt/payload/components/hdr
 python3 -B -m unittest -v test_generate.py
 cd /mnt/payload/components/waydroid

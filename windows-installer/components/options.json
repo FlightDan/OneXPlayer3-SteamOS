@@ -18,6 +18,13 @@
   ],
   "repairs": [
     {
+      "id": "slot-switch",
+      "zh": "KDE 槽位切换 / 系统回退",
+      "en": "KDE slot switch / OS recovery",
+      "default": true,
+      "dependencies": []
+    },
+    {
       "id": "refind",
       "zh": "rEFInd · 双系统图形启动菜单",
       "en": "rEFInd · graphical dual-boot menu",

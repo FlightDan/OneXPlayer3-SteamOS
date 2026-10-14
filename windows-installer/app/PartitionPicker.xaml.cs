@@ -32,6 +32,8 @@ public partial class PartitionPicker : UserControl
     internal decimal DefaultCapacityGiB { get; set; } = 128;
     internal bool AllowPhysicalDeletion { get; set; } = true;
     internal bool IsBusy => busy;
+    internal string? InventorySnapshot => snapshot;
+    internal bool IsExampleSnapshot => example;
     private bool debugMode;
     internal void SetDebugMode(bool enabled)
     {
@@ -58,7 +60,7 @@ public partial class PartitionPicker : UserControl
         get
         {
             if (busy || snapshot == null || gap == null) throw new InvalidOperationException(L("请选择一段可安装的未分配空间。", "Select an eligible unallocated region."));
-            var selected = new PartitionSelection(snapshot, example, gap.Disk, gap.Start, PartitionInventory.ParseCapacity(CapacityInput.Text, gap.Size));
+            var selected = new PartitionSelection(snapshot, example, gap.Disk, gap.Start, PartitionInventory.ParseCapacity(CapacityInput.Text, gap.Size), AlignRight.IsChecked == true);
             selected.Target(); return selected;
         }
     }
@@ -69,11 +71,15 @@ public partial class PartitionPicker : UserControl
         DiskReadStatus.Text = L("正在读取…", "Reading…");
         ExampleButton.Content = L("使用示例布局", "Use example layout");
         DeletePartitionButton.Content = L("删除选定分区…", "Delete selected partition…");
-        FormatRemainingButton.Content = L("将剩余空间格式化为 NTFS…", "Format remaining space as NTFS…");
-        FormatRemainingHint.Text = L("保留所选 SteamOS 容量，立即格式化同一段空间的余量。1 MiB 对齐（兼容 4K），4096 字节簇。", "Reserve the selected SteamOS capacity and format the rest of this region now. 1 MiB alignment (4K aligned), 4096-byte clusters.");
+        FormatRemainingButton.Content = L("将剩余空间格式化为 NTFS（Beta · 未测试）…", "Format remaining space as NTFS (Beta · Untested)…");
+        FormatRemainingHint.Text = L("Beta · 未测试（实机）：保留所选 SteamOS 容量（可选 64 GiB），将同一段空间的余量建为共享文件分区。确认后立即格式化；分区起点 1 MiB 对齐（满足 4K 对齐），4096 字节簇。", "Beta · Untested on hardware: reserve the selected SteamOS capacity (64 GiB available) and create a shared-file partition in the rest of this region. Formats immediately after confirmation; partition start aligned to 1 MiB (4K aligned), 4096-byte clusters.");
         NameColumn.Header = L("分区 / 空间", "Partition / region"); SizeColumn.Header = L("容量", "Size");
         FreeColumn.Header = L("可用", "Free"); TypeColumn.Header = L("类型", "Type"); StatusColumn.Header = L("状态", "Status");
         CapacityLabel.Text = L("SteamOS 安装容量", "SteamOS capacity"); AllSpaceButton.Content = L("使用全部空间", "Use all space");
+        PlacementLabel.Text = L("安装区位置", "Installation placement");
+        AlignLeft.Content = L("靠左（默认）", "Left (default)");
+        AlignRight.Content = L("靠右", "Right");
+        PlacementHint.Text = L("靠左：SteamOS 在前、余量在后；靠右：余量在前、SteamOS 在后。两种方式均按 1 MiB 对齐，满足 4K 对齐。", "Left: SteamOS first, remainder after. Right: remainder first, SteamOS after. Both use 1 MiB boundaries for 4K alignment.");
         AutomationProperties.SetName(Disks, L("目标磁盘", "Target disk"));
         AutomationProperties.SetName(Partitions, L("分区与未分配空间", "Partitions and unallocated space"));
         AutomationProperties.SetName(CapacityInput, CapacityLabel.Text);
@@ -217,6 +223,7 @@ public partial class PartitionPicker : UserControl
             && capacity * PartitionInventory.GiB <= gap.Size) CapacityInput.Text = value;
     }
     private void CapacityChanged(object sender, TextChangedEventArgs e) { if (!updating && ChangesHost != null) UpdatePlan(); }
+    private void PlacementChanged(object sender, RoutedEventArgs e) { if (!updating && ChangesHost != null) UpdatePlan(); }
     private void UpdatePlan()
     {
         if (updating) return;
@@ -271,7 +278,7 @@ public partial class PartitionPicker : UserControl
             var fresh = await Backend.PowerShellAsync("read-disks.ps1", [], _ => { }, timeout.Token);
             busy = false;
             if (formatted) SelectReservedSpace(fresh, false, request); else LoadSnapshot(fresh, false);
-            if (!formatted) InventoryStatus.Text = failure == null ? L("已取消格式化。磁盘列表已刷新。", "Formatting cancelled. Disks refreshed.")
+            if (!formatted) InventoryStatus.Text = failure == null ? L("已取消格式化。磁盘列表已刷新，请重新选择安装空间和容量。", "Formatting cancelled. Disks refreshed; select the installation region and capacity again.")
                 : L("格式化未确认完成，可能已创建分区。请核对刷新后的布局再继续：\n", "Formatting was not confirmed; a partition may have been created. Review the refreshed layout before continuing:\n") + failure;
         }
         catch (Exception error) { Clear(); InventoryStatus.Text = L("无法确认当前布局，请重新读取磁盘：\n", "Could not confirm the layout. Read disks again:\n") + failure + "\n" + error.Message; }
@@ -280,9 +287,12 @@ public partial class PartitionPicker : UserControl
 
     internal void SelectReservedSpace(string json, bool isExample, RemainingFormatRequest request)
     {
+        RemainingSpaceFormat.ValidateFormattedSnapshot(json, isExample, request);
         LoadSnapshot(json, isExample);
         Disks.SelectedItem = Disks.Items.Cast<InventoryDisk>().SingleOrDefault(d => d.Number == request.Selection.Disk);
-        Partitions.SelectedItem = Partitions.Items.Cast<PartitionRow>().SingleOrDefault(r => r.Space?.Start == request.Selection.Start);
+        Partitions.SelectedItem = Partitions.Items.Cast<PartitionRow>().SingleOrDefault(r => r.Space?.Start == request.Selection.Target().Start);
+        AlignRight.IsChecked = request.Selection.AlignRight;
+        AlignLeft.IsChecked = !request.Selection.AlignRight;
         if (gap != null) CapacityInput.Text = (request.Selection.Capacity / (decimal)PartitionInventory.GiB).ToString(CultureInfo.InvariantCulture);
         InventoryStatus.Text = isExample ? L("示例：已模拟创建 NTFS，保留的 SteamOS 空间已选中。", "Example: NTFS creation simulated; reserved SteamOS space selected.")
             : L("NTFS 数据分区已创建。已刷新磁盘并选中保留的 SteamOS 空间。", "NTFS data partition created. Disks refreshed and reserved SteamOS space selected.");
@@ -295,7 +305,8 @@ public partial class PartitionPicker : UserControl
         Text(L("安装前后 · 规划预览", "Before and after · planned layout"), true);
         Text((plan.Example ? L("示例 · ", "Example · ") : "") + disk.Title);
         var before = PartitionInventory.Before(disk); var after = PartitionInventory.After(plan);
-        var remainder = disk.Rows.Single(r => r.Space?.Start == target.Start).Size - plan.Capacity;
+        var remainder = disk.Rows.Single(r => r.Space?.Start == plan.Start).Size - plan.Capacity;
+        Text(plan.AlignRight ? L("安装区靠右 · SteamOS 位于所选空间末端", "Right placement · SteamOS at the end of the selected region") : L("安装区靠左 · SteamOS 位于所选空间起点", "Left placement · SteamOS at the start of the selected region"));
         Text(L($"SteamOS：{PartitionInventory.SizeText(plan.Capacity)} · 此段剩余未分配：{PartitionInventory.SizeText(remainder)}", $"SteamOS: {PartitionInventory.SizeText(plan.Capacity)} · Unallocated remainder in this region: {PartitionInventory.SizeText(remainder)}"));
         Bar(L("安装前", "Before"), before); Bar(L("安装后（规划）", "After (planned)"), after);
         Text(L("蓝：保留分区　绿：新增 SteamOS　灰：未分配", "Blue: kept   Green: new SteamOS   Gray: unallocated"));

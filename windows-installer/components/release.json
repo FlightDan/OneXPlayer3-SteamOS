@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "product": "OXP3 SteamOS",
-  "version": "0.1.1",
-  "display_version": "0.1.1",
+  "version": "0.1.2",
+  "display_version": "0.1.2",
   "channel": "stable",
-  "release_date": "2026-10-14"
+  "release_date": "2026-10-15"
 }

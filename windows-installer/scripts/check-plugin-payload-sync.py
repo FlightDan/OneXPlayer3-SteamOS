@@ -7,6 +7,8 @@ import tarfile
 root=Path(__file__).resolve().parents[1]
 research=root.parent/'research'
 manifest=json.loads((root/'cache/integration/manifest.json').read_text())
+opti=root/'components/opti2xmx'
+if not opti.is_dir():opti=research/'xess/decky'
 checks=[]
 for component,folder,source in (
     ('oxp3-cpu','OXP3-CPU','overlay/cpu-plugin-index.js'),
@@ -17,11 +19,14 @@ for component,folder,source in (
     entry=next(x for x in manifest[component]['files'] if x['target']==f'home/deck/homebrew/plugins/{folder}/dist/index.js')
     assert (root/'cache/integration'/entry['source']).read_bytes()==(research/source).read_bytes(), component
     checks.append({'component':component,'frontend_matches':True})
-for name in ('main.py','manager.py','opti.py','plugin.json','package.json','README.md'):
+assert (opti/'dist/index.js').read_bytes()==(research/'xess/decky/dist/index.js').read_bytes()
+for name in ('main.py','manager.py','opti.py','download_progress.py','plugin.json','package.json','README.md'):
     entry=next(x for x in manifest['opti2xmx']['files'] if x['target'].endswith('/'+name))
     assert (root/'cache/integration'/entry['source']).read_bytes()==(research/'xess/decky'/name).read_bytes(),name
+    assert (opti/name).read_bytes()==(research/'xess/decky'/name).read_bytes(),name
 entry=next(x for x in manifest['opti2xmx']['files'] if x['target'].endswith('/per_game.py'))
 assert (root/'cache/integration'/entry['source']).read_bytes()==(research/'xess/per_game.py').read_bytes()
+assert (opti/'per_game.py').read_bytes()==(research/'xess/per_game.py').read_bytes()
 profile=json.loads((root/'cache/components/oxp3-controls/profile.json').read_text())
 with zipfile.ZipFile(root/'cache/components/oxp3-controls'/profile['archive']) as z:
     for source in ('overlay/cpu-plugin-index.js','overlay/fan-plugin-index.js','charging/battery-plugin-index.js'):

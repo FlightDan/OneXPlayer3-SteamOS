@@ -3,6 +3,7 @@ import base64
 import configparser
 import json
 import os
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,6 +14,131 @@ PAYLOAD=Path('/mnt/payload')
 CATALOG=json.loads((PAYLOAD/'components/options.json').read_text())
 
 class IntegrationChecks(unittest.TestCase):
+    def test_decky_order_retries_saved_intent_after_interrupted_journal_commit(self):
+        from integration import seed_decky_order
+        from decky_order import SETTINGS
+        self.options.update(repairs=['oxp3-cpu'],plugins=['decky'],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        state=self.root/'home/.oxp3-installer/integration/A'
+        record=state/'decky-order/state.json'
+        value=json.loads(record.read_text()); value['phase']='installing'
+        record.write_text(json.dumps(value))
+        # Simulate interruption after the file rename, before installed was saved.
+        original=(self.root/SETTINGS).read_bytes()
+        self.assertEqual(seed_decky_order(self.root,state,(1000,1000)),[SETTINGS])
+        self.assertEqual((self.root/SETTINGS).read_bytes(),original)
+        self.assertEqual(json.loads(record.read_text())['phase'],'installed')
+
+    def test_decky_order_is_per_slot_with_shared_home(self):
+        from decky_order import SETTINGS
+        self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
+        temporary=tempfile.TemporaryDirectory(prefix='oxp3-decky-order-B-')
+        self.addCleanup(temporary.cleanup); other=Path(temporary.name)
+        shutil.copytree(self.root,other,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
+        (self.root/'home').mkdir()
+        (other/'home').mkdir()
+        subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
+        self.addCleanup(lambda: subprocess.run(['umount',str(other/'home')],check=True))
+        stage(self.root,PAYLOAD,self.options,'A')
+        (self.root/SETTINGS).write_text('{"pluginOrder":["SteamGridDB","OXP3 CPU"]}')
+        stage(other,PAYLOAD,self.options,'B')
+        self.assertEqual(json.loads((other/SETTINGS).read_text())['pluginOrder'],['OXP3 CPU','SteamGridDB'])
+        self.assertEqual(json.loads((self.root/SETTINGS).read_text())['pluginOrder'],['SteamGridDB','OXP3 CPU'])
+        self.assertEqual(restore(other,'B','oxp3-cpu'),[])
+        self.assertEqual(restore(other,'B','steamgriddb'),[])
+        self.assertEqual(restore(other,'B','decky'),[])
+        self.assertFalse((other/SETTINGS).exists())
+        self.assertEqual(json.loads((self.root/SETTINGS).read_text())['pluginOrder'],['SteamGridDB','OXP3 CPU'])
+
+    def test_decky_default_order_is_once_only_and_restore_preserves_manual_changes(self):
+        from decky_order import SETTINGS
+        self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
+        first=stage(self.root,PAYLOAD,self.options,'A')
+        path=self.root/SETTINGS
+        self.assertEqual(json.loads(path.read_text())['pluginOrder'],['OXP3 CPU','SteamGridDB'])
+        self.assertIn(SETTINGS,first['components']['decky']['files'])
+        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+        path.write_text('{"pluginOrder":["SteamGridDB","OXP3 CPU"],"sortPlugins":false}')
+        manual=path.read_bytes()
+        stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(path.read_bytes(),manual)
+        self.assertEqual(restore(self.root,'A','oxp3-cpu'),[])
+        self.assertEqual(restore(self.root,'A','steamgriddb'),[])
+        self.assertTrue(restore(self.root,'A','decky'))
+        self.assertEqual(path.read_bytes(),manual)
+
+    def test_decky_default_order_restore_removes_only_seeded_settings(self):
+        from decky_order import SETTINGS
+        self.options.update(repairs=['oxp3-cpu'],plugins=['decky'],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(restore(self.root,'A','oxp3-cpu'),[])
+        self.assertEqual(restore(self.root,'A','decky'),[])
+        self.assertFalse((self.root/SETTINGS).exists())
+
+    def test_css_theme_directory_is_writable_without_chowning_code(self):
+        from runtime_access import require_access
+        self.options.update(repairs=[],plugins=['decky','css-loader','protondb','hltb','tabmaster'],kde_language='system')
+        parent=self.root/'home/deck/homebrew'
+        parent.mkdir(parents=True); parent.chmod(0o755)
+        sentinel=parent/'root-owned-sentinel'; sentinel.write_text('preserve')
+        original=(sentinel.stat().st_uid,sentinel.stat().st_gid)
+        old_mask=os.umask(0o077)
+        try:
+            first=stage(self.root,PAYLOAD,self.options,'A')
+            self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+            stage(self.root,PAYLOAD,self.options,'B')
+        finally: os.umask(old_mask)
+        themes=parent/'themes'
+        self.assertEqual((themes.stat().st_uid,themes.stat().st_gid),(1000,1000))
+        self.assertEqual(parent.stat().st_uid,0)
+        self.assertEqual((sentinel.stat().st_uid,sentinel.stat().st_gid),original)
+        self.root.chmod(0o755)
+        require_access(self.root,{'home/deck/homebrew/themes':os.R_OK|os.W_OK|os.X_OK})
+        for folder,version in [('protondb-decky','1.3.4'),('hltb-for-deck','2.0.12')]:
+            package=self.root/'var/lib/oxp3-installer/decky/runtime/plugins'/folder/'package.json'
+            self.assertEqual(json.loads(package.read_text())['version'],version)
+            self.assertEqual(package.stat().st_uid,0)
+        tabmaster=self.root/'var/lib/oxp3-installer/decky/runtime/plugins/TabMaster'
+        package=json.loads((tabmaster/'package.json').read_text())
+        self.assertEqual(package['version'],'2.15.1+oxp3.1')
+        self.assertEqual(package['oxp3_compatibility_patch'],'Allow absent Steam achievement cache during initialization')
+        runtime=(tabmaster/'dist/index.js').read_text()
+        self.assertIn('m_achievementProgress?.mapCache?.size ?? 0',runtime)
+        self.assertIn('m_achievementProgress?.mapCache?.get(appOverview.appid)',runtime)
+        (themes/'user-theme.css').write_text('preserve')
+        self.assertEqual(restore(self.root,'A','css-loader'),[])
+        self.assertEqual((themes/'user-theme.css').read_text(),'preserve')
+
+    def test_slot_switch_shared_lifecycle(self):
+        from runtime_access import require_access
+        self.options.update(repairs=['slot-switch'],plugins=[],kde_language='system')
+        other_directory=tempfile.TemporaryDirectory(prefix='oxp3-slot-B-')
+        self.addCleanup(other_directory.cleanup)
+        other=Path(other_directory.name)
+        shutil.copytree(self.root,other,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
+        first=stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(first['components']['slot-switch']['status'],'files_installed')
+        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+        (other/'home').mkdir()
+        subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
+        self.addCleanup(lambda: subprocess.run(['umount',str(other/'home')],check=True))
+        stage(other,PAYLOAD,self.options,'B')
+        code=self.root/'home/.oxp3-slot-switch/boot.py'
+        launcher=self.root/'home/deck/Desktop/oxp3-slot-switch.desktop'
+        self.assertEqual(code.stat().st_uid,0)
+        self.assertEqual(code.stat().st_mode & 0o777,0o644)
+        self.assertEqual(launcher.stat().st_uid,1000)
+        self.assertIn('Name=SteamOS 槽位切换 / 系统回退',launcher.read_text())
+        self.root.chmod(0o755)
+        require_access(self.root,{'home/.oxp3-slot-switch/desktop.py':os.R_OK,
+                                 'home/.oxp3-slot-switch/oxp3-switch-slot':os.R_OK|os.X_OK,
+                                 'home/deck/Desktop/oxp3-slot-switch.desktop':os.R_OK|os.X_OK})
+        self.assertEqual(restore(self.root,'A','slot-switch'),[])
+        self.assertFalse(code.exists()); self.assertFalse(launcher.exists())
+        stage(self.root,PAYLOAD,self.options,'A')
+        code.write_text('# user modification\n')
+        self.assertTrue(restore(self.root,'A','slot-switch'))
+        self.assertTrue(launcher.exists())
     def test_decky_startup_paths_and_deck_read_access(self):
         from runtime_access import require_access
         self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
@@ -243,18 +369,57 @@ class IntegrationChecks(unittest.TestCase):
         self.options.update(repairs=['keyboard','gamescope-env'],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')
         self.assertTrue(all(x['status']=='files_installed' for x in result['components'].values()))
-        for name in (*directories,'.local/share/applications','.config/systemd/user'):
-            info=(home/name).stat()
-            self.assertEqual((info.st_uid,info.st_gid),(1000,1000),name)
+        # Check unconditional ancestors and the selected gamescope-env parent.
+        # Optional application directories may be created by deck on first use.
+        prepared=[home,*[home/name for name in directories],home/'.config/systemd/user']
+        if (home/'.local/share/applications').exists(): prepared.append(home/'.local/share/applications')
+        for path in prepared:
+            self.assertTrue(path.is_dir(),str(path))
+            info=path.stat()
+            self.assertEqual((info.st_uid,info.st_gid),(1000,1000),str(path))
         if existing:
             self.assertEqual(sentinel.stat().st_uid,0)
             self.assertEqual(sentinel.read_text(),'preserve root-owned file')
         self.root.chmod(0o755)
         # Exercise real Unix permissions as the target UID, not as root.
-        code="import os,sys;from pathlib import Path;os.setgroups([]);os.setgid(1000);os.setuid(1000);h=Path(sys.argv[1]);(h/'.local/share/Steam').mkdir();(h/'.cache/steam-write-check').write_text('ok')"
-        subprocess.run(['python3','-c',code,str(home)],check=True)
+        code='''import os,sys
+from pathlib import Path
+os.setgroups([])
+os.setgid(1000)
+os.setuid(1000)
+assert os.getresuid()==(1000,1000,1000)
+assert os.getresgid()==(1000,1000,1000)
+assert os.getgroups()==[]
+home=Path(sys.argv[1])
+for relative in ('.local/share/Steam/config/deck-write-check',
+                 '.local/share/applications/deck-write-check.desktop',
+                 '.cache/steam-write-check'):
+    path=home/relative
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text(sys.argv[2])
+    assert path.read_text()==sys.argv[2]
+'''
+        created=('.local/share/Steam','.local/share/Steam/config',
+                 '.local/share/Steam/config/deck-write-check',
+                 '.local/share/applications','.local/share/applications/deck-write-check.desktop',
+                 '.cache/steam-write-check')
+        subprocess.run(['python3','-c',code,str(home),'first-write'],check=True)
+        for name in created:
+            info=(home/name).stat()
+            self.assertEqual((info.st_uid,info.st_gid),(1000,1000),name)
         stage(self.root,PAYLOAD,self.options,'B')
-        self.assertEqual((home/'.cache/steam-write-check').read_text(),'ok')
+        for name in created:
+            path=home/name; info=path.stat()
+            self.assertEqual((info.st_uid,info.st_gid),(1000,1000),name)
+            if path.is_file(): self.assertEqual(path.read_text(),'first-write',name)
+        # Repeated A/B preparation must leave deck able to update its own files.
+        subprocess.run(['python3','-c',code,str(home),'second-write'],check=True)
+        for name in created:
+            path=home/name
+            if path.is_file(): self.assertEqual(path.read_text(),'second-write',name)
+        if existing:
+            self.assertEqual(sentinel.stat().st_uid,0)
+            self.assertEqual(sentinel.read_text(),'preserve root-owned file')
     def test_user_directory_rejects_symlinks_and_foreign_owners(self):
         from hdr.installer import ensure_user_directory
         home=self.root/'home/deck'; home.mkdir(parents=True); os.chown(home,1000,1000)
@@ -280,7 +445,7 @@ class IntegrationChecks(unittest.TestCase):
         units=self.root/'usr/lib/systemd/system'; units.mkdir(parents=True,exist_ok=True)
         for unit in ('atomupd.service','rauc.service'):
             (units/unit).write_text('[Service]\nExecStart=/usr/bin/fixture\n')
-        for tool in ('python3','efibootmgr','systemctl','pkexec','kdialog'):
+        for tool in ('python3','efibootmgr','systemctl','pkexec','kdialog','steamos-bootconf','busctl'):
             (self.root/'usr/bin'/tool).write_bytes(b'fixture tool')
         p=self.root/'etc/inputplumber/capability_maps.d/onexplayer_type3.yaml'; p.parent.mkdir(parents=True)
         p.write_text('  - name: Keyboard key (Ctrl+Meta+O)\n    target_event:\n      gamepad:\n        button: Keyboard\n  - name: Orange Button\n')
@@ -414,6 +579,29 @@ class IntegrationChecks(unittest.TestCase):
         p.write_text('[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=de\n[Other]\nkeep=yes\n')
         data=config_file(self.root,'home/deck/.config/plasma-localerc','Translations',{'LANGUAGE':'zh_CN'}).decode()
         self.assertIn('LANG=de_DE.UTF-8',data); self.assertIn('keep=yes',data); self.assertIn('LANGUAGE=zh_CN',data)
+    def test_desktop_language_presets_stage_and_restore(self):
+        p=self.root/'home/deck/.config/plasma-localerc'; p.parent.mkdir(parents=True)
+        original='[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=en_US\n[Other]\nkeep=yes\n'
+        p.write_text(original)
+        for installer_language,desktop_language in (('zh-CN','zh_CN'),('en-US','en_US')):
+            with self.subTest(language=installer_language), tempfile.TemporaryDirectory(prefix='oxp3-language-') as directory:
+                root=Path(directory); shutil.copytree(self.root,root,dirs_exist_ok=True)
+                config=root/'home/deck/.config/plasma-localerc'
+                os.chown(config,1000,1000)
+                options=dict(self.options,repairs=[],plugins=[],installer_language=installer_language,kde_language=desktop_language)
+                result=stage(root,PAYLOAD,options,'A')
+                parser=configparser.ConfigParser(interpolation=None); parser.read(config)
+                self.assertEqual(parser['Translations']['LANGUAGE'],desktop_language)
+                self.assertEqual(parser['Formats']['LANG'],'de_DE.UTF-8')
+                self.assertEqual(parser['Other']['keep'],'yes')
+                self.assertEqual(config.stat().st_uid,1000)
+                self.assertEqual(result['components']['kde-language']['activation'],'next-login')
+                self.assertEqual(stage(root,PAYLOAD,options,'A'),result)
+                self.assertEqual(restore(root,'A','kde-language'),[])
+                self.assertEqual(config.read_text(),original)
+        result=stage(self.root,PAYLOAD,dict(self.options,repairs=[],plugins=[],kde_language='system'),'B')
+        self.assertNotIn('kde-language',result['components'])
+        self.assertEqual(p.read_text(),original)
     def test_gamescope_environment_isolation_has_independent_restore(self):
         self.options.update(repairs=['gamescope-env'],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')

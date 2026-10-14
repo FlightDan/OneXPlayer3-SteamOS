@@ -6,7 +6,9 @@
 
 为 **ONEXPLAYER 3 掌机**提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 **Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）**。
 
-当前整合版为 **OXP3 SteamOS 0.1.1（stable 渠道）**，基于 **SteamOS 3.10**。这里的 stable 指本项目整合版渠道；完整全新安装与首次开箱配置尚未验收，自动跨版本适配尚未实现。请先阅读[0.1.1 发布说明](windows-installer/docs/RELEASE_0.1.1.md)。
+当前整合版为 **OXP3 SteamOS 0.1.2（stable 渠道）**，基于 **SteamOS 3.10**。这里的 stable 指本项目整合版渠道；完整全新安装与首次开箱配置尚未验收，自动跨版本适配尚未实现。请先阅读[0.1.2 发布说明](windows-installer/docs/RELEASE_0.1.2.md)。
+
+0.1.2 新增可跳过的共享分区挂载页，并修复、恢复剩余空间 NTFS 格式化。两项功能均为 **Beta · 未测试（掌机实机）**。选择 64 GiB 安装时，SteamOS 系统及启动约 24.375 GiB、home 约 39.625 GiB；同一段空间的余量可另建为 4K 对齐、4096 字节簇的 NTFS，用于共用文件，不会自动共享 Steam 游戏库。
 
 发现问题，请发送邮件至 **[dan@devdan.cc](mailto:dan@devdan.cc)**，或提交 [GitHub Issue](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues)。
 
@@ -80,7 +82,7 @@ Decky / 插件版本（如适用）：
 | 重启进入 Windows | [Decky 按钮与桌面快捷方式](windows-installer/docs/WINDOWS_REBOOT.md)，仅下一次启动生效；用户实机重启进入 Windows 已通过 | ✅ |
 | OXP3 Battery | 旁通供电与正确的充电上限控制，已验证 | ✅ |
 | BE201 Wi-Fi | 无线固件适配；有大量用户报告 Windows 下硬件故障，如果掉驱动请尝试重启 | ⚠️ |
-| 双系统启动器 · rEFInd | Windows / SteamOS 启动菜单；用户反馈启动阶段十字键与 A/B 不可用，排查中 | ⚠️ |
+| 双系统启动器 · rEFInd | Windows / SteamOS 启动菜单；启动阶段十字键与 A/B 已可用 | ✅ |
 
 ✅ 表示已提供对应适配；🧪 表示仍在验证；⚠️ 表示存在已知问题。HDR 使用 Gamma 2.2 映射路径，1100 / 472 为映射参数。新安装、更新、重启及休眠后的支持情况以对应 Release 说明为准。
 
@@ -124,7 +126,7 @@ Decky / 插件版本（如适用）：
 <details>
 <summary>查看双系统启动器截图</summary>
 
-Windows / SteamOS 启动菜单截图。当前用户反馈启动阶段十字键与 A/B 不可用，正在排查。
+Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 ![rEFInd 双系统启动器 · Windows / SteamOS 启动选择](windows-installer/docs/screenshots/dual-boot-launcher.png)
 
@@ -159,12 +161,12 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 ## 4. 安装方法
 
-完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前整合版为 **0.1.1 stable**；该渠道标签不代表所有硬件功能均已验收。完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现；使用前请阅读[0.1.1 发布说明](windows-installer/docs/RELEASE_0.1.1.md)。
+完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前整合版为 **0.1.2 stable**；该渠道标签不代表所有硬件功能均已验收。完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现；使用前请阅读[0.1.2 发布说明](windows-installer/docs/RELEASE_0.1.2.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
 3. 为目标 GPT 磁盘准备至少 **64 GiB 连续未分配空间**，并为 Windows 中的系统准备工作空间预留至少 **45 GiB** 可用空间，建议 **64 GiB**。
-4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
+4. 双击 **`SteamOSInstaller.exe`**，按八步向导选择安装位置、官方系统镜像及需要的适配组件；随后可选择共享分区挂载，也可明确跳过。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
 5. 核对目标磁盘、分区方案与安装选项，可按需启用 rEFInd 启动菜单，确认后开始安装。
 6. 安装完成后，按应用提示启动 SteamOS，并检查游戏模式、桌面、按键和插件。
 

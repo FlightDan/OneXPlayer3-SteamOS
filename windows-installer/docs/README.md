@@ -1,12 +1,12 @@
 # 安装助手文档索引
 
-按 2026-10-14 当前代码维护。整合版为 **OXP3 SteamOS 0.1.1 stable**，默认底座为 **SteamOS 3.10 / build 20260924.1000**。stable 是项目渠道标签；完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现。先核对 [安装助手 README](../README.md) 中的包与源码差异，旧 ZIP 不会随文档更新。
+按 2026-10-15 当前代码维护。整合版为 **OXP3 SteamOS 0.1.2 stable**，默认底座为 **SteamOS 3.10 / build 20260924.1000**。stable 是项目渠道标签；完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现。先核对 [安装助手 README](../README.md) 中的包与源码差异，旧 ZIP 不会随文档更新。
 
 ## 使用与排错
 
 | 文档 | 内容 |
 | --- | --- |
-| [安装与测试指南](INSTALLATION_GUIDE.md) | 当前两个镜像子页、延后重建、工作空间、容量与剩余 NTFS、七步流程和排错 |
+| [安装与测试指南](INSTALLATION_GUIDE.md) | 当前两个镜像子页、延后重建、工作空间、容量、Beta NTFS / 可跳过共享分区、八步流程和排错 |
 | [致谢与第三方来源](ACKNOWLEDGEMENTS.md) | 原适配项目署名、系统／组件上游、主题素材与许可入口 |
 | [镜像下载](DOWNLOADS.md) | ZIP / BZ2、HTTPS 直链、条款、暂停续传与下载记录 |
 | [实际安装](PHYSICAL_INSTALLATION.md) | 系统来源、目标条件、容量扩展、写入保护和固件入口 |
@@ -14,7 +14,8 @@
 | [安装恢复](INSTALLATION_RECOVERY.md) | 工具自有 VHD 演练恢复；实盘中断边界 |
 | [rEFInd 安装与管理](REFIND_OPTION.md) | 默认项、倒计时、安装位置、配置/卸载及冲突保护 |
 | [整合版版本](VERSIONING.md) | 版本来源、构建编号、系统内版本文件和后续编号规则 |
-| [0.1.1 发布说明](RELEASE_0.1.1.md) | stable 整合版更新、验证范围与已知限制（中英文） |
+| [0.1.2 发布说明](RELEASE_0.1.2.md) | Beta NTFS 与文件共享挂载、八步向导、验证范围与已知限制（中英文） |
+| [0.1.1 发布说明](RELEASE_0.1.1.md) | 历史版本的持久更新保护与验证范围（中英文） |
 | [0.1.0 Beta 发布说明](RELEASE_0.1.0_BETA.md) | 历史 Beta 运行包及其验证范围 |
 
 ## 设备与组件
@@ -23,6 +24,7 @@
 | --- | --- |
 | [组件集成](COMPONENT_INTEGRATION.md) | 修复、Decky / 插件、语言与版本依赖 |
 | [重启进入 Windows](WINDOWS_REBOOT.md) | Decky 按钮、桌面快捷方式、一次性启动与恢复 |
+| [KDE 槽位切换](SLOT_SWITCH.md) | A/B 系统回退、共享恢复入口与更新边界 |
 | [Opti2XMX](OPTI2XMX_INTEGRATION.md) | 安装集成、XMX / Opti 注入与版本管理 |
 | [BMI260 陀螺仪](GYRO_INTEGRATION.md) | BIOS / 内核依赖、新装校准与恢复边界 |
 | [HDR 组件](HDR_COMPONENT.md) | 独立配置、兼容性门禁与恢复 |

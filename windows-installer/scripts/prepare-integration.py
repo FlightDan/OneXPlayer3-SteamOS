@@ -33,10 +33,11 @@ def emitted_definitions(path):
     exec(compile(code, str(path), 'exec'), scope)
     return scope
 
-opti=research/'xess/decky'
+opti=root/'components/opti2xmx'
+if not opti.is_dir():opti=research/'xess/decky'
 component('opti2xmx', {
-    **{'/home/deck/homebrew/plugins/opti2xmx/'+name:(opti/name).read_bytes() for name in ('plugin.json','package.json','main.py','manager.py','opti.py','dist/index.js','README.md')},
-    '/home/deck/homebrew/plugins/opti2xmx/per_game.py':(research/'xess/per_game.py').read_bytes(),
+    **{'/home/deck/homebrew/plugins/opti2xmx/'+name:(opti/name).read_bytes() for name in ('plugin.json','package.json','main.py','manager.py','opti.py','download_progress.py','dist/index.js','README.md')},
+    '/home/deck/homebrew/plugins/opti2xmx/per_game.py':((opti/'per_game.py') if (opti/'per_game.py').is_file() else research/'xess/per_game.py').read_bytes(),
     '/home/deck/.local/share/opti2xmx/runtime.json':(json.dumps({'package':'/opt/oxp3-opti2xmx/20261005/runtime','sr':'/opt/oxp3-opti2xmx/20261005/sdk/libxess.dll'})+'\n').encode()})
 for item in manifest['opti2xmx']['files']:
     if '/homebrew/plugins/' in item['target']:item['user']=False

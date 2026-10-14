@@ -36,6 +36,16 @@ public static class PartitionPickerChecks
         Reject(() => RemainingSpaceFormat.Plan(formatSelection with { Capacity = gap.Size - PartitionInventory.MiB }), "ntfs-too-small-refused");
         Reject(() => RemainingSpaceFormat.Simulate(formatRequest with { Selection = formatSelection with { Example = false } }), "ntfs-simulation-refuses-physical");
         var formattedExample = RemainingSpaceFormat.Simulate(formatRequest);
+        RemainingSpaceFormat.ValidateFormattedSnapshot(formattedExample, true, formatRequest);
+        var swappedFormat = JsonNode.Parse(formattedExample)!;
+        swappedFormat[0]!["guid"] = "99999999-9999-9999-9999-999999999999";
+        Reject(() => RemainingSpaceFormat.ValidateFormattedSnapshot(swappedFormat.ToJsonString(), true, formatRequest), "formatted-snapshot-disk-swap-refused");
+        var changedReservation = JsonNode.Parse(formattedExample)!;
+        changedReservation[0]!["partitions"]!.AsArray().Last()!["offset"] = formatPlan.Start + PartitionInventory.MiB;
+        Reject(() => RemainingSpaceFormat.ValidateFormattedSnapshot(changedReservation.ToJsonString(), true, formatRequest), "formatted-snapshot-wrong-reservation-refused");
+        var changedExisting = JsonNode.Parse(formattedExample)!;
+        changedExisting[0]!["partitions"]!.AsArray().First()!["size"] = 259 * PartitionInventory.MiB;
+        Reject(() => RemainingSpaceFormat.ValidateFormattedSnapshot(changedExisting.ToJsonString(), true, formatRequest), "formatted-snapshot-existing-partition-change-refused");
         var formattedRows = PartitionInventory.Read(formattedExample).Single().Rows;
         Require(formattedRows.Single(r => r.Space != null).Size == formatSelection.Capacity, "ntfs-keeps-steamos-reservation");
         Require(disk.Rows.Where(r => r.Type != "—").All(r => formattedRows.Contains(r)), "ntfs-keeps-existing-partitions");
@@ -99,8 +109,17 @@ public static class PartitionPickerChecks
         T Find<T>(string name) => (T)window.FindName(name);
         void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var picker = Find<PartitionPicker>("PartitionSelector");
+        Require(picker.FormatRemainingButton.Visibility == Visibility.Visible && picker.FormatRemainingHint.Visibility == Visibility.Visible
+            && picker.FormatRemainingButton.Content.ToString()!.Contains("Beta · 未测试"), "ntfs-beta-untested-entry-visible");
         picker.SelectReservedSpace(formattedExample, true, formatRequest);
         Require(picker.Selection.Capacity == formatSelection.Capacity && !picker.FormatRemainingButton.IsEnabled, "formatted-layout-reselected-and-repeat-disabled");
+        var large = JsonNode.Parse(json)!;
+        large[0]!["partitions"]!.AsArray().Single(p => (int)p!["number"]! == 4)!["offset"] = gap.Start + 500 * PartitionInventory.GiB;
+        large[0]!["size"] = gap.Start + 500 * PartitionInventory.GiB + 513 * PartitionInventory.MiB;
+        var largeRequest = new RemainingFormatRequest(new PartitionSelection(large.ToJsonString(), true, gap.Disk, gap.Start, 64 * PartitionInventory.GiB), "zh-CN");
+        picker.SelectReservedSpace(RemainingSpaceFormat.Simulate(largeRequest), true, largeRequest);
+        Require(picker.Selection.Capacity == 64 * PartitionInventory.GiB && picker.Selection.Target().Size == 64 * PartitionInventory.GiB
+            && !picker.FormatRemainingButton.IsEnabled, "500g-gap-64g-format-reserves-installation-and-disables-repeat");
         picker.LoadSnapshot(json, false);
         picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().Single(r => r.Space != null);
         picker.CapacityInput.Text = "100";
@@ -129,6 +148,21 @@ public static class PartitionPickerChecks
         Require(picker.Selection.Capacity == 128 * PartitionInventory.GiB, "capacity-input-updates-selection");
         picker.Capacity64Button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(picker.Selection.Capacity == 64 * PartitionInventory.GiB, "64g-preset-updates-plan");
+        Require(picker.AlignLeft.IsChecked == true && !picker.Selection.AlignRight, "installation-defaults-to-left-placement");
+        picker.AlignRight.IsChecked = true;
+        Require(picker.Selection.AlignRight && picker.Selection.Target().Start == gap.Start + gap.Size - picker.Selection.Capacity,
+            "right-placement-puts-steamos-at-gap-end");
+        var rightRequest = new RemainingFormatRequest(picker.Selection, "zh-CN");
+        var rightFormatted = RemainingSpaceFormat.Simulate(rightRequest);
+        picker.SelectReservedSpace(rightFormatted, true, rightRequest);
+        Require(picker.Selection.AlignRight && picker.Selection.Capacity == 64 * PartitionInventory.GiB
+            && picker.Selection.Target().Start == rightRequest.Selection.Target().Start && !picker.FormatRemainingButton.IsEnabled,
+            "right-ntfs-format-reselects-exact-reserved-tail");
+        picker.RefreshLanguage();
+        Require(picker.Selection.AlignRight, "language-refresh-preserves-right-placement");
+        picker.LoadSnapshot(json, true);
+        picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().Single(r => r.Space != null);
+        picker.AlignLeft.IsChecked = true;
         picker.Capacity100Button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(picker.Selection.Capacity == 100 * PartitionInventory.GiB, "100g-preset-updates-plan");
         var small = JsonNode.Parse(json)!;
@@ -149,6 +183,7 @@ public static class PartitionPickerChecks
         Click("BackButton"); Require(picker.CapacityInput.Text == "128.5", "back-retains-selection");
         Find<RadioButton>("EnglishLanguage").IsChecked = true;
         Require(picker.Selection.Capacity == 128 * PartitionInventory.GiB + 512 * PartitionInventory.MiB && picker.Heading.Text == "Choose disk and installation space", "language-switch-preserves-selection");
+        Require(picker.FormatRemainingButton.Content.ToString()!.Contains("Beta · Untested") && picker.FormatRemainingHint.Text.Contains("Untested on hardware"), "ntfs-english-beta-untested-entry");
         Find<RadioButton>("ChineseLanguage").IsChecked = true;
         window.PreviewStep(3);
         Require(Find<StackPanel>("ReviewPartitionHost").Children.Count > 5, "review-renders-selected-plan");
@@ -179,6 +214,7 @@ public static class PartitionPickerChecks
         {
             InstallerI18n.SetLanguage(language);
             var formatDialog = RemainingSpaceFormat.Confirmation(formatRequest with { Language = language });
+            Require(formatDialog.Title.Contains(language == "en-US" ? "Beta · Untested" : "Beta · 未测试"), "ntfs-confirmation-beta-untested-" + language);
             formatDialog.ShowActivated = false; formatDialog.MaxHeight = 540; formatDialog.Show(); formatDialog.UpdateLayout();
             var formatPanel = (StackPanel)((ScrollViewer)formatDialog.Content).Content;
             var formatConsent = formatPanel.Children.OfType<CheckBox>().Single();

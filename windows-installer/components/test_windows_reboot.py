@@ -244,6 +244,11 @@ class LifecycleChecks(unittest.TestCase):
         (self.root / 'usr/bin').mkdir(parents=True)
         for name in ('python3', 'efibootmgr', 'systemctl', 'pkexec', 'kdialog'):
             (self.root / 'usr/bin' / name).write_bytes(b'fixture')
+        # Compatible SteamOS staging also installs the mandatory update policy.
+        # Model its vendor units so this fixture reaches the reboot lifecycle.
+        vendor = self.root / 'usr/lib/systemd/system'; vendor.mkdir(parents=True)
+        for name in ('atomupd.service', 'rauc.service'):
+            (vendor / name).write_text('[Service]\nExecStart=/usr/bin/true\n')
         shutil.copytree(HERE, self.payload / 'components', ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
         (self.payload / 'integration').mkdir(); (self.payload / 'integration/manifest.json').write_text('{}')
         (self.payload / 'plugins/decky').mkdir(parents=True)

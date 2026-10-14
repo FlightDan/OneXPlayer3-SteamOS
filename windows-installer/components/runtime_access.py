@@ -56,6 +56,7 @@ def verify_runtime_access(root, components):
     # These are consumed in the user's session. Root-private journals, shadow,
     # and privileged service state intentionally are not public runtime files.
     prefixes = ('home/deck/', 'opt/oxp3-', 'etc/dbus-1/', 'usr/lib/modules/',
+                'home/.oxp3-slot-switch/',
                 'usr/local/lib/oxp3-windows-reboot/', 'usr/local/bin/oxp3-reboot-windows',
                 'usr/lib/python', 'var/lib/oxp3-overlay-telemetry/',
                 'var/lib/oxp3-installer/decky/runtime/plugins/')

@@ -34,10 +34,12 @@ with tarfile.open(research/'cache/xess-private-payload.tar.gz') as source, tarfi
     add('sdk/libxess.dll',sr,0o644)
     add('sdk/XeSS-LICENSE.txt',(root/'cache/opti2xmx/XeSS-LICENSE.txt').read_bytes(),0o644)
 sources=root/'cache/integration/sources/opti2xmx';sources.mkdir(parents=True,exist_ok=True)
-for name in ('README.md','main.py','manager.py','opti.py','package.json','plugin.json','package_plugin.py','test_manager.py','test_opti.py','test_frontend.mjs','src/index.tsx','src/i18n.ts','rollup.config.js','tsconfig.json','pnpm-lock.yaml'):
-    dest=sources/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(research/'xess/decky'/name,dest)
+opti=root/'components/opti2xmx'
+if not opti.is_dir():opti=research/'xess/decky'
+for name in ('README.md','README.zh-CN.md','LICENSE','THIRD_PARTY_NOTICES.md','docs/RUNTIME.md','main.py','manager.py','opti.py','download_progress.py','package.json','plugin.json','package_plugin.py','test_manager.py','test_opti.py','test_download_progress.py','test_frontend.mjs','src/index.tsx','src/i18n.ts','dist/index.js','assets/screenshots/main-en.png','assets/screenshots/advanced-en.png','rollup.config.js','tsconfig.json','pnpm-lock.yaml'):
+    dest=sources/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(opti/name,dest)
 for name in ('per_game.py','test_per_game.py'):
-    shutil.copyfile(research/'xess'/name,sources/name)
-version=json.loads((research/'xess/decky/package.json').read_text())['version']
+    shutil.copyfile((opti/name) if (opti/name).is_file() else research/'xess'/name,sources/name)
+version=json.loads((opti/'package.json').read_text())['version']
 (sources/'PROVENANCE.json').write_text(json.dumps({'plugin':'Opti2XMX '+version,'runtime':'https://github.com/HHHHanasak1/xess-xmx-linux/releases/tag/20261005','igc':'2.10.10','ocloc':'25.18.33578.6','sr':'https://github.com/intel/xess/blob/v3.0.2/bin/libxess.dll','sr_version':'2.0.2.68','contains_game_state':False,'contains_generated_kernels':False},indent=2)+'\n')
 print(json.dumps({'archive':str(out/'runtime.tar.gz'),'bytes':(out/'runtime.tar.gz').stat().st_size}))

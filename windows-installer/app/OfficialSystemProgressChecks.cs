@@ -114,7 +114,9 @@ internal static class OfficialSystemProgressChecks
             return false;
         }
         Require(WithinSource(Find<CheckBox>("Upgrade310")) && WithinSource(panel), "version-selection-and-download-on-system-page");
+        Find<PartitionPicker>("PartitionSelector").AutomaticReadEnabled = false;
         window.WindowState = WindowState.Normal; window.ShowActivated = false; window.Show();
+        BootSetupChecks.Acknowledge(window);
         void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Click("SourceTab");
         Require(Find<StackPanel>("SourceSubitems").IsVisible && Find<StackPanel>("RecoverySourceSection").IsVisible

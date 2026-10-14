@@ -2,7 +2,7 @@
 
 This repository tracks Windows installer source, component deployment logic, tests,
 scripts, current documentation, and workspace roadmaps. The current integration
-release is **OXP3 SteamOS 0.1.1 (stable channel)**; Valve's SteamOS version and update
+release is **OXP3 SteamOS 0.1.2 (stable channel)**; Valve's SteamOS version and update
 branch are recorded separately.
 
 ## Active source and local resources
@@ -33,12 +33,12 @@ Upload uses a separate checkout and an allowlisted source snapshot; the local
 development repository and its internal history are not pushed.
 
 Local ZIP files are historical builds. They are not updated when the source or
-documentation changes. The previously released 0.1.0 Beta package remains a historical
-build; the 0.1.1 stable package and its exact source commit are identified in the
-corresponding GitHub Release and build-info.json. The current two-image subpages and
+documentation changes. The previously released 0.1.1 stable and 0.1.0 Beta packages remain historical
+builds; the 0.1.2 stable package and its exact source commit are identified in the
+corresponding GitHub Release and build-info.json. The current eight-step wizard, Beta NTFS/shared-file mounting features, two-image subpages and
 deferred RAUC reconstruction must be checked against each package's build-info.json.
 Full fresh-install/OOBE validation remains pending; automatic cross-version adaptation
-is not implemented. See the [0.1.1 release notes](windows-installer/docs/RELEASE_0.1.1.md).
+is not implemented. See the [0.1.2 release notes](windows-installer/docs/RELEASE_0.1.2.md).
 See [the installer README](windows-installer/README.md) for delivery differences.
 
 Future package names include the integration version and a fresh build timestamp;
@@ -56,7 +56,7 @@ a folder. See [publication preparation](windows-installer/docs/GITHUB_PREPARATIO
 This prepares files only; it does not initialize a remote, commit, push or publish.
 Export a fresh candidate for each upload so later code fixes are included.
 Original project content uses AGPL-3.0-only unless otherwise noted; third-party
-terms remain applicable. The 0.1.1 stable integration label does not claim complete
+terms remain applicable. The 0.1.2 stable integration label does not claim complete
 workflow or device acceptance; full fresh-install/OOBE validation and third-party
 redistribution review remain documented limitations. The 0.1.0 Beta release remains
 historical.

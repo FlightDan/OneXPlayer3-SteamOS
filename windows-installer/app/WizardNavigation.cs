@@ -7,14 +7,14 @@ namespace OxpInstaller;
 
 public partial class MainWindow
 {
-    private readonly bool[] departedSteps = new bool[7];
+    private readonly bool[] departedSteps = new bool[8];
     private bool reviewSeen;
     private bool contentSeen;
     private bool checkedAllSteps;
 
     private void NavigateStep(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string tag } && int.TryParse(tag, out var destination) && destination is >= 0 and <= 6)
+        if (sender is Button { Tag: string tag } && int.TryParse(tag, out var destination) && destination is >= 0 and <= StorageStep)
         {
             if (destination == 1) sourceSection = 0;
             ShowStep(destination);
@@ -72,6 +72,12 @@ public partial class MainWindow
         { return error.Message; }
     }
 
+    private string? StorageIssue()
+    {
+        try { SharedStorage.ValidateSelection(storagePanel.Selection, PartitionSelector.InventorySnapshot); return null; }
+        catch (Exception error) when (error is IOException or InvalidOperationException or ArgumentException) { return error.Message; }
+    }
+
     private string SystemVersionSummary() => UsePrepared.IsChecked == true
         ? PartitionInventory.L("安装版本：沿用已准备镜像中的系统，不再替换版本。", "Installed version: keep the system in the prepared image.")
         : Upgrade310.IsChecked == true
@@ -95,17 +101,22 @@ public partial class MainWindow
         var targetIssue = TargetIssue();
         var sourceIssue = SourceIssue();
         var contentIssue = ContentIssue();
+        var storageIssue = StorageIssue();
         UpdateSystemVersion();
-        var reviewed = targetIssue == null && sourceIssue == null && contentIssue == null && (physicalInstallation
+        var reviewed = targetIssue == null && sourceIssue == null && contentIssue == null && storageIssue == null && (physicalInstallation
             ? PhysicalConsent.IsChecked == true && acknowledgedSelection == PartitionSelector.Selection
             : reviewSeen);
         var finished = session?.Status is "complete" or "awaiting-device-boot";
-        var complete = new[] { targetIssue == null, sourceIssue == null, contentIssue == null, reviewed, true, finished, finished };
+        var complete = new[] { targetIssue == null, sourceIssue == null, contentIssue == null, reviewed, true, finished, finished, storageIssue == null };
         if (finished) Array.Fill(complete, true);
         ModeBannerCard.Visibility = step == 6 && finished ? Visibility.Collapsed : Visibility.Visible;
-        NavResult.Text = PartitionInventory.L("07   安装结果", "07   Result");
-        var labels = new[] { NavTarget, NavSource, NavContent, NavReview, NavBoot, NavProgress, NavResult };
-        var tabs = new[] { TargetTab, SourceTab, ContentTab, ReviewTab, BootTab, ProgressTab, ResultTab };
+        NavStorage.Text = PartitionInventory.L("04   挂载分区\nBeta · 未测试", "04   Mount partitions\nBeta · Untested");
+        NavReview.Text = PartitionInventory.L("05   确认方案", "05   Review");
+        NavBoot.Text = PartitionInventory.L("06   启动器安装", "06   Boot manager");
+        NavProgress.Text = PartitionInventory.L("07   安装进度", "07   Progress");
+        NavResult.Text = PartitionInventory.L("08   安装结果", "08   Result");
+        var labels = new[] { NavTarget, NavSource, NavContent, NavReview, NavBoot, NavProgress, NavResult, NavStorage };
+        var tabs = new[] { TargetTab, SourceTab, ContentTab, ReviewTab, BootTab, ProgressTab, ResultTab, StorageTab };
         for (var i = 0; i < labels.Length; i++)
         {
             var incomplete = !complete[i] && (departedSteps[i] || checkedAllSteps);
@@ -113,7 +124,7 @@ public partial class MainWindow
             labels[i].Foreground = new SolidColorBrush(incomplete ? Color.FromRgb(255, 139, 139) : configured ? Color.FromRgb(134, 239, 172) : i == step ? Colors.White : Color.FromRgb(148, 169, 195));
             tabs[i].Background = i == step ? new SolidColorBrush(Color.FromRgb(37, 63, 95)) : Brushes.Transparent;
             labels[i].FontWeight = i == step ? FontWeights.Bold : FontWeights.Normal;
-            labels[i].ToolTip = incomplete ? (i == 0 ? targetIssue : i == 1 ? sourceIssue : i == 2 ? contentIssue : null)
+            labels[i].ToolTip = incomplete ? (i == 0 ? targetIssue : i == 1 ? sourceIssue : i == 2 ? contentIssue : i == StorageStep ? storageIssue : null)
                 ?? PartitionInventory.L("未完成，可点击返回配置。", "Incomplete. Select to finish setup.") : configured ? PartitionInventory.L("已完成配置。", "Setup complete.") : null;
         }
 
@@ -121,6 +132,7 @@ public partial class MainWindow
         if (targetIssue != null) missing.Add(PartitionInventory.L("安装位置：", "Location: ") + targetIssue);
         if (sourceIssue != null) missing.Add(PartitionInventory.L("准备系统：", "System: ") + sourceIssue);
         if (contentIssue != null) missing.Add(PartitionInventory.L("选择安装内容：", "Contents: ") + contentIssue);
+        if (storageIssue != null) missing.Add(PartitionInventory.L("挂载分区：", "Mount partitions: ") + storageIssue);
         if (!reviewed) missing.Add(PartitionInventory.L("确认方案：请核对配置并完成确认。", "Review: check and confirm the configuration."));
         if (!finished) missing.Add(operation != null
             ? PartitionInventory.L("安装进度：任务仍在进行，请等待结束。", "Progress: the task is still running.")
@@ -145,11 +157,12 @@ public partial class MainWindow
         DebugMode.ToolTip = PartitionInventory.L("显示高级工具和示例 / 开发选项", "Show advanced tools, examples and developer options");
         DebugMode.IsEnabled = idle && !DownloadsBusy && !PartitionSelector.IsBusy;
         BrowseWorkspaceButton.IsEnabled = idle && !DownloadsBusy && !PartitionSelector.IsBusy;
-        WorkspaceCard.Visibility = step <= 4 ? Visibility.Visible : Visibility.Collapsed;
+        WorkspaceCard.Visibility = step <= 4 || step == StorageStep ? Visibility.Visible : Visibility.Collapsed;
         RefreshWorkspace();
         TargetPage.IsEnabled = idle;
         SourcePage.IsEnabled = idle;
         ContentPage.IsEnabled = idle;
+        StoragePage.IsEnabled = idle;
         BootPage.IsEnabled = idle;
         PhysicalConsent.IsEnabled = idle;
         NextButton.IsEnabled = BackButton.IsEnabled = AdvancedButton.IsEnabled = InstallerLanguage.IsEnabled = idle && !DownloadsBusy;

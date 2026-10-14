@@ -1,0 +1,7 @@
+polkit.addRule(function(action, subject) {
+    if (action.id === "org.freedesktop.policykit.exec" &&
+        action.lookup("program") === "/home/.oxp3-slot-switch/oxp3-switch-slot" &&
+        subject.user === "deck" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

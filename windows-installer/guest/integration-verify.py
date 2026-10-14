@@ -10,6 +10,8 @@ sys.path.insert(0,'/mnt/payload/components')
 from runtime_access import verify_runtime_access
 from integration import shared_managed, VERSION, release
 from system_update_policy import verify as verify_update_policy
+from shared_storage import verify_fstab, require_ntfs3
+from file_transaction import snapshot
 from offload_mounts import mount_opt, mount_etc
 table=json.loads(subprocess.check_output(['sfdisk','--json','/dev/vdc']))['partitiontable']
 parts={p.get('name'):p['node'] for p in table['partitions']}
@@ -59,6 +61,23 @@ for slot in ('A','B'):
                     if '/plugins/' in relative and relative.endswith('/plugin.json'):
                         assert relative.startswith('var/lib/oxp3-installer/decky/runtime/plugins/')
                         assert (root/relative).stat().st_uid==0
+            order_record=state/'decky-order/state.json'
+            if order_record.exists():
+                record=json.loads(base64.b64decode(snapshot(order_record)['data']))
+                relative='var/lib/oxp3-installer/decky/runtime/settings/loader.json'
+                current=snapshot(root/relative)
+                # A default remains user-editable after installation. Verify
+                # the seeded value when it is still the journaled default.
+                if current.get('data')==record.get('applied',{}).get(relative):
+                    settings=json.loads(base64.b64decode(current['data']))
+                    names=[json.loads(path.read_text())['name'] for path in
+                           (root/'var/lib/oxp3-installer/decky/runtime/plugins').glob('*/plugin.json')]
+                    priority=['OXP3 CPU','OXP3 Fan','OXP3 Battery','Opti2XMX','Restart into Windows']
+                    first=[name for name in priority if name in names]
+                    assert settings['sortPlugins'] is False
+                    assert settings['pluginOrder'][:len(first)]==first
+                    assert set(settings['pluginOrder'])==set(names)
+                    assert len(settings['pluginOrder'])==len(names)
         if 'input' in installed: assert 'inputplumber.service' in results['services']
         for name,result in results['components'].items():
             assert result['status']=='files_installed' or (name in options['repairs']+options['plugins'] and result['status']=='not_installed' and result.get('safe_to_skip') is True and result.get('reason')), 'Unsafe component result: '+name
@@ -100,6 +119,13 @@ for slot in ('A','B'):
         if expected_components and all(release(root).get(k)==v for k,v in VERSION.items()):
             expected_components.add('system-update-policy')
             verify_update_policy(root)
+        storage_mounts=options.get('storage_mounts',[])
+        if storage_mounts:
+            expected_components.add('shared-storage')
+            fstab=snapshot(root/'etc/fstab')
+            assert fstab['exists'] and fstab['uid']==0 and not fstab['mode']&0o022, 'Untrusted shared storage fstab'
+            verify_fstab(base64.b64decode(fstab['data']),storage_mounts,owner)
+            if any(item['filesystem']=='ntfs' for item in storage_mounts): require_ntfs3(root)
         assert set(results['components'])==expected_components
         if results['components']: assert (root/'usr/local/lib/oxp3-integration/slot').read_text().strip()==slot
         if 'gamescope-env' in installed:

@@ -65,6 +65,7 @@ public partial class App : Application
                 else if (e.Args.Length == 2 && e.Args[1] == "secret-input-checks") { log.AppendLine(await SecretInputChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "runtime-permission-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"permissions\"}")); }
                 else if (e.Args.Length == 2 && e.Args[1] == "startup-integration-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"startup\"}")); }
+                else if (e.Args.Length == 3 && e.Args[1] == "slot-switch-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", e.Args[2], false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"slot-switch\"}")); }
                 else if (e.Args.Length == 2 && e.Args[1] == "workspace-path") { log.AppendLine(InstallerWorkspace.DirectoryPath); }
                 else if (e.Args.Length == 3 && e.Args[1] == "prepare-accepted-3.10") log.AppendLine("ACCEPTED_SOURCE="+await OfficialSystem.CheckPreparationAsync(e.Args[2],text=>log.AppendLine(text),CancellationToken.None));
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-gpt-native-checks") log.AppendLine("GPT_NATIVE_CHECK="+await PhysicalInstallation.CheckSparseGptOwnedAsync());
@@ -74,6 +75,10 @@ public partial class App : Application
                 else if (e.Args.Length == 4 && e.Args[1] == "upgrade-source") log.AppendLine(await Backend.GuestAsync("upgrade-source",e.Args[2],true,text=>log.Append(text),CancellationToken.None,updateRoot:e.Args[3]));
                 else if (e.Args.Length == 3 && e.Args[1] == "inspect") log.AppendLine(await Backend.GuestAsync("inspect",e.Args[2],false,text=>log.Append(text),CancellationToken.None));
                 else if (e.Args.Length == 2 && e.Args[1] == "component-outcome-checks") log.AppendLine(ComponentOutcomeChecks.Run());
+                else if (e.Args.Length == 2 && e.Args[1] == "shared-storage-checks") log.AppendLine(SharedStorageChecks.Run());
+                else if (e.Args.Length == 2 && e.Args[1] == "shared-storage-linux-checks") log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"shared-storage\"}"));
+                else if (e.Args.Length == 2 && e.Args[1] == "desktop-language-checks") log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"desktop-language\"}"));
+                else if (e.Args.Length == 2 && e.Args[1] == "home-ownership-checks") log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"home-ownership\"}"));
                 else if (e.Args.Length == 2 && e.Args[1] == "component-skip-checks") log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"nonfatal\"}"));
                 else if (e.Args.Length == 2 && e.Args[1] == "integration-checks") log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None));
                 else if (e.Args.Length == 2 && e.Args[1] == "integration-delta-checks") log.AppendLine(await Backend.GuestAsync("integration-delta-check", null, false, text => log.Append(text), CancellationToken.None));
@@ -275,9 +280,16 @@ public partial class App : Application
             return;
         }
         if (e.Args.Length > 0 && e.Args[0] == "--render-ui") System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        var rehearsal = e.Args.Length > 0 && e.Args[0] is "--rehearsal" or "--wizard-checks" or "--wizard-resume" or "--wizard-run-prepared" or "--wizard-run-image" or "--wizard-cancel-prepared";
+        var rehearsal = e.Args.Length > 0 && e.Args[0] is "--rehearsal" or "--shared-storage-ui-checks" or "--wizard-checks" or "--wizard-resume" or "--wizard-run-prepared" or "--wizard-run-image" or "--wizard-cancel-prepared";
         var window = new MainWindow(rehearsal);
         MainWindow = window;
+        if (e.Args.Length == 1 && e.Args[0] == "--shared-storage-ui-checks")
+        {
+            var result = Path.Combine(Backend.Root, "logs/shared-storage-ui-checks.json");
+            try { await File.WriteAllTextAsync(result, SharedStorageChecks.RunUi(window)); Shutdown(0); }
+            catch (Exception error) { await File.WriteAllTextAsync(result, error.ToString()); Shutdown(1); }
+            return;
+        }
         if (e.Args.Length == 1 && e.Args[0] == "--boot-setup-checks")
         {
             Directory.CreateDirectory(Path.Combine(Backend.Root, "logs"));

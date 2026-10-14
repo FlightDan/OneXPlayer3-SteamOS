@@ -29,6 +29,7 @@
      <Button x:Name="OfficialSourceTab" Tag="1" Click="NavigateSourceSection" Style="{StaticResource StepLink}"><TextBlock x:Name="NavOfficialSource" Text="3.10 镜像" TextWrapping="Wrap" Foreground="#B4C6DC"/></Button>
     </StackPanel>
     <Button x:Name="ContentTab" Tag="2" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavContent" Text="03   选择安装内容" Foreground="#94A9C3"/></Button>
+    <Button x:Name="StorageTab" Tag="7" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavStorage" Text="04   挂载分区（Beta · 未测试）" Foreground="#94A9C3"/></Button>
     <Button x:Name="ReviewTab" Tag="3" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavReview" Text="04   确认方案" Foreground="#94A9C3"/></Button>
     <Button x:Name="BootTab" Tag="4" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavBoot" Text="05   启动器安装" Foreground="#94A9C3"/></Button>
     <Button x:Name="ProgressTab" Tag="5" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavProgress" Text="06   安装进度" Foreground="#94A9C3"/></Button>
@@ -88,6 +89,9 @@
      </StackPanel>
      <StackPanel x:Name="ContentPage" Visibility="Collapsed">
       <Border Style="{StaticResource Card}"><StackPanel x:Name="ComponentOptionsHost"/></Border>
+     </StackPanel>
+     <StackPanel x:Name="StoragePage" Visibility="Collapsed">
+      <Border Style="{StaticResource Card}"><StackPanel x:Name="StorageOptionsHost"/></Border>
      </StackPanel>
      <StackPanel x:Name="ReviewPage" Visibility="Collapsed">
       <Border x:Name="PhysicalConsentBorder" Visibility="{Binding Visibility, ElementName=PhysicalConsent}" Margin="0,0,0,14" Padding="10" CornerRadius="8" BorderThickness="2" BorderBrush="#C48A32" Background="#FFF4DF">

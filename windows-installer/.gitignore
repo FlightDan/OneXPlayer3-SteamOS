@@ -8,6 +8,9 @@ app/obj/
 dist/
 !components/windows-reboot/dist/
 !components/windows-reboot/dist/index.js
+!components/opti2xmx/dist/
+!components/opti2xmx/dist/index.js
+**/node_modules/
 **/__pycache__/
 workspace.json
 workspace.json.tmp

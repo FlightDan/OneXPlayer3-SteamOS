@@ -6,7 +6,9 @@
 
 SteamOS support for the **ONEXPLAYER 3 handheld**, covering Game Mode, the KDE desktop, controller input and hardware controls, with **Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game)**.
 
-The current integration release is **OXP3 SteamOS 0.1.1 (stable channel)**, based on **SteamOS 3.10**. “Stable” identifies this project's integration channel; a complete fresh installation through first-boot setup has not been validated, and automatic cross-version adaptation is not implemented. Read the [0.1.1 release notes](windows-installer/docs/RELEASE_0.1.1.md) before use.
+The current integration release is **OXP3 SteamOS 0.1.2 (stable channel)**, based on **SteamOS 3.10**. “Stable” identifies this project's integration channel; a complete fresh installation through first-boot setup has not been validated, and automatic cross-version adaptation is not implemented. Read the [0.1.2 release notes](windows-installer/docs/RELEASE_0.1.2.md) before use.
+
+Version 0.1.2 adds an optional shared-partition mounting page and fixes/restores remaining-space NTFS formatting. Both are **Beta · untested on the physical handheld**. A 64 GiB SteamOS reservation contains approximately 24.375 GiB for system/boot and 39.625 GiB for home; remaining space in that region can become a separate NTFS partition with a 4K aligned start and 4096-byte clusters. This shares files without automatically sharing a Steam game library.
 
 Report bugs by email at **[dan@devdan.cc](mailto:dan@devdan.cc)** or through [GitHub Issues](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues).
 
@@ -80,7 +82,7 @@ Screenshots / logs:
 | Restart into Windows | [Decky button and desktop shortcut](windows-installer/docs/WINDOWS_REBOOT.md), for the next boot only; restart into Windows confirmed on the device | ✅ |
 | OXP3 Battery | Verified bypass power and correct charge-limit control | ✅ |
 | BE201 Wi-Fi | Wireless firmware support; many users have reported hardware failures under Windows. If the wireless driver drops out, try rebooting | ⚠️ |
-| Dual-boot launcher · rEFInd | Windows / SteamOS boot menu; D-pad and A/B reported unresponsive during boot, under investigation | ⚠️ |
+| Dual-boot launcher · rEFInd | Windows / SteamOS boot menu; D-pad and A/B are now working during boot | ✅ |
 
 ✅ indicates an available adaptation; 🧪 indicates ongoing validation; ⚠️ indicates a known issue. HDR uses a Gamma 2.2 mapping path; 1100 / 472 are mapping parameters. See the relevant release notes for installation, update, reboot and suspend support.
 
@@ -124,7 +126,7 @@ Screenshots / logs:
 <details>
 <summary>Dual-boot launcher screenshot</summary>
 
-Windows / SteamOS boot menu screenshot. D-pad and A/B have been reported unresponsive during boot; investigation is ongoing.
+Windows / SteamOS boot menu screenshot. D-pad and A/B are now working during boot.
 
 ![rEFInd dual-boot launcher · Windows / SteamOS selection](windows-installer/docs/screenshots/dual-boot-launcher.png)
 
@@ -159,12 +161,12 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 
 ## 4. Installation
 
-The complete Windows x64 installer ZIP is provided through **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. The current integration release is **0.1.1 stable**; this channel label does not mean every hardware feature has been validated. A complete fresh installation through first-boot setup has not been tested, and automatic cross-version adaptation is not implemented. Read the [0.1.1 release notes](windows-installer/docs/RELEASE_0.1.1.md) before use.
+The complete Windows x64 installer ZIP is provided through **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. The current integration release is **0.1.2 stable**; this channel label does not mean every hardware feature has been validated. A complete fresh installation through first-boot setup has not been tested, and automatic cross-version adaptation is not implemented. Read the [0.1.2 release notes](windows-installer/docs/RELEASE_0.1.2.md) before use.
 
 1. Download the Windows installer ZIP from Releases, extract it completely and keep its companion files together.
 2. Back up existing data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Resume protection after installation once Windows boots normally.
 3. Prepare at least **64 GiB of contiguous unallocated space** on the target GPT disk, plus at least **45 GiB of free space** for the preparation workspace in Windows; **64 GiB** is recommended for the workspace.
-4. Run **`SteamOSInstaller.exe`** and follow the wizard to select the installation location, official system image and desired adaptation components. Internal dual-boot installation is supported; the validation scope for external SD / SSD installation is documented in the implementation status.
+4. Run **`SteamOSInstaller.exe`** and follow the eight-step wizard to select the installation location, official system image and desired adaptation components, then optionally select partitions for shared-file access or skip the mounting page. Internal dual-boot installation is supported; the validation scope for external SD / SSD installation is documented in the implementation status.
 5. Review the target disk, partition plan and selected options, optionally enable the rEFInd boot menu, then confirm installation.
 6. Follow the application's instructions to boot SteamOS and check Game Mode, the desktop, buttons and plugins.
 

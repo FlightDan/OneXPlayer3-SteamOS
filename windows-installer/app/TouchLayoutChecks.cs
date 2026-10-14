@@ -108,7 +108,7 @@ internal static class TouchLayoutChecks
                 var p = element.TransformToAncestor(root).Transform(new Point());
                 Require(p.X >= -1 && p.Y >= -1 && p.X + element.ActualWidth <= root.ActualWidth + 1 && p.Y + element.ActualHeight <= root.ActualHeight + 1, name);
             }
-            foreach (var step in Enumerable.Range(0,7))
+            foreach (var step in Enumerable.Range(0,8))
             {
                 window.PreviewStep(step); window.UpdateLayout();
                 if (step == 5)

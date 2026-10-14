@@ -1,0 +1,12 @@
+{
+  "name": "Opti2XMX",
+  "author": "FlightDan",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "graphics"
+    ],
+    "description": "Per-game XeSS XMX and OptiScaler setup for supported Intel systems."
+  }
+}

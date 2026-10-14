@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -8,7 +9,8 @@ using System.Windows.Media;
 namespace OxpInstaller;
 
 public sealed record SelectedOptions(int Schema, string[] Repairs, string[] Plugins, string InstallerLanguage, string KdeLanguage,
-    bool SetDeckPassword = false, bool EnableSsh = false);
+    bool SetDeckPassword = false, bool EnableSsh = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] StorageMount[]? StorageMounts = null);
 public sealed record OptionItem(string Id, string Zh, string En, bool Default, string[] Dependencies,
     bool Available = true, string? UnavailableZh = null, string? UnavailableEn = null);
 public sealed record OptionCatalog(int Schema, string[] Languages, string[] KdeLanguages, OptionItem[] Repairs, OptionItem[] Plugins);
@@ -20,15 +22,17 @@ public static class InstallerOptions
         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, PropertyNameCaseInsensitive = true })
         ?? throw new IOException("Missing installer option catalog.");
     public static bool IsDefault(OptionItem item) => item.Available && (item.Id == "flathub-ustc" ? InstallerI18n.Language == "zh-CN" : item.Default);
+    public static string DefaultKdeLanguage => InstallerI18n.Language == "zh-CN" ? "zh_CN" : "en_US";
     public static bool RequiresSystemUpdatePolicy(SelectedOptions options) => options.Repairs.Length > 0 || options.Plugins.Length > 0
         || options.KdeLanguage != "system" || options.SetDeckPassword || options.EnableSsh;
     public static string SystemUpdatePolicyDisclosure => PartitionInventory.L(
         "SteamOS 系统更新暂时暂停，以保留当前设备修复；Steam 客户端和游戏更新照常。恢复系统更新前需检查修复兼容性。",
         "SteamOS system updates will be paused temporarily to preserve the selected device fixes. Steam client and game updates will continue as usual. Check repair compatibility before resuming system updates.");
     public static SelectedOptions Defaults => new(1, Catalog.Repairs.Where(IsDefault).Select(x => x.Id).ToArray(),
-        Catalog.Plugins.Where(IsDefault).Select(x => x.Id).ToArray(), InstallerI18n.Language, "system");
+        Catalog.Plugins.Where(IsDefault).Select(x => x.Id).ToArray(), InstallerI18n.Language, DefaultKdeLanguage);
     public static void Validate(SelectedOptions value)
     {
+        SharedStorage.Validate(value.StorageMounts);
         var catalog = Catalog;
         if (value.Schema != 1 || !catalog.Languages.Contains(value.InstallerLanguage) || !catalog.KdeLanguages.Contains(value.KdeLanguage)
             || value.Repairs == null || value.Plugins == null || value.Repairs.Distinct().Count() != value.Repairs.Length
@@ -67,6 +71,7 @@ public sealed class InstallerOptionsPanel : StackPanel
     private readonly CheckBox allRepairs = new() { IsThreeState = true, Margin = new Thickness(0, 4, 0, 8) };
     private bool updatingRepairs;
     private bool mirrorChanged;
+    private bool kdeChanged;
     private bool applyingLanguageDefault;
     internal Expander RepairsExpander { get; } = new() { IsExpanded = false, HorizontalContentAlignment = HorizontalAlignment.Stretch };
     internal IReadOnlyDictionary<string, CheckBox> OptionBoxes => boxes;
@@ -118,10 +123,23 @@ public sealed class InstallerOptionsPanel : StackPanel
         deckPassword.PasswordChanged += (_, _) => { if (!clearingSensitiveInputs) Changed?.Invoke(this, EventArgs.Empty); };
         deckPasswordConfirm.PasswordChanged += (_, _) => { if (!clearingSensitiveInputs) Changed?.Invoke(this, EventArgs.Empty); };
         UpdateDeckPasswordState();
-        Heading("KDE 语言预选", "KDE language preset");
+        Heading("SteamOS 桌面语言（KDE）", "SteamOS desktop language (KDE)");
+        var languageNote = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray };
+        labels.Add((languageNote,
+            "默认跟随安装器语言。手动选择后保持你的设置，在安装后登录桌面时生效；Steam 游戏模式的语言请在 Steam 设置中选择。",
+            "Defaults to the installer language. A manual choice is kept and takes effect when you log in to the installed desktop. Choose the Steam Gaming Mode language in Steam settings."));
+        Children.Add(languageNote);
         var names = new[] { "保持系统默认 / System default", "简体中文", "繁體中文", "English", "日本語", "한국어", "Deutsch", "Français", "Español", "Русский" };
         for (var i = 0; i < catalog.KdeLanguages.Length; i++) kde.Items.Add(new ComboBoxItem { Content = names[i], Tag = catalog.KdeLanguages[i] });
-        kde.SelectedIndex = 0; Children.Add(kde);
+        kde.SelectedItem = kde.Items.Cast<ComboBoxItem>().Single(x => (string)x.Tag == InstallerOptions.DefaultKdeLanguage);
+        kde.SelectionChanged += (_, _) =>
+        {
+            if (applyingLanguageDefault) return;
+            kdeChanged = true;
+            RefreshSystemUpdatePolicyNote();
+            Changed?.Invoke(this, EventArgs.Empty);
+        };
+        Children.Add(kde);
         Refresh();
     }
     private void Heading(string zh, string en)
@@ -203,6 +221,14 @@ public sealed class InstallerOptionsPanel : StackPanel
     }
     public void Refresh()
     {
+        if (!kdeChanged)
+        {
+            var previous = kde.SelectedItem;
+            applyingLanguageDefault = true;
+            try { kde.SelectedItem = kde.Items.Cast<ComboBoxItem>().Single(x => (string)x.Tag == InstallerOptions.DefaultKdeLanguage); }
+            finally { applyingLanguageDefault = false; }
+            if (previous != kde.SelectedItem) Changed?.Invoke(this, EventArgs.Empty);
+        }
         if (!mirrorChanged && boxes.TryGetValue("flathub-ustc", out var mirror))
         {
             applyingLanguageDefault = true;
