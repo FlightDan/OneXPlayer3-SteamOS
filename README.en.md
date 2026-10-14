@@ -57,7 +57,7 @@ Screenshots / logs:
 | Restart into Windows | [Decky button and desktop shortcut](windows-installer/docs/WINDOWS_REBOOT.md), for the next boot only; restart into Windows confirmed on the device | ✅ |
 | OXP3 Battery | Verified bypass power and correct charge-limit control | ✅ |
 | BE201 Wi-Fi | Wireless firmware support; many users have reported hardware failures under Windows. If the wireless driver drops out, try rebooting | ⚠️ |
-| Dual-boot launcher · rEFInd | Windows / SteamOS selection; tested with the D-pad to select, A to confirm and B to go back | ✅ |
+| Dual-boot launcher · rEFInd | Windows / SteamOS boot menu; D-pad and A/B reported unresponsive during boot, under investigation | ⚠️ |
 
 ✅ indicates an available adaptation; 🧪 indicates ongoing validation; ⚠️ indicates a known issue. HDR uses a Gamma 2.2 mapping path; 1100 / 472 are mapping parameters. See the relevant release notes for installation, update, reboot and suspend support.
 
@@ -101,7 +101,7 @@ Screenshots / logs:
 <details>
 <summary>Dual-boot launcher screenshot</summary>
 
-Tested: use the D-pad to select Windows / SteamOS, A to confirm and B to go back.
+Windows / SteamOS boot menu screenshot. D-pad and A/B have been reported unresponsive during boot; investigation is ongoing.
 
 ![rEFInd dual-boot launcher · Windows / SteamOS selection](windows-installer/docs/screenshots/dual-boot-launcher.png)
 

@@ -57,7 +57,7 @@ Decky / 插件版本（如适用）：
 | 重启进入 Windows | [Decky 按钮与桌面快捷方式](windows-installer/docs/WINDOWS_REBOOT.md)，仅下一次启动生效；用户实机重启进入 Windows 已通过 | ✅ |
 | OXP3 Battery | 旁通供电与正确的充电上限控制，已验证 | ✅ |
 | BE201 Wi-Fi | 无线固件适配；有大量用户报告 Windows 下硬件故障，如果掉驱动请尝试重启 | ⚠️ |
-| 双系统启动器 · rEFInd | Windows / SteamOS 启动选择；使用十字键选择、A 确认、B 返回，已测试 | ✅ |
+| 双系统启动器 · rEFInd | Windows / SteamOS 启动菜单；用户反馈启动阶段十字键与 A/B 不可用，排查中 | ⚠️ |
 
 ✅ 表示已提供对应适配；🧪 表示仍在验证；⚠️ 表示存在已知问题。HDR 使用 Gamma 2.2 映射路径，1100 / 472 为映射参数。新安装、更新、重启及休眠后的支持情况以对应 Release 说明为准。
 
@@ -101,7 +101,7 @@ Decky / 插件版本（如适用）：
 <details>
 <summary>查看双系统启动器截图</summary>
 
-已测试：使用十字键选择 Windows / SteamOS，A 确认，B 返回。
+Windows / SteamOS 启动菜单截图。当前用户反馈启动阶段十字键与 A/B 不可用，正在排查。
 
 ![rEFInd 双系统启动器 · Windows / SteamOS 启动选择](windows-installer/docs/screenshots/dual-boot-launcher.png)
 
