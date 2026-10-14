@@ -175,7 +175,7 @@ Copyright © 2026 FlightDan and contributors.
 
 - **设备适配**：[onexplayer3-steamos-setup](https://github.com/HHHHanasak1/onexplayer3-steamos-setup)、[InputPlumber](https://github.com/ShadowBlip/InputPlumber)、[Linux](https://kernel.org/)、[KDE / KWin](https://invent.kde.org/plasma/kwin)、[Gamescope](https://github.com/ValveSoftware/gamescope)、[SteamOS Manager](https://gitlab.steamos.cloud/holo/steamos-manager)、[MangoHud](https://github.com/flightlessmango/MangoHud)。
 - **XeSS 运行环境**：[xess-xmx-linux](https://github.com/HHHHanasak1/xess-xmx-linux)、[OptiScaler](https://github.com/optiscaler/OptiScaler)、[Mesa](https://gitlab.freedesktop.org/mesa/mesa)、[Intel Graphics Compiler](https://github.com/intel/intel-graphics-compiler)、[Intel compute-runtime / ocloc](https://github.com/intel/compute-runtime)。另感谢 [Intel XeSS](https://github.com/intel/xess) 提供的 SDK 与运行组件，其许可独立适用。
-- **插件生态**：[Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) 及 SteamGridDB、ProtonDB Badges、TabMaster、CSS Loader、AutoFlatpaks、Deck Settings、HLTB for Deck、Animation Changer。
+- **插件框架**：[Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)。
 - **Android 支持**：[Waydroid](https://github.com/waydroid/waydroid)、[steamos-waydroid-bundle](https://github.com/pjohno/steamos-waydroid-bundle)。
 - **安装工具基础**：[.NET](https://github.com/dotnet/runtime)、[QEMU](https://www.qemu.org/)、[EDK II](https://github.com/tianocore/edk2)、[Alpine Linux](https://alpinelinux.org/)、[7-Zip](https://www.7-zip.org/)、[aria2](https://github.com/aria2/aria2)、[desync](https://github.com/folbricht/desync)、[kmscon](https://github.com/Aetf/kmscon)、[libtsm](https://github.com/Aetf/libtsm)。
 
