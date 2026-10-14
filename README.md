@@ -152,8 +152,9 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 ## 5. Roadmap
 
 - [ ] G3E 开关核控制
-- [ ] 更好的安装器 UI / UX
+- [x] 触屏友好安装器 UI / UX
 - [x] 内置启动管理器：Windows / SteamOS 启动选择与默认启动项管理
+- [ ] 免构建 64G 系统镜像及配套安装器
 
 更多后续工作见 [Roadmap](ROADMAP.md)。
 

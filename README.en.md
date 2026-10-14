@@ -152,8 +152,9 @@ System images are not bundled with the installer. Preparing SteamOS 3.10 and ini
 ## 5. Roadmap
 
 - [ ] G3E CPU core enable / disable controls
-- [ ] Improved installer UI / UX
+- [x] Touch-friendly installer UI / UX
 - [x] Integrated boot manager: Windows / SteamOS selection and default boot entry management
+- [ ] Prebuilt 64G system image and companion installer
 
 See the [Roadmap (Chinese)](ROADMAP.md) for further plans.
 
