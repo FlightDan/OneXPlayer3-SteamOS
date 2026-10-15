@@ -24,8 +24,8 @@
    <TextBlock x:Name="CapacityHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,4,0,10"/>
     <TextBlock x:Name="PlacementLabel" FontWeight="SemiBold"/>
     <WrapPanel Margin="0,8,0,8">
-     <RadioButton x:Name="AlignLeft" GroupName="InstallationPlacement" IsChecked="True" Checked="PlacementChanged" MinHeight="44" MinWidth="128" VerticalContentAlignment="Center" Margin="0,0,16,8"/>
-     <RadioButton x:Name="AlignRight" GroupName="InstallationPlacement" Checked="PlacementChanged" MinHeight="44" MinWidth="96" VerticalContentAlignment="Center" Margin="0,0,0,8"/>
+     <RadioButton x:Name="AlignLeft" GroupName="InstallationPlacement" Checked="PlacementChanged" MinHeight="44" MinWidth="128" VerticalContentAlignment="Center" Margin="0,0,16,8"/>
+     <RadioButton x:Name="AlignRight" GroupName="InstallationPlacement" IsChecked="True" Checked="PlacementChanged" MinHeight="44" MinWidth="96" VerticalContentAlignment="Center" Margin="0,0,0,8"/>
     </WrapPanel>
     <TextBlock x:Name="PlacementHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,0,0,12"/>
    <Button x:Name="FormatRemainingButton" Click="FormatRemaining" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,8" ToolTipService.ShowOnDisabled="True"/>

@@ -32,9 +32,8 @@ public static class OptionsChecks
         Require((modeBanner.Contains("备份") || modeBanner.Contains("Back up")) && !modeBanner.Contains("Beta"),"backup-and-formatting-are-explicit-in-release-banner");
         Require(panel.Selection.Repairs.Order().SequenceEqual(InstallerOptions.Defaults.Repairs.Order()), "repair-defaults-match-language");
         Require(!panel.RepairsExpander.IsExpanded, "device-repairs-start-collapsed");
-        Require(panel.SystemUpdatePolicyNote.Visibility == Visibility.Visible
-            && panel.SystemUpdatePolicyNote.Text.Contains("SteamOS 系统更新暂时暂停")
-            && panel.Describe().Contains("Steam 客户端和游戏更新照常"), "system-update-policy-is-disclosed-in-options-and-plan");
+        Require(!panel.Children.OfType<TextBlock>().Any(x => x.Text.Contains("系统更新") || x.Text.Contains("system updates"))
+            && !panel.Describe().Contains("系统更新") && !panel.Describe().Contains("system updates"), "options-and-plan-do-not-promise-system-update-pause");
         Require(catalog.Repairs.Where(x => x.Available && x.Id is not ("refind" or "flathub-ustc")).All(x => panel.Selection.Repairs.Contains(x.Id)), "all-available-device-repairs-selected");
         Require(panel.Selection.Plugins.Order().SequenceEqual(catalog.Plugins.Where(x => x.Default).Select(x => x.Id).Order()), "plugin-defaults-match-catalog");
         Require(catalog.Repairs.All(x => x.Id != "waydroid") && catalog.Plugins.Any(x => x.Id == "waydroid"), "third-party-waydroid-is-in-third-party-category");
@@ -117,6 +116,9 @@ public static class OptionsChecks
             {
                 InstallerI18n.SetLanguage(language);
                 var panel = new InstallerOptionsPanel();
+                Require(!panel.Children.OfType<TextBlock>().Any(x => x.Text.Contains("系统更新") || x.Text.Contains("system updates"))
+                    && !panel.Describe().Contains("系统更新") && !panel.Describe().Contains("system updates"),
+                    "no-system-update-pause-disclosure-" + language);
                 var expected = language == "zh-CN" ? "zh_CN" : "en_US";
                 Require(panel.Selection.KdeLanguage == expected && InstallerOptions.Defaults.KdeLanguage == expected,
                     "desktop-default-follows-installer-" + language);
@@ -163,6 +165,9 @@ public static class OptionsChecks
             picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().First(r => r.Space != null);
             picker.CapacityInput.Text = "64";
             Find<CheckBox>("UsePrepared").IsChecked = false;
+            // Consent is independent of downloaded 3.10 resources. Keep this
+            // fixture portable to a freshly extracted package with no cache.
+            Find<CheckBox>("Upgrade310").IsChecked = false;
             Find<TextBox>("ImagePath").Text = source;
             var boot = (BootOptionsPanel)Find<StackPanel>("BootOptionsHost").Children[0];
             boot.InstallChoice.IsChecked = false;

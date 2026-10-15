@@ -47,6 +47,8 @@ public static partial class InstallationController
     public static string SessionDirectory(InstallationSession state) => Path.Combine(Work, "install-session-" + state.Id);
     public static void ValidateRequest(InstallationRequest request)
     {
+        if (request.Physical && request.Options is null)
+            throw new IOException("实际安装缺少配置，请重新选择安装内容。 / Physical installation options are required for system update protection.");
         if (request.MakeDefaultBoot && (!request.Physical || request.Kind != InstallationTargetKind.InternalShared))
             throw new IOException("仅内置实盘安装可修改当前电脑的默认启动项。 / Only internal physical installation can change this PC's default boot entry.");
         if (request.PlannedPartition != null)
@@ -145,10 +147,9 @@ public static partial class InstallationController
             if (request.Options != null)
             {
                 Phase("components", InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…"), "02.01");
-                var expected = 2 * (request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
+                var expected = 2 * (1 + request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
                     + (request.Options.SetDeckPassword || request.Options.EnableSsh ? 1 : 0)
-                    + (request.Options.StorageMounts is { Length: > 0 } ? 1 : 0)
-                    + (InstallerOptions.RequiresSystemUpdatePolicy(request.Options) ? 1 : 0));
+                    + (request.Options.StorageMounts is { Length: > 0 } ? 1 : 0));
                 var componentMessage = InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…");
                 void ComponentLog(string text)
                 {

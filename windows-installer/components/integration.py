@@ -1,4 +1,10 @@
-"""Explicit offline repair/plugin installation with logical-path recovery records."""
+"""Offline repair/plugin installation with required OS image update hold.
+
+Restore update-hold files using the existing per-slot journal offline, or
+reboot after restoration before relying on the original update source.
+This installer never stops or restarts services. Unattended first-boot
+completion remains unverified; see the 0.1.3 release notes.
+"""
 import argparse
 import base64
 import configparser
@@ -19,6 +25,7 @@ from hdr.installer import ensure_directory, ensure_user_directory
 from directory_transaction import DirectoryTransaction
 from release_notes import render as render_release_note
 from shared_storage import validate_mounts, files as shared_storage_files
+from update_hold import files as update_hold_files
 
 KERNEL='7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'
 VERSION={'ID':'steamos','VERSION_ID':'3.10','BUILD_ID':'20260924.1000'}
@@ -272,9 +279,71 @@ def seed_decky_order(root, state, owner):
     return list(files)
 
 
+def shared_storage_transaction_exists(state):
+    """Any previous transaction evidence prevents a preflight-only skip."""
+    for directory in (state/'shared-storage', state.parent/'shared/shared-storage'):
+        try: directory.lstat()
+        except FileNotFoundError: continue
+        return True
+    return False
+
+
+def verify_shared_storage_skip(state, report):
+    """Readonly verification must not accept a skipped partial transaction."""
+    if (report.get('status')!='not_installed' or report.get('safe_to_skip') is not True or
+            not isinstance(report.get('reason'),str) or not report['reason'].strip() or
+            report.get('files') or report.get('mounts') or shared_storage_transaction_exists(state)):
+        raise RuntimeError('Unsafe shared storage skip or existing transaction evidence')
+
+
+def stage_shared_storage(root, state, mounts, owner):
+    # File generation is readonly. Once apply_files starts, even a failure before
+    # the journal commit may have created directories or changed target metadata.
+    # Never downgrade that failure or a failed retry of an older transaction.
+    previous=shared_storage_transaction_exists(state)
+    try:
+        files=shared_storage_files(root,mounts,owner,managed=(state/'shared-storage/state.json').exists())
+    except (OSError,ValueError,RuntimeError) as error:
+        if (previous or shared_storage_transaction_exists(state) or
+                isinstance(error,OSError) and error.errno not in
+                (errno.ENOENT,errno.ENOTDIR,errno.ELOOP,errno.EACCES,errno.EPERM)):
+            raise
+        report={'status':'not_installed','safe_to_skip':True,'reason':str(error) or type(error).__name__}
+        verify_shared_storage_skip(state,report)
+        return report
+    apply_files(root,state,'shared-storage',files,owner)
+    return {'status':'files_installed','files':list(files),
+        'mounts':[{'partuuid':item['partuuid'],'filesystem':item['filesystem'],
+                   'path':'/mnt/shared/'+item['mount_name']} for item in mounts],
+        'activation':'on_access_after_boot','steam_library_added':False}
+
+
+def refuse_legacy_update_policy(root):
+    """Do not silently carry an old installer pause into a newly prepared image."""
+    reason=('This image contains a legacy installer system-update-policy. '
+            'Prepare again from the original SteamOS image to allow system updates; '
+            'existing updater files and recovery journals were preserved.')
+    if os.path.lexists(root/'var/lib/oxp3-installer/system-update-policy.json'):
+        raise RuntimeError(reason)
+    for slot in ('A','B'):
+        directory=root/'home/.oxp3-installer/integration'/slot/'system-update-policy'
+        if not os.path.lexists(directory): continue
+        try:
+            saved=snapshot(directory/'state.json',maximum=256*1024*1024)
+            value=json.loads(base64.b64decode(saved['data'])) if saved['exists'] else None
+            restored=(saved['exists'] and saved['uid']==0 and not saved['mode']&0o077 and
+                      isinstance(value,dict) and value.get('phase')=='rolled_back')
+        except (OSError,ValueError,RuntimeError): restored=False
+        if not restored: raise RuntimeError(reason)
+
+
 def stage(root, payload, options, slot, deck_password_hash=None, target_disk=None):
     root=Path(root).absolute(); payload=Path(payload); validate(options,json.loads((payload/'components/options.json').read_text()))
     if os.geteuid()!=0: raise RuntimeError('Root required')
+    refuse_legacy_update_policy(root)
+    # Mandatory, read-only preflight precedes even home/journal directory writes.
+    # The builder admits only the supported original 3.10/build20260924.1000.
+    hold_files=update_hold_files(root)
     trusted_tree(payload/'components'); trusted_tree(payload/'integration')
     bundle_release=json.loads((payload/'components/release.json').read_text())
     if bundle_release.get('schema')!=1 or bundle_release.get('product')!='OXP3 SteamOS' or not isinstance(bundle_release.get('version'),str): raise RuntimeError('Invalid integration release metadata')
@@ -311,6 +380,15 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
     catalog=json.loads((payload/'components/options.json').read_text())
     items={x['id']:x for x in catalog['repairs']+catalog['plugins']}
     compatible=all(release(root).get(k)==v for k,v in VERSION.items())
+    # This is a required preparation invariant, outside optional repair handling.
+    # stage is already called for each A/B slot by the existing image pipeline.
+    apply_files(root,state,'system-update-hold',hold_files,owner)
+    reports['system-update-hold']={
+        'status':'files_installed','activation':'next-boot','files':list(hold_files),
+        'os_image_updates':'held','steam_client_updates':'unchanged',
+        'steam_game_updates':'unchanged',
+        'restore':'Restore this component journal in both slots offline, or reboot after restoring before using the original update source.'}
+    print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'system-update-hold',**reports['system-update-hold']}),flush=True)
     if options.get('set_deck_password',False) or options.get('enable_ssh',False):
         files={}; ssh_link_created=False; ssh_link_target=None
         if options.get('set_deck_password',False):
@@ -501,26 +579,11 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         apply_files(root,state,'kde-language',{relative:{'data':data,'user':True}},owner)
         reports['kde-language']={'status':'files_installed','language':language,'activation':'next-login'}
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'kde-language',**reports['kde-language']}),flush=True)
-    # The supported image must survive the first online session. Official
-    # stable updates replace the root and otherwise discard these repairs.
-    if reports and compatible:
-        from system_update_policy import files as update_policy_files, verify as verify_update_policy
-        policy=update_policy_files(root)
-        apply_files(root,state,'system-update-policy',policy,owner)
-        verify_update_policy(root)
-        reports['system-update-policy']={'status':'files_installed','activation':'boot-prepared',
-            'files':list(policy),'steam_client_updates':'unchanged','steam_game_updates':'unchanged'}
-        print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'system-update-policy',**reports['system-update-policy']}),flush=True)
-    # Sharing ordinary files alone does not opt into the repair update policy.
+    # The required update hold was applied before optional repairs; there is no
+    # live updater activation or service stop in offline image preparation.
     mounts=options.get('storage_mounts',[])
     if mounts:
-        managed=(state/'shared-storage/state.json').exists()
-        files=shared_storage_files(root,mounts,owner,managed=managed)
-        apply_files(root,state,'shared-storage',files,owner)
-        reports['shared-storage']={'status':'files_installed','files':list(files),
-            'mounts':[{'partuuid':item['partuuid'],'filesystem':item['filesystem'],
-                       'path':'/mnt/shared/'+item['mount_name']} for item in mounts],
-            'activation':'on_access_after_boot','steam_library_added':False}
+        reports['shared-storage']=stage_shared_storage(root,state,mounts,owner)
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'shared-storage',**reports['shared-storage']}),flush=True)
     # The version note lives in shared home and is tracked once across A/B slots.
     # Fresh reconstructed homes do not inherit the recovery image's KDE launcher.
@@ -539,7 +602,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         result={'schema':1,'release':bundle_release,'system':release(root),'options':options,'components':reports,'services':services,'slot':slot}
         atomic_write(state/'result.json',(json.dumps(result)+'\n').encode(),0o600,0,0)
         return result
-    for name in ('integration_runtime.py','system_update_policy.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','shared_storage.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
+    for name in ('integration_runtime.py','system_update_policy.py','update_hold.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','shared_storage.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
         runtime['usr/local/lib/oxp3-integration/'+name]={'data':(payload/'components'/name).read_bytes()}
     runtime['usr/local/lib/oxp3-integration/slot']={'data':(slot+'\n').encode()}
     for name in ('installer.py','generate.py','upstream.lua','UPSTREAM_LICENSE'):

@@ -342,6 +342,13 @@ public partial class App : Application
             catch (Exception error) { await File.WriteAllTextAsync(Path.Combine(Backend.Root, "logs/options-checks.json"), error.ToString()); Shutdown(1); }
             return;
         }
+        if (e.Args.Length == 2 && e.Args[0] == "--wizard-physical-navigation-checks")
+        {
+            var result = Path.Combine(Backend.Root, "logs/wizard-physical-navigation-checks.json");
+            try { await File.WriteAllTextAsync(result, WizardChecks.RunPhysicalNavigation(window, e.Args[1])); Shutdown(0); }
+            catch (Exception error) { await File.WriteAllTextAsync(result, error.ToString()); Shutdown(1); }
+            return;
+        }
         if (e.Args.Length == 2 && e.Args[0] == "--wizard-checks")
         {
             try { var proof = WizardChecks.Run(window, e.Args[1]); await File.WriteAllTextAsync(Path.Combine(Backend.Root, "logs/wizard-checks-result.txt"), proof); Shutdown(0); }

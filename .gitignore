@@ -15,6 +15,7 @@
 /archive/windows-installer-history/
 /.g3e-fix-build/
 /.g3e-transfer-known-hosts
+/.ssh-steamos-known-hosts
 /新建文本文档.txt
 
 # Credentials and local agent settings.

@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'partition-delete-policy.ps1')
+. (Join-Path $PSScriptRoot 'linux-storage-probe.ps1')
 $Error.Clear()
 $diskSnapshots = @(Get-Disk -ErrorAction Stop)
 if ($Error.Count -gt 0) { throw "Disk query failed: $($Error[0])" }
@@ -17,13 +18,26 @@ $disks = @($diskSnapshots | ForEach-Object {
         $partition = $_
         $volume = $partition | Get-Volume -ErrorAction SilentlyContinue
         $deletionReason = Get-PartitionDeletionBlockReason $disk $partition $volume
+        $filesystem = [string]$volume.FileSystemType
+        $filesystemSource = if ($filesystem -in @('NTFS','exFAT','FAT32')) { 'windows' } else { '' }
+        $sharedStorageSafe = $false
+        $filesystemProbeError = ''
+        if (Test-LinuxStorageProbeEligible $disk $partition $volume) {
+            try {
+                $detected = Get-LinuxStorageFilesystem $disk $partition
+                if ($detected -in @('ext4','btrfs')) {
+                    $filesystem = $detected; $filesystemSource = 'signature'; $sharedStorageSafe = $true
+                }
+            } catch { $filesystemProbeError = 'Read-only filesystem identification was unavailable.' }
+        }
         [pscustomobject]@{
             number = $partition.PartitionNumber; guid = [string]$partition.Guid; offset = $partition.Offset; size = $partition.Size
             type = $partition.Type; gptType = [string]$partition.GptType; letter = [string]$partition.DriveLetter
             isBoot = $partition.IsBoot; isSystem = $partition.IsSystem; isHidden = $partition.IsHidden
             deletionAllowed = ($deletionReason -eq ''); deletionBlockReason = $deletionReason
             nativeUnrecognizedSafe = ($partition.NativeUnrecognizedSafe -eq $true)
-            filesystem = [string]$volume.FileSystemType; label = [string]$volume.FileSystemLabel
+            filesystem = $filesystem; filesystemSource = $filesystemSource; sharedStorageSafe = $sharedStorageSafe
+            filesystemProbeError = $filesystemProbeError; label = [string]$volume.FileSystemLabel
             free = if ($null -ne $volume) { $volume.SizeRemaining } else { $null }
         }
     })

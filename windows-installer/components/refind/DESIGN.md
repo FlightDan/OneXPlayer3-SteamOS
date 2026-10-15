@@ -70,7 +70,7 @@ Charcoal, slate and soft silver form the palette. Frontmatter owns the authored 
 
 **The Quiet Silhouette Rule.** Keep marks dimmer than labels; communicate selection through the external contour.
 
-The wallpaper is an image rather than a flat color token. Preserve `theme/background.png` unchanged; its provenance is recorded in [ASSETS.md](ASSETS.md).
+The wallpaper is an image rather than a flat color token. `theme/background.png` includes the approved bottom-right controller legend; its provenance is recorded in [ASSETS.md](ASSETS.md).
 
 ## Typography
 
@@ -85,6 +85,8 @@ rEFInd complements sprite RGB on the dark backdrop: `font-sprite-source` is an e
 Two square system targets sit above Power, Restart, Firmware and Info, with native status text beneath. System assets are 256 pixels and tools 96 pixels; their external selection plates are 272 and 112 pixels respectively. Firmware determines final placement and resolution; there are no web breakpoints.
 
 System labels are centered at (128, 199). The Steam mark occupies a 112-pixel square at (72, 43); Windows uses four 49-pixel panes with 6-pixel gaps. Tool labels are centered at (48, 71). Asset pixel sizes do not guarantee physical size on a device.
+
+The static controller legend occupies the bottom-right wallpaper margin, with D-pad Select, A Confirm and B Back stacked vertically. Icons share a vertical centerline and labels share a left edge. Keep equal visible space between icon bounds, allowing for the cross being taller than the circular buttons: the approved source has 52 and 51 pixel gaps. The legend scales with the wallpaper; system icons and native status remain separate runtime elements.
 
 ## Elevation & Depth
 
@@ -106,10 +108,12 @@ System tiles have gently rounded corners and a 1-pixel outline. Selection contou
 
 Visual review disposition: **Ship for the reviewed scope**, after correcting native font inversion. Published QEMU/OVMF reference captures: [SteamOS selected](../../docs/refind-dark-menu.png), [Windows selected](../../docs/refind-dark-windows.png) and [tool selected](../../docs/refind-dark-tools.png). Original working-directory captures remain local. Real-device firmware touch, hardware boot behavior and native device resolution remain untested by this visual review.
 
+2026-10-15 controller legend update: [current menu capture](../../docs/refind-controller-menu.png), verified in QEMU/OVMF at 1280x800 and 1920x1200 with all three focus states. The earlier captures above document the original theme before the legend was added.
+
 ## Do's and Don'ts
 
 - **Do** keep marks dimmer than labels.
-- **Do** preserve the generated wallpaper and author UI separately.
+- **Do** preserve the approved wallpaper legend spacing and author interactive UI separately.
 - **Do** validate selection and status text in actual QEMU/OVMF captures.
 - **Do** keep this identity scoped to rEFInd.
 - **Don't** replace the saved Steam silhouette with a generated approximation.

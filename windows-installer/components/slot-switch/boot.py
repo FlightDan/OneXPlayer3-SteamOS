@@ -7,8 +7,10 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import stat
 import subprocess
+import sys
 import tempfile
 
 BOOT = '/usr/bin/steamos-bootconf'
@@ -96,23 +98,68 @@ class Controller:
         return {slot: read_file(self.conf / (slot + '.conf')) for slot in ('A', 'B')}
 
     @contextmanager
-    def update_guard(self):
-        """Block service activation without stopping any running updater."""
+    def update_guard(self, stop_updaters=False):
+        """Exclude activation; stop atomupd only with explicit consent and RAUC idle."""
         services = ('atomupd.service', 'rauc.service')
         added = []
+        restart_atomupd = False
         result = {'reboot_requested': False}
-        try:
+        def active(service):
+            return self.run([SYSTEMCTL, 'show', service, '-p', 'ActiveState', '--value'])
+
+        def masks_verified():
             for service in services:
-                if self.run([SYSTEMCTL, 'show', service, '-p', 'ActiveState', '--value']) not in ('inactive', 'failed'):
-                    raise RuntimeError('A system updater service is running. Use the boot recovery menu to roll back. / 系统更新服务仍在运行，暂时无法切换。请使用开机恢复菜单回退。')
+                if self.run([SYSTEMCTL, 'show', service, '-p', 'UnitFileState', '--value']) not in ('masked', 'masked-runtime'):
+                    raise RuntimeError('Cannot exclude system updates. / 无法暂时阻止系统更新。')
+
+        def no_job(service):
+            # systemctl prints Job= for job ID zero (--all preserves empty
+            # properties). A missing/unknown property must fail closed too.
+            if self.run([SYSTEMCTL, 'show', service, '-p', 'Job', '--all']) != 'Job=':
+                raise RuntimeError('Updater has a queued job or unknown job state; wait and try again. / 更新服务有排队任务或任务状态未知，请稍后重试。')
+
+        def rauc_inactive():
+            # An idle RAUC daemon may accept an install immediately after its
+            # Operation property is read. Never stop it, even when it says idle.
+            no_job('rauc.service')
+            if active('rauc.service') not in ('inactive', 'failed'):
+                raise RuntimeError('RAUC is running or starting; it cannot be safely interrupted, even if idle. Wait for it to exit or use the boot recovery menu. / RAUC 正在运行或启动，即使空闲也不能安全中断。请等待退出或使用开机恢复菜单。')
+            self.idle()
+
+        try:
+            states = {service: active(service) for service in services}
+            if states['rauc.service'] not in ('inactive', 'failed'):
+                rauc_inactive()
+            if states['atomupd.service'] not in ('inactive', 'failed'):
+                if not stop_updaters:
+                    raise RuntimeError('A system updater service is running. Explicitly choose temporary updater stopping or use the boot recovery menu. / 系统更新服务仍在运行，请明确选择临时停止更新服务，或使用开机恢复菜单。')
+                if states['atomupd.service'] != 'active':
+                    raise RuntimeError('Updater is changing state; wait and try again. / 更新服务状态正在变化，请稍后重试。')
+            self.idle()
+            for service in services:
                 if self.run([SYSTEMCTL, 'show', service, '-p', 'UnitFileState', '--value']) not in ('masked', 'masked-runtime'):
                     # Track even a command that writes its mask and then fails.
                     added.append(service)
                     self.run([SYSTEMCTL, 'mask', '--runtime', service])
+                elif service == 'atomupd.service' and states[service] == 'active':
+                    raise RuntimeError('The running updater was already masked; it could not be restarted safely on failure. / 运行中的更新服务已被屏蔽，失败后无法安全恢复，未停止服务。')
+            masks_verified()
+            # Mask both activation paths first, then recheck RAUC before any
+            # stop. This also rejects installs that started during masking.
+            rauc_inactive()
+            no_job('atomupd.service')
+            atomupd_state = active('atomupd.service')
+            if atomupd_state not in ('inactive', 'failed'):
+                if not stop_updaters or states['atomupd.service'] != 'active' or atomupd_state != 'active':
+                    raise RuntimeError('Updater started concurrently; no slot switch performed. / 更新服务同时启动，未切换槽位。')
+                # A stop command may stop the service and then fail or time out.
+                # Record recovery responsibility before issuing it.
+                restart_atomupd = True
+                self.run([SYSTEMCTL, 'stop', 'atomupd.service'])
+            masks_verified()
             for service in services:
-                if self.run([SYSTEMCTL, 'show', service, '-p', 'UnitFileState', '--value']) not in ('masked', 'masked-runtime'):
-                    raise RuntimeError('Cannot exclude system updates. / 无法暂时阻止系统更新。')
-                if self.run([SYSTEMCTL, 'show', service, '-p', 'ActiveState', '--value']) not in ('inactive', 'failed'):
+                no_job(service)
+                if active(service) not in ('inactive', 'failed'):
                     raise RuntimeError('Updater started concurrently; no slot switch performed. / 更新服务同时启动，未切换槽位。')
             self.idle()
             yield result
@@ -124,8 +171,15 @@ class Controller:
                 for service in reversed(added):
                     try: self.run([SYSTEMCTL, 'unmask', '--runtime', service])
                     except Exception as error: errors.append(service + ': ' + str(error))
+                if restart_atomupd:
+                    try:
+                        if active('atomupd.service') != 'active':
+                            self.run([SYSTEMCTL, 'start', 'atomupd.service'])
+                            if active('atomupd.service') != 'active':
+                                raise RuntimeError('Updater did not return to its previous running state')
+                    except Exception as error: errors.append('atomupd.service restart: ' + str(error))
                 if errors:
-                    raise RuntimeError('Could not restore temporary updater masks. / 无法恢复临时更新服务设置：' + '; '.join(errors))
+                    raise RuntimeError('Could not restore temporary updater masks or running state. / 无法恢复临时更新服务设置或运行状态：' + '; '.join(errors))
 
     def idle(self):
         # Reading the bus name list must not activate a paused RAUC service.
@@ -176,11 +230,11 @@ class Controller:
         return {'current': current, 'selected': selected, 'target': target, 'token': token,
                 'current_system': Path('/etc/os-release').read_text(), 'installation_records': records}
 
-    def reboot(self, target, token):
+    def reboot(self, target, token, stop_updaters=False):
         if target not in ('A', 'B') or not re.fullmatch('[0-9a-f]{64}', token):
             raise ValueError('Invalid slot request')
         preflight()
-        with reboot_lock(), self.update_guard() as guard:
+        with reboot_lock(), self.update_guard(stop_updaters=stop_updaters) as guard:
             state = self.status()
             if state['target'] != target or state['token'] != token:
                 raise RuntimeError('Slot state changed. Reopen this tool. / 槽位状态已变化，请重新打开工具。')
@@ -227,19 +281,61 @@ class Controller:
         return {'reboot_requested': True, 'target': target}
 
 
+def console_switch(controller, stop_updaters=False):
+    if not sys.stdin.isatty():
+        raise RuntimeError('Interactive terminal required. / 请在终端中运行并确认。')
+    state = controller.status()
+    print('Current slot / 当前槽：' + state['current'])
+    print('Target slot / 目标槽：' + state['target'])
+    print(state.get('current_system', '').strip())
+    if stop_updaters:
+        print('Temporarily stop background update checks only if safe; active RAUC still blocks switching.\n'
+              '已选择临时停止后台更新检查；RAUC 正在运行时仍会拒绝切换。')
+    print('Save your work. This selects the other system slot and requests a reboot; it does not repair that slot.\n'
+          '请保存文件。此操作选择另一系统槽并重启，不会修复另一槽。')
+    expected = 'SWITCH ' + state['target']
+    try:
+        confirmed = input('Type / 输入 ' + expected + ' to continue / 确认继续：') == expected
+    except (EOFError, KeyboardInterrupt):
+        return {'cancelled': True}
+    if not confirmed:
+        return {'cancelled': True}
+    # Once confirmed, terminal Ctrl-C/closure must not interrupt boot-config
+    # writes or their exception rollback. Restore handlers after the operation.
+    saved = {}
+    try:
+        for name in ('SIGINT', 'SIGHUP'):
+            number = getattr(signal, name, None)
+            if number is not None:
+                saved[number] = signal.signal(number, signal.SIG_IGN)
+        return controller.reboot(state['target'], state['token'], stop_updaters=stop_updaters)
+    finally:
+        for number, handler in reversed(tuple(saved.items())):
+            signal.signal(number, handler)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=('status', 'reboot'))
+    parser.add_argument('action', choices=('status', 'reboot', 'switch'))
     parser.add_argument('target', nargs='?')
     parser.add_argument('token', nargs='?')
+    parser.add_argument('--stop-updaters', action='store_true',
+                        help='Temporarily stop atomupd only when RAUC is inactive; restore it if reboot fails')
     args = parser.parse_args()
     try:
-        if args.action == 'status' and (args.target is not None or args.token is not None):
+        if args.action == 'status' and (args.target is not None or args.token is not None or args.stop_updaters):
             raise ValueError('Status takes no arguments')
         if args.action == 'reboot' and (args.target is None or args.token is None):
             raise ValueError('Target and state token required')
+        if args.action == 'switch' and (args.target is not None or args.token is not None):
+            raise ValueError('Interactive switch determines the target and state token itself')
         controller = Controller()
-        data = controller.status() if args.action == 'status' else controller.reboot(args.target, args.token)
+        if args.action == 'status':
+            data = controller.status()
+        elif args.action == 'switch':
+            data = console_switch(controller, stop_updaters=args.stop_updaters)
+        else:
+            data = controller.reboot(args.target, args.token, stop_updaters=args.stop_updaters)
         print(json.dumps({'ok': True, 'data': data}, ensure_ascii=False))
         return 0
     except Exception as error:

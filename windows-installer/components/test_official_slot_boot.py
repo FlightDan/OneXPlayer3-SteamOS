@@ -26,6 +26,7 @@ reboots = []
 def run(args):
     if args[0] == boot.BUSCTL: return 'de.pengutronix.rauc - - - (activatable)'
     if args[0] == boot.SYSTEMCTL:
+        if args[1] == 'show' and 'Job' in args: return 'Job='
         if args[1] == 'show': return 'masked' if 'UnitFileState' in args else 'inactive'
         reboots.append(current); return ''
     if args == [boot.BOOT, 'this-image']: return current

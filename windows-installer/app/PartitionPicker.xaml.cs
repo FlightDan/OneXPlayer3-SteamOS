@@ -71,14 +71,14 @@ public partial class PartitionPicker : UserControl
         DiskReadStatus.Text = L("正在读取…", "Reading…");
         ExampleButton.Content = L("使用示例布局", "Use example layout");
         DeletePartitionButton.Content = L("删除选定分区…", "Delete selected partition…");
-        FormatRemainingButton.Content = L("将剩余空间格式化为 NTFS（Beta · 未测试）…", "Format remaining space as NTFS (Beta · Untested)…");
-        FormatRemainingHint.Text = L("Beta · 未测试（实机）：保留所选 SteamOS 容量（可选 64 GiB），将同一段空间的余量建为共享文件分区。确认后立即格式化；分区起点 1 MiB 对齐（满足 4K 对齐），4096 字节簇。", "Beta · Untested on hardware: reserve the selected SteamOS capacity (64 GiB available) and create a shared-file partition in the rest of this region. Formats immediately after confirmation; partition start aligned to 1 MiB (4K aligned), 4096-byte clusters.");
+        FormatRemainingButton.Content = L("将剩余空间格式化为 NTFS…", "Format remaining space as NTFS…");
+        FormatRemainingHint.Text = L("保留所选 SteamOS 容量（可选 64 GiB），将同一段空间的余量建为共享文件分区。确认后立即格式化；分区起点 1 MiB 对齐（满足 4K 对齐），4096 字节簇。", "Reserve the selected SteamOS capacity (64 GiB available) and create a shared-file partition in the rest of this region. Formats immediately after confirmation; partition start aligned to 1 MiB (4K aligned), 4096-byte clusters.");
         NameColumn.Header = L("分区 / 空间", "Partition / region"); SizeColumn.Header = L("容量", "Size");
         FreeColumn.Header = L("可用", "Free"); TypeColumn.Header = L("类型", "Type"); StatusColumn.Header = L("状态", "Status");
         CapacityLabel.Text = L("SteamOS 安装容量", "SteamOS capacity"); AllSpaceButton.Content = L("使用全部空间", "Use all space");
         PlacementLabel.Text = L("安装区位置", "Installation placement");
-        AlignLeft.Content = L("靠左（默认）", "Left (default)");
-        AlignRight.Content = L("靠右", "Right");
+        AlignLeft.Content = L("靠左", "Left");
+        AlignRight.Content = L("靠右（默认）", "Right (default)");
         PlacementHint.Text = L("靠左：SteamOS 在前、余量在后；靠右：余量在前、SteamOS 在后。两种方式均按 1 MiB 对齐，满足 4K 对齐。", "Left: SteamOS first, remainder after. Right: remainder first, SteamOS after. Both use 1 MiB boundaries for 4K alignment.");
         AutomationProperties.SetName(Disks, L("目标磁盘", "Target disk"));
         AutomationProperties.SetName(Partitions, L("分区与未分配空间", "Partitions and unallocated space"));

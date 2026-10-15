@@ -8,6 +8,7 @@ python3 -B -m unittest -v test_file_transaction.py
 python3 -B -m unittest -v test_directory_transaction.py
 python3 -B -m unittest -v test_plugin_installer.py
 python3 -B -m unittest -v test_decky_order.py
+python3 -B -m unittest -v test_update_hold.py test_update_hold_verify.py test_update_hold_integration.py
 cd /mnt/payload/components/hdr
 python3 -B -m unittest -v test_generate.py
 cd /mnt/payload/components/waydroid

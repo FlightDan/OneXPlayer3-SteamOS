@@ -11,13 +11,14 @@ internal sealed record StorageCandidate(StorageMount Mount, string Title, string
 internal static class SharedStorage
 {
     private const string BasicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7";
+    private const string LinuxData = "0fc63daf-8483-4772-8e79-3d69d8477de4";
     internal static string MountPath(StorageMount mount) => "/mnt/shared/" + mount.MountName;
     internal static void Validate(StorageMount[]? mounts)
     {
         if (mounts == null) return;
         if (mounts.Length > 32 || mounts.Any(m => m == null
             || !Guid.TryParseExact(m.Partuuid, "D", out var guid) || guid == Guid.Empty || guid.ToString("D") != m.Partuuid
-            || m.Filesystem is not ("ntfs" or "exfat" or "vfat")
+            || m.Filesystem is not ("ntfs" or "exfat" or "vfat" or "ext4" or "btrfs")
             || m.MountName == null || !Regex.IsMatch(m.MountName, @"\Ashare-d(?:0|[1-9][0-9]{0,4})-p[1-9][0-9]{0,4}\z"))
             || mounts.Select(m => m.Partuuid).Distinct().Count() != mounts.Length
             || mounts.Select(m => m.MountName).Distinct().Count() != mounts.Length)
@@ -29,6 +30,7 @@ internal static class SharedStorage
         using var doc = JsonDocument.Parse(snapshot);
         static string Str(JsonElement item, string key) => item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
         static bool ExplicitFalse(JsonElement item, string key) => item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.False;
+        static bool ExplicitTrue(JsonElement item, string key) => item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
         static string Id(string text) => Guid.TryParse(text, out var guid) && guid != Guid.Empty ? guid.ToString("D") : "";
         var allIds = doc.RootElement.EnumerateArray().SelectMany(d => d.GetProperty("partitions").EnumerateArray())
             .Select(p => Id(Str(p, "guid"))).ToArray();
@@ -43,9 +45,14 @@ internal static class SharedStorage
             foreach (var part in disk.GetProperty("partitions").EnumerateArray())
             {
                 var id = Id(Str(part, "guid"));
-                var filesystem = Str(part, "filesystem").ToUpperInvariant() switch { "NTFS" => "ntfs", "EXFAT" => "exfat", "FAT32" => "vfat", _ => "" };
+                var filesystem = Str(part, "filesystem").ToUpperInvariant() switch { "NTFS" => "ntfs", "EXFAT" => "exfat", "FAT32" => "vfat", "EXT4" => "ext4", "BTRFS" => "btrfs", _ => "" };
+                var linux = filesystem is "ext4" or "btrfs";
+                var type = Id(Str(part, "gptType"));
+                var safeData = linux
+                    ? type is BasicData or LinuxData && Str(part, "filesystemSource") == "signature" && ExplicitTrue(part, "sharedStorageSafe")
+                    : type == BasicData && ExplicitFalse(part, "isHidden");
                 if (id.Length == 0 || allIds.Count(value => value == id) != 1 || filesystem.Length == 0
-                    || Id(Str(part, "gptType")) != BasicData || !ExplicitFalse(part, "isBoot") || !ExplicitFalse(part, "isSystem") || !ExplicitFalse(part, "isHidden")) continue;
+                    || !safeData || !ExplicitFalse(part, "isBoot") || !ExplicitFalse(part, "isSystem")) continue;
                 var partition = part.GetProperty("number").GetInt32();
                 var start = part.GetProperty("offset").GetInt64(); var size = part.GetProperty("size").GetInt64();
                 if (number < 0 || number > 99999 || partition < 1 || partition > 99999 || start < 0 || size <= 0 || start > diskSize - size) continue;

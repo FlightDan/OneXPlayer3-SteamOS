@@ -8,11 +8,11 @@ import subprocess
 import sys
 sys.path.insert(0,'/mnt/payload/components')
 from runtime_access import verify_runtime_access
-from integration import shared_managed, VERSION, release
-from system_update_policy import verify as verify_update_policy
+from integration import shared_managed, verify_shared_storage_skip
 from shared_storage import verify_fstab, require_ntfs3
 from file_transaction import snapshot
 from offload_mounts import mount_opt, mount_etc
+from update_hold_verify import verify as verify_update_hold
 table=json.loads(subprocess.check_output(['sfdisk','--json','/dev/vdc']))['partitiontable']
 parts={p.get('name'):p['node'] for p in table['partitions']}
 options=json.loads(Path('/mnt/payload/selection.json').read_text())
@@ -41,6 +41,7 @@ for slot in ('A','B'):
         state=root/'home/.oxp3-installer/integration'/slot
         assert json.loads((state/'request.json').read_text())==options
         results=json.loads((state/'result.json').read_text())
+        verify_update_hold(root,results['components'].get('system-update-hold'))
         checked=verify_runtime_access(root,results['components'])
         launcher=root/'home/deck/Desktop/Return.desktop'
         assert launcher.is_file() and launcher.stat().st_uid==owner[0]
@@ -80,7 +81,8 @@ for slot in ('A','B'):
                     assert len(settings['pluginOrder'])==len(names)
         if 'input' in installed: assert 'inputplumber.service' in results['services']
         for name,result in results['components'].items():
-            assert result['status']=='files_installed' or (name in options['repairs']+options['plugins'] and result['status']=='not_installed' and result.get('safe_to_skip') is True and result.get('reason')), 'Unsafe component result: '+name
+            optional=options['repairs']+options['plugins']+(['shared-storage'] if options.get('storage_mounts') else [])
+            assert result['status']=='files_installed' or (name in optional and result['status']=='not_installed' and result.get('safe_to_skip') is True and isinstance(result.get('reason'),str) and result['reason'].strip()), 'Unsafe component result: '+name
         catalog=json.loads(Path('/mnt/payload/components/options.json').read_text())
         for item in catalog['repairs']+catalog['plugins']:
             if item['id'] in installed: assert set(item['dependencies']).issubset(installed), 'Installed component has an unavailable dependency'
@@ -115,17 +117,18 @@ for slot in ('A','B'):
                 assert entries and all('nvme.noacpi=1' in line.split() for line in entries)
                 assert 'nvme.noacpi=1' in (root/'etc/default/grub.d/oxp3-nvme.cfg').read_text()
         expected_components=set(options['repairs']+options['plugins'])|({'kde-language'} if options['kde_language']!='system' else set())
+        expected_components.add('system-update-hold')
         if options.get('set_deck_password',False) or options.get('enable_ssh',False): expected_components.add('deck-access')
-        if expected_components and all(release(root).get(k)==v for k,v in VERSION.items()):
-            expected_components.add('system-update-policy')
-            verify_update_policy(root)
         storage_mounts=options.get('storage_mounts',[])
         if storage_mounts:
             expected_components.add('shared-storage')
-            fstab=snapshot(root/'etc/fstab')
-            assert fstab['exists'] and fstab['uid']==0 and not fstab['mode']&0o022, 'Untrusted shared storage fstab'
-            verify_fstab(base64.b64decode(fstab['data']),storage_mounts,owner)
-            if any(item['filesystem']=='ntfs' for item in storage_mounts): require_ntfs3(root)
+            report=results['components']['shared-storage']
+            if report['status']=='files_installed':
+                fstab=snapshot(root/'etc/fstab')
+                assert fstab['exists'] and fstab['uid']==0 and not fstab['mode']&0o022, 'Untrusted shared storage fstab'
+                verify_fstab(base64.b64decode(fstab['data']),storage_mounts,owner)
+                if any(item['filesystem']=='ntfs' for item in storage_mounts): require_ntfs3(root)
+            else: verify_shared_storage_skip(state,report)
         assert set(results['components'])==expected_components
         if results['components']: assert (root/'usr/local/lib/oxp3-integration/slot').read_text().strip()==slot
         if 'gamescope-env' in installed:

@@ -5,9 +5,26 @@ if ($PublicRelease -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A pub
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $releasePath = Join-Path $projectRoot 'components/release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
+if ($PublicRelease -and $release.version -eq '0.1.3') {
+    foreach ($required in @('components/update_hold.py','components/update_hold_verify.py')) {
+        if (!(Test-Path -LiteralPath (Join-Path $projectRoot $required) -PathType Leaf)) {
+            throw "The 0.1.3 release requires the tested first-boot update hold: $required"
+        }
+    }
+}
 $validStable = $release.version -match '^\d+\.\d+\.\d+$' -and $release.channel -eq 'stable'
 $validBeta = $release.version -match '^\d+\.\d+\.\d+-beta$' -and $release.channel -eq 'beta'
 if ($release.schema -ne 1 -or !($validStable -or $validBeta)) { throw 'Invalid integration release metadata' }
+$launcher = Join-Path $projectRoot 'SteamOSInstaller.exe'
+$launcherData = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($launcher))
+if (!$launcherData.Contains('app/bin/Debug/net10.0-windows/OxpInstaller.dll') -or
+    !$launcherData.Contains('../../../../runtime/dotnet')) {
+    throw 'The root launcher must locate the packaged app and .NET runtime. Rebuild with build-app.ps1; do not copy the inner apphost.'
+}
+$binaryVersion = (Get-Item -LiteralPath (Join-Path $projectRoot 'app/bin/Debug/net10.0-windows/OxpInstaller.dll')).VersionInfo.FileVersion
+if ($binaryVersion -ne (($release.version -replace '-beta$', '') + '.0')) {
+    throw "Application version $binaryVersion does not match release $($release.version). Rebuild before packaging."
+}
 $integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
 $wifiFiles = @($integrationManifest.wifi.files | Where-Object { $_.target -eq 'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode' })
 if ($wifiFiles.Count -ne 1) { throw 'This package must retain the accepted Wi-Fi c106 firmware.' }
@@ -85,7 +102,14 @@ foreach ($name in 'hdr-test.py','hdr-test.sh','shared-state-test.py','shared-sta
 }
 Copy-PackageTree (Join-Path $projectRoot 'components') 'components'
 Copy-Item -LiteralPath $releasePath -Destination (Join-Path $destination 'release.json')
-@{ schema = 1; release = $release; build_id = $Stamp; source_commit = $SourceCommit; package_channel = $(if ($PublicRelease) { if ($release.channel -eq 'stable') { 'public-release' } else { 'public-beta' } } else { 'development' }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
+$buildInfo = @{ schema = 1; release = $release; build_id = $Stamp; source_commit = $SourceCommit; package_channel = $(if ($PublicRelease) { if ($release.channel -eq 'stable') { 'public-release' } else { 'public-beta' } } else { 'development' }) }
+if ($release.version -eq '0.1.3' -and (Test-Path -LiteralPath (Join-Path $projectRoot 'components/update_hold.py'))) {
+    $buildInfo.firstboot_system_update_policy = 'local-empty-feed'
+    $buildInfo.shared_partition_mount_ui_enabled = $false
+    $buildInfo.unattended_firstboot_verified = $false
+    $buildInfo.known_firstboot_black_screen = $true
+}
+$buildInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
 Copy-PackageTree (Join-Path $projectRoot 'cache/plugins') 'cache/plugins'
 foreach ($name in 'secret-input-check.sh','refind-image.sh','refind-image.py','integration.sh','integration-image.py','integration-check.sh','integration-delta-check.sh','integration-verify.sh','integration-verify.py','upgrade-source.sh','upgrade-source.py','physical-readiness.sh','physical-readiness.py','resize-prepared.sh','resize_prepared.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }
@@ -125,7 +149,7 @@ if ($PublicRelease) {
     $releaseDoc = 'docs/RELEASE_' + $release.version.Replace('-', '_').ToUpperInvariant() + '.md'
     Copy-Item -LiteralPath (Join-Path $projectRoot $releaseDoc) -Destination (Join-Path $destination 'READ_FIRST.md')
     $readFirst = Join-Path $destination 'READ_FIRST.md'
-    $readFirstContent = [IO.File]::ReadAllText($readFirst).Replace('(../IMPLEMENTATION_STATUS.md)', '(IMPLEMENTATION_STATUS.md)').Replace('(INSTALLATION_GUIDE.md)', '(docs/INSTALLATION_GUIDE.md)').Replace('(screenshots/', '(docs/screenshots/').Replace('(REGRESSION_', '(docs/REGRESSION_')
+    $readFirstContent = [IO.File]::ReadAllText($readFirst).Replace('(../IMPLEMENTATION_STATUS.md)', '(IMPLEMENTATION_STATUS.md)').Replace('(INSTALLATION_GUIDE.md)', '(docs/INSTALLATION_GUIDE.md)').Replace('(screenshots/', '(docs/screenshots/').Replace('(REGRESSION_', '(docs/REGRESSION_').Replace('(RELEASE_', '(docs/RELEASE_')
     [IO.File]::WriteAllText($readFirst, $readFirstContent, [Text.UTF8Encoding]::new($false))
     # The installed package uses the existing flat runtime layout, while the
     # GitHub source keeps windows-installer as a subdirectory.

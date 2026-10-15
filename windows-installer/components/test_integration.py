@@ -8,12 +8,148 @@ from pathlib import Path
 import tempfile
 import unittest
 import subprocess
+import sys
 from integration import stage,restore,validate,config_file,zip_files,LogicalFiles,apply_files,package_version
+import update_hold
+
+# Supported original-image profile, not a substitute for update_hold.files().
+# All staging tests execute the real mandatory preflight, apply and journal.
+OFFICIAL_CLIENT=(b'# vendor configuration retained\n[Server]\n'
+    b'ImagesUrl = https://steamdeck-images.steamos.cloud/\n'
+    b'MetaUrl = https://steamdeck-atomupd.steamos.cloud/meta\n'
+    b'Variants = steamdeck\nBranches = stable;rc;beta;bc;preview;pc;main\n'
+    b'BranchesDev = main;staging\n')
+OFFICIAL_ATOM_UNIT=(b'[Unit]\nDescription=Atomic Update Daemon\n[Service]\n'
+    b'Type=dbus\nBusName=com.steampowered.Atomupd1\n'
+    b'ExecStartPre=-/usr/bin/true\nExecStart=/usr/lib/atomupd-daemon\n')
+OFFICIAL_MANIFEST={'product':'steamos','release':'holo','variant':'steamdeck','arch':'amd64',
+    'version':'3.10.0','buildid':'20260924.1000','branch':'main','default_update_branch':'main',
+    'introduces_checkpoint':0,'requires_checkpoint':0,'shadow_checkpoint':False,
+    'estimated_size':100,'skip':False}
+
+def supported_update_fixture(root):
+    files={update_hold.VENDOR_CLIENT:OFFICIAL_CLIENT,
+        update_hold.VENDOR_MANIFEST:json.dumps(OFFICIAL_MANIFEST).encode(),
+        'usr/lib/os-release':b'NAME="SteamOS"\nID=steamos\nID_LIKE=arch\nVERSION_CODENAME=holo\n',
+        'usr/lib/systemd/system/atomupd.service':OFFICIAL_ATOM_UNIT,
+        'usr/lib/systemd/system/rauc.service':b'[Service]\nExecStart=/usr/bin/rauc service\n',
+        update_hold.STOCK_RAUC:update_hold.STOCK_RAUC_DATA,
+        'etc/steamos-atomupd/preferences.conf':b'[Preferences]\nBranch=beta\n'}
+    for relative,data in files.items():
+        path=root/relative; path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(data); path.chmod(0o644)
+    for relative,target in ((update_hold.STANDARD_CLIENT,'/usr/lib/steamos-atomupd/client.conf'),
+                            (update_hold.STANDARD_MANIFEST,'/usr/lib/steamos-atomupd/manifest.json')):
+        path=root/relative; path.parent.mkdir(parents=True,exist_ok=True); path.symlink_to(target)
+
+def tree_snapshot(root):
+    output={}
+    for path in [root,*root.rglob('*')]:
+        info=path.lstat()
+        data=('link',os.readlink(path)) if path.is_symlink() else ('file',path.read_bytes()) if path.is_file() else ('directory',)
+        output[path.relative_to(root).as_posix()]=(data,info.st_mode,info.st_uid,info.st_gid)
+    return output
 
 PAYLOAD=Path('/mnt/payload')
 CATALOG=json.loads((PAYLOAD/'components/options.json').read_text())
 
 class IntegrationChecks(unittest.TestCase):
+    def assert_hold(self,root,result,slot='A'):
+        report=result['components']['system-update-hold']
+        self.assertEqual(report['status'],'files_installed')
+        self.assertEqual(report['activation'],'next-boot')
+        self.assertEqual(report['os_image_updates'],'held')
+        self.assertEqual(report['steam_client_updates'],'unchanged')
+        self.assertEqual(report['steam_game_updates'],'unchanged')
+        expected=update_hold.files(root)
+        self.assertEqual(set(report['files']),set(expected))
+        self.assertEqual(len(expected),18)
+        for relative,item in expected.items(): self.assertEqual((root/relative).read_bytes(),item['data'])
+        self.assertTrue((root/'home/.oxp3-installer/integration'/slot/'system-update-hold/state.json').is_file())
+    def test_shared_storage_preflight_failure_skips_both_slots_and_keeps_repair(self):
+        import contextlib,io
+        from unittest.mock import patch
+        from integration import verify_shared_storage_skip
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system',storage_mounts=[{
+            'partuuid':'11111111-2222-3333-4444-555555555555','filesystem':'exfat','mount_name':'share-d1-p1'}])
+        original=b'# fixture fstab must remain unchanged\n'
+        (self.root/'etc/fstab').write_bytes(original)
+        output=io.StringIO()
+        with patch('integration.shared_storage_files',side_effect=RuntimeError('Unsafe shared storage path: /mnt/integration-root/mnt')):
+            with contextlib.redirect_stdout(output):
+                for slot in ('A','B'):
+                    result=stage(self.root,PAYLOAD,self.options,slot)
+                    state=self.root/'home/.oxp3-installer/integration'/slot
+                    report=result['components']['shared-storage']
+                    self.assertEqual(report['status'],'not_installed')
+                    self.assertTrue(report['safe_to_skip'])
+                    self.assertIn('Unsafe shared storage path',report['reason'])
+                    self.assertEqual(result['components']['keyboard']['status'],'files_installed')
+                    self.assertEqual(json.loads((state/'result.json').read_text()),result)
+                    verify_shared_storage_skip(state,report)
+                    self.assertFalse((state/'shared-storage').exists())
+        self.assertEqual((self.root/'etc/fstab').read_bytes(),original)
+        rows=[json.loads(line.removeprefix('OXP_COMPONENT_RESULT=')) for line in output.getvalue().splitlines() if line.startswith('OXP_COMPONENT_RESULT=')]
+        self.assertEqual({row['slot'] for row in rows if row['id']=='shared-storage' and row['status']=='not_installed'},{'A','B'})
+
+    def test_shared_storage_preflight_device_errors_remain_fatal(self):
+        import errno
+        from unittest.mock import patch
+        from integration import stage_shared_storage
+        state=self.root/'home/.oxp3-installer/integration/A'
+        for code in (errno.EIO,errno.ENOSPC,errno.EROFS,errno.ENODEV,errno.EUCLEAN,errno.ENXIO,errno.EBADMSG,errno.ETIMEDOUT):
+            with self.subTest(errno=code),patch('integration.shared_storage_files',side_effect=OSError(code,'Device failure')):
+                with self.assertRaises(OSError): stage_shared_storage(self.root,state,[],(1000,1000))
+
+    def test_shared_storage_unmanaged_fstab_conflict_is_readonly_skip(self):
+        from integration import verify_shared_storage_skip
+        self.options.update(repairs=[],plugins=[],kde_language='system',storage_mounts=[{
+            'partuuid':'11111111-2222-3333-4444-555555555555','filesystem':'exfat','mount_name':'share-d1-p1'}])
+        fstab=self.root/'etc/fstab'
+        original=b'PARTUUID=11111111-2222-3333-4444-555555555555 /media/existing exfat defaults 0 0\n'
+        fstab.write_bytes(original)
+        result=stage(self.root,PAYLOAD,self.options,'A')
+        report=result['components']['shared-storage']
+        self.assertIn('unmanaged fstab mount',report['reason'])
+        verify_shared_storage_skip(self.root/'home/.oxp3-installer/integration/A',report)
+        self.assertEqual(fstab.read_bytes(),original)
+
+    def test_shared_storage_existing_transaction_cannot_be_skipped(self):
+        from unittest.mock import patch
+        from integration import stage_shared_storage,verify_shared_storage_skip
+        state=self.root/'home/.oxp3-installer/integration/A'
+        report={'status':'not_installed','safe_to_skip':True,'reason':'Unavailable'}
+        for directory in (state/'shared-storage',state.parent/'shared/shared-storage'):
+            directory.mkdir(parents=True)
+            # Even an empty transaction directory can precede an interrupted
+            # journal commit, so its absence is required for a safe skip.
+            with patch('integration.shared_storage_files',side_effect=RuntimeError('Preflight conflict')):
+                with self.assertRaisesRegex(RuntimeError,'Preflight conflict'):
+                    stage_shared_storage(self.root,state,[],(1000,1000))
+            with self.assertRaisesRegex(RuntimeError,'transaction evidence'):
+                verify_shared_storage_skip(state,report)
+            directory.rmdir()
+        verify_shared_storage_skip(state,report)
+        for changed in ({'safe_to_skip':False},{'reason':'  '},{'reason':True},{'files':['etc/fstab']},{'mounts':[{}]}):
+            with self.assertRaises(RuntimeError): verify_shared_storage_skip(state,dict(report,**changed))
+
+    def test_shared_storage_partial_write_failure_remains_fatal(self):
+        from unittest.mock import patch
+        self.options.update(repairs=[],plugins=[],kde_language='system',storage_mounts=[{
+            'partuuid':'11111111-2222-3333-4444-555555555555','filesystem':'exfat','mount_name':'share-d1-p1'}])
+        apply=apply_files
+        def interrupted(root,state,name,files,owner):
+            if name=='shared-storage':
+                apply(root,state,name,files,owner)
+                raise RuntimeError('Interrupted after shared storage write')
+            return apply(root,state,name,files,owner)
+        with patch('integration.apply_files',interrupted):
+            with self.assertRaisesRegex(RuntimeError,'Interrupted after shared storage write'):
+                stage(self.root,PAYLOAD,self.options,'A')
+        state=self.root/'home/.oxp3-installer/integration/A'
+        self.assertTrue((state/'shared-storage/state.json').exists())
+        self.assertFalse((state/'result.json').exists())
+
     def test_decky_order_retries_saved_intent_after_interrupted_journal_commit(self):
         from integration import seed_decky_order
         from decky_order import SETTINGS
@@ -34,7 +170,7 @@ class IntegrationChecks(unittest.TestCase):
         self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
         temporary=tempfile.TemporaryDirectory(prefix='oxp3-decky-order-B-')
         self.addCleanup(temporary.cleanup); other=Path(temporary.name)
-        shutil.copytree(self.root,other,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
+        shutil.copytree(self.root,other,symlinks=True,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
         (self.root/'home').mkdir()
         (other/'home').mkdir()
         subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
@@ -115,7 +251,7 @@ class IntegrationChecks(unittest.TestCase):
         other_directory=tempfile.TemporaryDirectory(prefix='oxp3-slot-B-')
         self.addCleanup(other_directory.cleanup)
         other=Path(other_directory.name)
-        shutil.copytree(self.root,other,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
+        shutil.copytree(self.root,other,symlinks=True,dirs_exist_ok=True,ignore=shutil.ignore_patterns('home'))
         first=stage(self.root,PAYLOAD,self.options,'A')
         self.assertEqual(first['components']['slot-switch']['status'],'files_installed')
         self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
@@ -443,8 +579,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         (self.root/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
         (self.root/'usr/bin').mkdir(parents=True,exist_ok=True)
         units=self.root/'usr/lib/systemd/system'; units.mkdir(parents=True,exist_ok=True)
-        for unit in ('atomupd.service','rauc.service'):
-            (units/unit).write_text('[Service]\nExecStart=/usr/bin/fixture\n')
+        supported_update_fixture(self.root)
         for tool in ('python3','efibootmgr','systemctl','pkexec','kdialog','steamos-bootconf','busctl'):
             (self.root/'usr/bin'/tool).write_bytes(b'fixture tool')
         p=self.root/'etc/inputplumber/capability_maps.d/onexplayer_type3.yaml'; p.parent.mkdir(parents=True)
@@ -548,7 +683,8 @@ for relative in ('.local/share/Steam/config/deck-write-check',
     def test_disabled_items_do_not_install(self):
         self.options.update(repairs=[],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')
-        self.assertEqual(result['components'],{})
+        self.assertEqual(set(result['components']),{'system-update-hold'})
+        self.assert_hold(self.root,result)
         self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
         self.assertFalse((self.root/'home/deck/.config/plasma-localerc').exists())
         self.assertFalse((self.root/'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml').exists())
@@ -556,8 +692,10 @@ for relative in ('.local/share/Steam/config/deck-write-check',
     def test_incompatible_source_refuses_repairs(self):
         (self.root/'etc/os-release').write_text('ID=steamos\nVERSION_ID=3.8.14\nBUILD_ID=20260707.10\n')
         self.options.update(repairs=['hdr','wifi','input','desktop-hdr'],plugins=[])
-        result=stage(self.root,PAYLOAD,self.options,'A')
-        self.assertTrue(all(v['status']=='not_installed' for k,v in result['components'].items() if k!='kde-language'))
+        before=tree_snapshot(self.root)
+        with self.assertRaisesRegex(RuntimeError,'Unsupported image'):
+            stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(tree_snapshot(self.root),before)
         self.assertFalse((self.root/'opt/oxp3-desktop-gamma22').exists())
         self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
     def test_dependency_and_unknown_language_rejected_before_write(self):
@@ -585,7 +723,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         p.write_text(original)
         for installer_language,desktop_language in (('zh-CN','zh_CN'),('en-US','en_US')):
             with self.subTest(language=installer_language), tempfile.TemporaryDirectory(prefix='oxp3-language-') as directory:
-                root=Path(directory); shutil.copytree(self.root,root,dirs_exist_ok=True)
+                root=Path(directory); shutil.copytree(self.root,root,symlinks=True,dirs_exist_ok=True)
                 config=root/'home/deck/.config/plasma-localerc'
                 os.chown(config,1000,1000)
                 options=dict(self.options,repairs=[],plugins=[],installer_language=installer_language,kde_language=desktop_language)
@@ -625,8 +763,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         (other/'usr/share/applications').mkdir(parents=True)
         (other/'usr/share/applications/org.kde.plasma.keyboard.desktop').write_text('[Desktop Entry]\n')
         units=other/'usr/lib/systemd/system'; units.mkdir(parents=True)
-        for unit in ('atomupd.service','rauc.service'):
-            (units/unit).write_text('[Service]\nExecStart=/usr/bin/fixture\n')
+        supported_update_fixture(other)
         (other/'home').mkdir(); subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
         try:
             stage(other,PAYLOAD,self.options,'B')
@@ -635,17 +772,160 @@ for relative in ('.local/share/Steam/config/deck-write-check',
             self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
         finally: subprocess.run(['umount',str(other/'home')],check=True)
 
-    def test_mandatory_update_policy_stage_restore_and_missing_vendor_refusal(self):
+    def test_new_install_selections_preserve_system_updaters(self):
+        # Keep the official updater units unmasked while the required hold is
+        # applied through its own real journal for every selection.
+        original_updaters={relative:(self.root/relative).read_bytes() for relative in
+            ('usr/lib/systemd/system/atomupd.service','usr/lib/systemd/system/rauc.service',
+             update_hold.VENDOR_CLIENT,update_hold.VENDOR_MANIFEST,update_hold.STOCK_RAUC,
+             'etc/steamos-atomupd/preferences.conf')}
+        original_fstab=b'# existing mounts belong to the image\n'
+        (self.root/'etc/fstab').write_bytes(original_fstab)
+        shadow=b'root:*:20000:0:99999:7:::\ndeck:!:20000:0:99999:7:::\n'
+        (self.root/'etc/shadow').write_bytes(shadow); (self.root/'etc/shadow').chmod(0o600)
+        (self.root/'usr/lib/systemd/system/sshd.service').write_text('[Service]\nExecStart=/usr/bin/sshd -D\n')
+        cases=(('repair',{'repairs':['keyboard']},'keyboard'),
+               ('language',{'kde_language':'zh_CN'},'kde-language'),
+               ('access',{'set_deck_password':True,'enable_ssh':True},'deck-access'),
+               ('disabled',{},None),
+               ('skipped',{'repairs':['keyboard','gamescope-env']},'keyboard'))
+        for name,choices,component in cases:
+            with self.subTest(selection=name):
+                root=self.root/name
+                shutil.copytree(self.root/'etc',root/'etc',symlinks=True)
+                shutil.copytree(self.root/'usr',root/'usr',symlinks=True)
+                if name=='skipped':
+                    (root/'usr/share/applications/org.kde.plasma.keyboard.desktop').unlink()
+                options=dict(self.options,repairs=[],plugins=[],kde_language='system')
+                options.update(choices)
+                password_hash='$6$fixture$'+'a'*86 if name=='access' else None
+                result=stage(root,PAYLOAD,options,'A',deck_password_hash=password_hash)
+                self.assert_hold(root,result)
+                for relative,data in original_updaters.items(): self.assertEqual((root/relative).read_bytes(),data)
+                state=root/'home/.oxp3-installer/integration/A'
+                self.assertEqual(json.loads((state/'result.json').read_text()),result)
+                self.assertNotIn('system-update-policy',result['components'])
+                self.assertFalse((state/'system-update-policy').exists())
+                self.assertFalse((root/'var/lib/oxp3-installer/system-update-policy.json').exists())
+                for unit in ('atomupd.service','rauc.service'):
+                    self.assertFalse(os.path.lexists(root/'etc/systemd/system'/unit))
+                self.assertEqual((root/'etc/fstab').read_bytes(),original_fstab)
+                if component:
+                    self.assertEqual(result['components'][component]['status'],
+                                     'not_installed' if name=='skipped' else 'files_installed')
+                else: self.assertEqual(set(result['components']),{'system-update-hold'})
+                if name=='repair':
+                    self.assertIn('InputMethod=/usr/share/applications/org.kde.plasma.keyboard.desktop',
+                                  (root/'home/deck/.config/kwinrc').read_text())
+                elif name=='language':
+                    self.assertIn('LANGUAGE=zh_CN',(root/'home/deck/.config/plasma-localerc').read_text())
+                elif name=='access':
+                    self.assertIn('deck:'+password_hash+':',(root/'etc/shadow').read_text())
+                    self.assertTrue((root/'etc/systemd/system/multi-user.target.wants/sshd.service').is_symlink())
+                elif name=='skipped':
+                    self.assertTrue(result['components']['keyboard']['safe_to_skip'])
+                    self.assertFalse((root/'home/deck/.config/kwinrc').exists())
+                    self.assertEqual(result['components']['gamescope-env']['status'],'files_installed')
+                    self.assertIn('UnsetEnvironment=WAYLAND_DISPLAY WAYLAND_SOCKET',
+                                  (root/'home/deck/.config/systemd/user/gamescope-session.service.d/90-oxp3-desktop-env-isolation.conf').read_text())
+
+    def test_existing_administrator_update_configuration_is_preserved(self):
+        # Each administrator conflict must fail independently, with no home,
+        # journal, configuration or component writes preceding the refusal.
+        units=self.root/'etc/systemd/system'; units.mkdir(parents=True)
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        for service in ('atomupd.service','rauc.service'):
+            for mask in (True,False):
+                with self.subTest(service=service,mask=mask):
+                    path=units/service
+                    if mask: path.symlink_to('/dev/null')
+                    else: path.write_bytes(b'[Service]\nExecStart=/usr/local/bin/administrator-updater\n')
+                    before=tree_snapshot(self.root)
+                    with self.assertRaisesRegex(RuntimeError,'Untrusted|Conflicting updater unit'):
+                        stage(self.root,PAYLOAD,self.options,'A')
+                    self.assertEqual(tree_snapshot(self.root),before)
+                    self.assertFalse((self.root/'home').exists())
+                    path.unlink()
+
+    def test_missing_vendor_update_units_refuse_before_new_writes(self):
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        for service in ('atomupd.service','rauc.service'):
+            with self.subTest(service=service):
+                path=self.root/'usr/lib/systemd/system'/service
+                original=path.read_bytes(); path.unlink()
+                before=tree_snapshot(self.root)
+                with self.assertRaisesRegex(RuntimeError,'Required official file is missing'):
+                    stage(self.root,PAYLOAD,self.options,'A')
+                self.assertEqual(tree_snapshot(self.root),before)
+                self.assertFalse((self.root/'home').exists())
+                path.write_bytes(original)
+
+    def test_mandatory_update_hold_real_journals_restore_both_slots(self):
+        options=dict(self.options,repairs=[],plugins=[],kde_language='system')
+        with tempfile.TemporaryDirectory(prefix='oxp3-hold-B-') as directory:
+            other=Path(directory)
+            shutil.copytree(self.root,other,symlinks=True,dirs_exist_ok=True)
+            for root,slot in ((self.root,'A'),(other,'B')):
+                with self.subTest(slot=slot):
+                    original=tree_snapshot(root)
+                    result=stage(root,PAYLOAD,options,slot)
+                    self.assert_hold(root,result,slot)
+                    self.assertEqual(stage(root,PAYLOAD,options,slot),result)
+                    runtime=root/'usr/local/lib/oxp3-integration'
+                    self.assertEqual((runtime/'update_hold.py').read_bytes(),(PAYLOAD/'components/update_hold.py').read_bytes())
+                    restored=subprocess.run([sys.executable,'-I','-B',str(runtime/'integration.py'),'restore',
+                        '--root',str(root),'--slot',slot,'--component','system-update-hold'],
+                        text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+                    self.assertEqual(restored.returncode,0,restored.stderr)
+                    self.assertEqual(json.loads(restored.stdout),[])
+                    for relative in result['components']['system-update-hold']['files']:
+                        self.assertFalse((root/relative).exists(),relative)
+                    state=root/'home/.oxp3-installer/integration'/slot
+                    self.assertEqual(json.loads((state/'result.json').read_text())['components']['system-update-hold']['status'],'restored')
+                    for relative,record in original.items():
+                        data=record[0]; path=root/relative
+                        if data[0]=='file': self.assertEqual(path.read_bytes(),data[1],relative)
+                        elif data[0]=='link': self.assertEqual(os.readlink(path),data[1],relative)
+
+    def test_legacy_update_policy_journal_remains_restorable(self):
+        from system_update_policy import files,verify
         self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')
-        self.assertEqual(result['components']['system-update-policy']['status'],'files_installed')
-        from system_update_policy import verify
+        state=self.root/'home/.oxp3-installer/integration/A'
+        # Reconstruct an installation produced by the former mandatory policy.
+        policy=files(self.root)
+        apply_files(self.root,state,'system-update-policy',policy,(1000,1000))
+        result['components']['system-update-policy']={'status':'files_installed','files':list(policy)}
+        (state/'result.json').write_text(json.dumps(result))
+        self.assertTrue(verify(self.root)['paused'])
+        before=(state/'result.json').read_bytes()
+        with self.assertRaisesRegex(RuntimeError,'original SteamOS image'):
+            stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual((state/'result.json').read_bytes(),before)
         self.assertTrue(verify(self.root)['paused'])
         self.assertEqual(restore(self.root,'A','system-update-policy'),[])
-        self.assertFalse((self.root/'etc/systemd/system/atomupd.service').exists())
-        self.assertFalse((self.root/'etc/systemd/system/rauc.service').exists())
-        (self.root/'usr/lib/systemd/system/rauc.service').unlink()
-        with self.assertRaisesRegex(RuntimeError,'missing'):
-            stage(self.root,PAYLOAD,self.options,'A')
+        for unit in ('atomupd.service','rauc.service'):
+            self.assertFalse(os.path.lexists(self.root/'etc/systemd/system'/unit))
+        self.assertFalse((self.root/'var/lib/oxp3-installer/system-update-policy.json').exists())
+        self.assertTrue((self.root/'home/deck/.config/kwinrc').is_file())
+        self.assertEqual(json.loads((state/'result.json').read_text())['components']['system-update-policy']['status'],'restored')
+        self.assertNotIn('system-update-policy',stage(self.root,PAYLOAD,self.options,'A')['components'])
+        for unit in ('atomupd.service','rauc.service'):
+            self.assertFalse(os.path.lexists(self.root/'etc/systemd/system'/unit))
+
+    def test_legacy_policy_marker_or_incomplete_journal_refuses_before_new_writes(self):
+        self.options.update(repairs=['keyboard'],plugins=[],kde_language='system')
+        traces=('var/lib/oxp3-installer/system-update-policy.json',
+                'home/.oxp3-installer/integration/B/system-update-policy/state.json')
+        for index,relative in enumerate(traces):
+            with self.subTest(trace=relative):
+                root=self.root/('legacy-'+str(index))
+                shutil.copytree(self.root/'etc',root/'etc',symlinks=True)
+                trace=root/relative; trace.parent.mkdir(parents=True); trace.write_bytes(b'legacy evidence')
+                with self.assertRaisesRegex(RuntimeError,'original SteamOS image'):
+                    stage(root,PAYLOAD,self.options,'A')
+                self.assertEqual(trace.read_bytes(),b'legacy evidence')
+                self.assertFalse((root/'home/deck').exists())
+                self.assertFalse((root/'home/.oxp3-installer/integration/A/request.json').exists())
 
 if __name__=='__main__': unittest.main()

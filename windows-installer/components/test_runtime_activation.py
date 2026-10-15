@@ -9,11 +9,11 @@ import integration_runtime as runtime
 
 
 class ActivationChecks(unittest.TestCase):
-    def execute_fixture(self, components, refused=False, failed=False, unpaused=False):
+    def execute_fixture(self, components, refused=False, failed=False):
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)/'A'; directory.mkdir()
             record={'components':{name:{'status':status} for name,status in components.items()},
-                    'options':{'repairs':list(components)}}
+                    'options':{'repairs':[name for name in components if name!='system-update-policy']}}
             data={'exists':True,'uid':0,'mode':0o600,'data':base64.b64encode(json.dumps(record).encode()).decode()}
             real_path=Path
             def path(value):
@@ -22,13 +22,12 @@ class ActivationChecks(unittest.TestCase):
             def run(*args):
                 commands.append(args)
                 if args==('/usr/bin/inputplumber','--version'): return 'inputplumber 0.78.0'
-                if args[:2]==('systemctl','show'): return 'loaded' if unpaused else 'masked'
                 if failed and args==('systemctl','start','inputplumber.service'): raise RuntimeError('input service failed')
                 return ''
             with patch.object(runtime,'Path',side_effect=path),patch.object(runtime,'snapshot',return_value=data), \
                  patch.object(runtime,'current_slot',return_value='A'),patch.object(runtime,'trusted_tree'), \
                  patch.object(runtime,'device_guard',side_effect=RuntimeError('incompatible target') if refused else None), \
-                 patch.object(runtime,'run',side_effect=run),patch.object(runtime,'verify_update_policy'),patch.object(runtime.os,'geteuid',return_value=0):
+                 patch.object(runtime,'run',side_effect=run),patch.object(runtime.os,'geteuid',return_value=0):
                 result=runtime.execute()
             return result,commands
 
@@ -49,14 +48,12 @@ class ActivationChecks(unittest.TestCase):
         self.assertEqual(result['input']['status'],'failed')
         self.assertIn('input service failed',result['input']['reason'])
 
-    def test_update_policy_checks_effective_units_and_reports_unpaused_service(self):
-        result,commands=self.execute_fixture({'system-update-policy':'files_installed'})
-        self.assertEqual(result['system-update-policy']['status'],'ready')
-        for unit in ('atomupd.service','rauc.service'):
-            self.assertIn(('systemctl','show',unit,'-p','LoadState','--value'),commands)
-        result,_=self.execute_fixture({'system-update-policy':'files_installed'},unpaused=True)
-        self.assertEqual(result['system-update-policy']['status'],'refused')
-        self.assertIn('not paused',result['system-update-policy']['reason'])
+    def test_legacy_update_policy_does_not_require_masks_or_block_other_activation(self):
+        result,commands=self.execute_fixture({'system-update-policy':'files_installed','input':'files_installed'})
+        self.assertNotIn('system-update-policy',result)
+        self.assertEqual(result['input']['status'],'active')
+        self.assertIn(('systemctl','start','inputplumber.service'),commands)
+        self.assertFalse(any(unit in args for args in commands for unit in ('atomupd.service','rauc.service')))
 
 
 if __name__=='__main__': unittest.main()

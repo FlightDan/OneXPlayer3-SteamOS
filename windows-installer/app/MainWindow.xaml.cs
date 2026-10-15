@@ -53,7 +53,6 @@ public partial class MainWindow : Window
     private BootOptionsPanel bootPanel = null!;
     // Keep existing step identifiers stable for recovery and preview entry points.
     internal const int StorageStep = 7;
-    private SharedStoragePanel storagePanel = null!;
     public MainWindow(bool rehearsal = false)
     {
         physicalInstallation = !rehearsal;
@@ -63,10 +62,6 @@ public partial class MainWindow : Window
         PartitionSelector.AllowPhysicalDeletion = physicalInstallation;
         optionsPanel = new InstallerOptionsPanel(); ComponentOptionsHost.Children.Add(optionsPanel);
         optionsPanel.Changed += (_, _) => { if (ready) ConfigurationChanged(); };
-        storagePanel = new SharedStoragePanel(); StorageOptionsHost.Children.Add(storagePanel);
-        storagePanel.Changed += () => { if (ready) ConfigurationChanged(); };
-        storagePanel.ReturnToDisks += () => ShowStep(0);
-        storagePanel.SkipButton.Click += (_, _) => { storagePanel.ClearSelection(); ShowStep(3); };
         bootPanel = new BootOptionsPanel(); BootOptionsHost.Children.Add(bootPanel);
         downloadPanel = new ImageDownloadPanel(); DownloadHost.Children.Add(downloadPanel);
         officialDownloadPanel = new OfficialDownloadPanel(); OfficialDownloadHost.Children.Add(officialDownloadPanel);
@@ -108,15 +103,13 @@ public partial class MainWindow : Window
         if (physicalInstallation) ShowBootPrerequisites(null, null);
     }
     private InstallationTargetKind Kind => ExternalTarget.IsChecked == true ? InstallationTargetKind.ExternalDisk : InstallationTargetKind.InternalShared;
-    private SelectedOptions CurrentOptions => optionsPanel.Selection with { StorageMounts = storagePanel.Selection };
-    private void SyncStorageSnapshot() => storagePanel.LoadSnapshot(
-        !physicalInstallation && Kind == InstallationTargetKind.ExternalDisk ? null : PartitionSelector.InventorySnapshot,
-        PartitionSelector.IsExampleSnapshot);
+    // Shared partition mounting is temporarily unavailable in the installer UI.
+    // Explicitly clear persisted options so hiding the page cannot submit them.
+    internal SelectedOptions CurrentOptions => optionsPanel.Selection with { StorageMounts = null };
     private InstallationRequest Request
     {
         get
         {
-            SyncStorageSnapshot();
             optionsPanel.ValidateDeckPassword();
             return new(Kind, ImagePath.Text, UsePrepared.IsChecked == true, CurrentOptions,
                 Kind == InstallationTargetKind.InternalShared || physicalInstallation ? PartitionSelector.Selection : null,
@@ -126,14 +119,14 @@ public partial class MainWindow : Window
     }
     private void ShowStep(int value)
     {
-        if (ready) SyncStorageSnapshot();
+        if (value == StorageStep) value = 3;
         if (value != step) departedSteps[step] = true;
         step = value;
         var pages = new[] { TargetPage, SourcePage, ContentPage, ReviewPage, BootPage, ProgressPage, ResultPage, StoragePage };
         for (var i = 0; i < pages.Length; i++) pages[i].Visibility = i == step ? Visibility.Visible : Visibility.Collapsed;
         PageTitle.Text = new[] { InstallerI18n.T("SteamOS，装在你选择的位置"), InstallerI18n.T("准备你的 SteamOS 系统"), InstallerI18n.T("选择安装内容"), InstallerI18n.T("开始前，核对这次方案"), InstallerI18n.T("启动器安装"), InstallerI18n.T("正在完成安装演练"), InstallerI18n.T("本次演练结果"), PartitionInventory.L("挂载分区到 SteamOS", "Mount partitions in SteamOS") }[step];
         PageSubtitle.Text = new[] { InstallerI18n.T("保留 Windows 双系统，或把完整系统装进外部设备。"), InstallerI18n.T("选好镜像，后面的系统准备交给安装助手。"), PartitionInventory.L("选择设备适配和插件。", "Choose device support and plugins."), InstallerI18n.T("只创建本工具自己的测试盘；所有结果都会记录。"), InstallerI18n.T("rEFInd 启动菜单与配置。"), InstallerI18n.T("保持电脑接通电源，完成前请不要移动工作目录。"), InstallerI18n.T("查看已完成的步骤，以及下一步需要处理的事项。"), PartitionInventory.L("可选步骤：访问两个系统共用的文件空间。", "Optional: access file storage shared by both systems.") }[step];
-        BackButton.Visibility = step is 1 or 2 or 3 or 4 or StorageStep ? Visibility.Visible : Visibility.Hidden;
+        BackButton.Visibility = step is 1 or 2 or 3 or 4 ? Visibility.Visible : Visibility.Hidden;
         NextButton.Visibility = step == 5 ? Visibility.Collapsed : Visibility.Visible;
         StopButton.Visibility = step == 5 ? Visibility.Visible : Visibility.Collapsed;
         PageFooter.Visibility = step == 5 ? Visibility.Collapsed : Visibility.Visible;
@@ -144,7 +137,6 @@ public partial class MainWindow : Window
         if(physicalInstallation) { NextButton.Content=step == 4?PartitionInventory.L("开始安装","Install SteamOS"):NextButton.Content; if(step == 5)PageTitle.Text=PartitionInventory.L("正在安装 SteamOS","Installing SteamOS"); if(step == 6)PageTitle.Text=PartitionInventory.L("本次安装结果","Installation result"); }
         InstallerLanguage.IsEnabled = operation == null && !DownloadsBusy;
         if (step == 2) contentSeen = true;
-        if (step == StorageStep) SyncStorageSnapshot();
         if (step == 3) { UpdateReview(); reviewSeen = true; }
         UpdateSourceSection();
         bootPanel.SetFirmwareContext(physicalInstallation && Kind == InstallationTargetKind.InternalShared);
@@ -197,7 +189,7 @@ public partial class MainWindow : Window
         ReviewExecutionNote.Text = physicalInstallation
             ? PartitionInventory.L("安装会格式化目标范围内新建的 SteamOS 分区，原有内容将被清空。请保存好重要数据。开始写入时将请求管理员权限。", "Installation formats the new SteamOS partitions in the target range, erasing their contents. Back up important data. Administrator permission is requested before writing.")
             : PartitionInventory.L("演练只写入独立虚拟盘，不会写入所选实际设备。", "Rehearsal writes only an independent virtual disk, not the selected physical device.");
-        ReviewLayout.Text += "\n\n" + optionsPanel.Describe() + "\n\n" + storagePanel.Describe();
+        ReviewLayout.Text += "\n\n" + optionsPanel.Describe();
         RefreshWorkspace();
     }
     private void RefreshWorkspace()
@@ -234,7 +226,7 @@ public partial class MainWindow : Window
     {
         if (!ready || sender is not RadioButton item || operation != null || DownloadsBusy) return;
         var previousAcknowledgement = acknowledgedSelection;
-        InstallerI18n.SetLanguage((string)item.Tag); InstallerI18n.Apply(this); optionsPanel.Refresh(); storagePanel.RefreshLanguage(); bootPanel.Refresh(); downloadPanel.RefreshLanguage(); officialDownloadPanel.RefreshLanguage(); PartitionSelector.RefreshLanguage(); UpdateTargetMode(); ShowStep(step);
+        InstallerI18n.SetLanguage((string)item.Tag); InstallerI18n.Apply(this); optionsPanel.Refresh(); bootPanel.Refresh(); downloadPanel.RefreshLanguage(); officialDownloadPanel.RefreshLanguage(); PartitionSelector.RefreshLanguage(); UpdateTargetMode(); ShowStep(step);
         RefreshBootPrerequisites();
         if (previousAcknowledgement != null && previousAcknowledgement == PartitionSelector.Selection) acknowledgedSelection = previousAcknowledgement;
         if (step == 6 && session != null && operation == null) ShowResult(session);
@@ -242,7 +234,6 @@ public partial class MainWindow : Window
     private void ChoiceChanged(object sender, RoutedEventArgs e) { if (ready) { acknowledgedSelection = null; reviewSeen = false; ValidationMessage.Text = ""; UpdateTargetMode(); UpdateNavigationState(); } }
     private void UpdateTargetMode()
     {
-        SyncStorageSnapshot();
         bootPanel.SetFirmwareContext(physicalInstallation && Kind == InstallationTargetKind.InternalShared);
         PhysicalConsent.IsChecked=false;
         StopButton.Content=physicalInstallation?PartitionInventory.L("停止安装","Stop installation"):InstallerI18n.T("停止演练");
@@ -265,8 +256,7 @@ public partial class MainWindow : Window
     {
         if (operation != null || DownloadsBusy) return;
         if (step == 1 && sourceSection == 1) { sourceSection = 0; ShowStep(1); }
-        else if (step == StorageStep) ShowStep(2);
-        else if (step == 3) ShowStep(StorageStep);
+        else if (step == 3) ShowStep(2);
         else if (step is 1 or 2 or 4) ShowStep(step - 1);
     }
     private async void Next(object sender, RoutedEventArgs e)
@@ -286,8 +276,7 @@ public partial class MainWindow : Window
                 if (sourceSection == 0 && UsePrepared.IsChecked != true) { sourceSection = 1; ShowStep(1); }
                 else ShowStep(2);
             }
-            else if (step == 2) { InstallerOptions.Validate(optionsPanel.Selection); optionsPanel.ValidateDeckPassword(); ShowStep(StorageStep); }
-            else if (step == StorageStep) { InstallationController.ValidateRequest(Request); ShowStep(3); }
+            else if (step == 2) { InstallerOptions.Validate(CurrentOptions); optionsPanel.ValidateDeckPassword(); ShowStep(3); }
             else if (step == 3) { RequirePhysicalConsent(); InstallationController.ValidateRequest(Request); ShowStep(4); }
             else if (step == 4) { if(physicalInstallation && (PhysicalConsent.IsChecked!=true || acknowledgedSelection != PartitionSelector.Selection)) throw new IOException(PartitionInventory.L("请返回安装位置，核对目标范围并确认备份，然后确认安装方案。","Return to installation location, confirm the target range and backup, then approve the installation plan.")); var request = Request; optionsPanel.ClearSensitiveInputs(); await StartAsync(request); }
             else if (step == 6) { ShowStep(0); }
@@ -459,8 +448,15 @@ public partial class MainWindow : Window
                 var failed = group.Where(x => x.GetProperty("status").GetString() != "files_installed").ToArray();
                 var label = names.TryGetValue(group.Key, out var item) ? (InstallerI18n.Language == "en-US" ? item.En : item.Zh)
                 : group.Key == "deck-access" ? PartitionInventory.L("账户与 SSH 设置", "Account and SSH settings")
-                : group.Key == "system-update-policy" ? PartitionInventory.L("SteamOS 系统更新", "SteamOS system updates") : PartitionInventory.L("KDE 语言", "KDE language");
-                if (group.Key == "system-update-policy" && failed.Length == 0) return label + ": " + InstallerOptions.SystemUpdatePolicyDisclosure;
+                : group.Key == "shared-storage" ? PartitionInventory.L("共享分区挂载", "Shared partition mounts")
+                : group.Key == "system-update-hold" ? PartitionInventory.L("保留当前系统版本", "Preserve current system version")
+                : group.Key == "system-update-policy" ? PartitionInventory.L("历史系统更新策略", "Historical system update policy") : PartitionInventory.L("KDE 语言", "KDE language");
+                if (group.Key == "system-update-hold" && failed.Length == 0) return label + ": " + PartitionInventory.L(
+                    "本次安装暂缓 SteamOS 系统更新；Steam 客户端与游戏更新不受影响。",
+                    "This installation holds SteamOS system updates; Steam client and game updates are unaffected.");
+                if (group.Key == "system-update-policy" && failed.Length == 0) return label + ": " + PartitionInventory.L(
+                    "此任务曾部署系统更新暂停策略；该记录不代表当前系统的更新状态。",
+                    "This task deployed a system update pause policy; this record does not describe the system's current update status.");
                 return label + ": " + (failed.Length == 0 ? PartitionInventory.L("文件已部署；首次启动核对激活", "files installed; activation checked at first boot")
                     : PartitionInventory.L("已跳过 / 不可用：", "skipped / unavailable: ") + string.Join("; ", failed.Select(x =>
                         PartitionInventory.L("系统槽 ", "slot ") + x.GetProperty("slot").GetString() + " — " + InstallerI18n.Diagnostic(x.GetProperty("reason").GetString()!))));

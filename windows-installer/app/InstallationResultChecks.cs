@@ -27,7 +27,7 @@ internal static class InstallationResultChecks
         {
             InstallerI18n.SetLanguage(language);
             var physical = status != "complete";
-            var state = new InstallationSession(1, new string('0', 32), InstallationTargetKind.InternalShared,
+            var state = new InstallationSession(1, Guid.NewGuid().ToString("N"), InstallationTargetKind.InternalShared,
                 "fixture.img", true, status, status, null, status == "failed" ? "Fixture failure" : null, DateTime.UtcNow, Physical: physical, MakeDefaultBoot: physical && makeDefault);
             show.Invoke(window, [state]);
             var success = status is "awaiting-device-boot" or "complete";
@@ -36,6 +36,47 @@ internal static class InstallationResultChecks
             Require((((SolidColorBrush)Find<TextBlock>("NavResult").Foreground).Color == Color.FromRgb(134,239,172)) == success, language + "/" + status + "/navigation-color");
             if (status != "awaiting-device-boot") continue;
             Require(Find<TextBlock>("ResultScope").Text == MainWindow.BootResultGuidance(state), language + "/" + makeDefault + "/boot-guidance-matches-completed-task");
+            var componentDirectory = InstallationController.SessionDirectory(state);
+            Directory.CreateDirectory(componentDirectory);
+            var componentReport = Path.Combine(componentDirectory, "components.json");
+            try
+            {
+                var sharedStorageReport = JsonSerializer.Serialize(new[] { "A", "B" }.Select(slot => new
+                {
+                    slot, id = "shared-storage", status = "not_installed", safe_to_skip = true,
+                    reason = "Unsafe shared storage path: fixture preflight conflict"
+                }));
+                File.WriteAllText(componentReport, sharedStorageReport);
+                show.Invoke(window, [state]);
+                Require(Find<TextBlock>("ResultScope").Text.Contains(language == "zh-CN" ? "共享分区挂载" : "Shared partition mounts"), language + "/shared-storage-summary-label");
+                Require(!Find<TextBlock>("ResultScope").Text.Contains(language == "zh-CN" ? "系统更新" : "system update"), language + "/new-report-has-no-update-policy-summary");
+                Require(Find<TextBlock>("ResultScope").Text.Contains("fixture preflight conflict"), language + "/shared-storage-warning-reason");
+                Require(Find<TextBlock>("ResultMessage").Text.Contains(language == "zh-CN" ? "被跳过" : "were skipped"), language + "/shared-storage-warning-visible");
+                Require(Find<StackPanel>("RestartPanel").Visibility == Visibility.Visible, language + "/shared-storage-skip-keeps-success");
+                File.WriteAllText(componentReport, JsonSerializer.Serialize(new[] { "A", "B" }.Select(slot => new
+                {
+                    slot, id = "system-update-policy", status = "files_installed"
+                })));
+                show.Invoke(window, [state]);
+                var historicalSummary = Find<TextBlock>("ResultScope").Text;
+                Require(historicalSummary.Contains(language == "zh-CN" ? "历史系统更新策略" : "Historical system update policy")
+                    && historicalSummary.Contains(language == "zh-CN" ? "此任务曾部署系统更新暂停策略" : "This task deployed a system update pause policy")
+                    && historicalSummary.Contains(language == "zh-CN" ? "不代表当前系统的更新状态" : "does not describe the system's current update status"),
+                    language + "/historical-update-policy-preserves-past-action-without-claiming-current-state");
+                File.WriteAllText(componentReport, JsonSerializer.Serialize(new[] { "A", "B" }.Select(slot => new
+                {
+                    slot, id = "system-update-hold", status = "files_installed"
+                })));
+                show.Invoke(window, [state]);
+                var holdSummary = Find<TextBlock>("ResultScope").Text;
+                Require(holdSummary.Contains(language == "zh-CN" ? "保留当前系统版本" : "Preserve current system version")
+                    && holdSummary.Contains(language == "zh-CN" ? "暂缓 SteamOS 系统更新" : "holds SteamOS system updates")
+                    && holdSummary.Contains(language == "zh-CN" ? "Steam 客户端与游戏更新不受影响" : "Steam client and game updates are unaffected"),
+                    language + "/update-hold-discloses-scope");
+                File.WriteAllText(componentReport, sharedStorageReport);
+                show.Invoke(window, [state]);
+            }
+            finally { File.Delete(componentReport); Directory.Delete(componentDirectory); }
             Require(Find<TextBlock>("ResultTitle").Text == (language == "zh-CN" ? "写入完成" : "Writing complete"), language + "/successful-write-title");
             Require(((SolidColorBrush)Find<Border>("ResultCard").Background).Color == Color.FromRgb(236,253,243), language + "/green-success-card");
             foreach (var size in new[] { new Size(850,620), new Size(1280,800) })

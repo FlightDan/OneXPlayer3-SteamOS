@@ -10,6 +10,39 @@ using System.Windows.Media;
 namespace OxpInstaller;
 public static class WizardChecks
 {
+    // Exercise physical-mode validation using a synthetic inventory only.
+    // Stop at BootPage: never click its install button or invoke a disk writer.
+    internal static string RunPhysicalNavigation(MainWindow window, string prepared)
+    {
+        var checks = new List<string>();
+        T Find<T>(string name) => (T)window.FindName(name);
+        void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        void Require(bool value, string name) { if (!value) throw new IOException(name + ": " + Find<TextBlock>("ValidationMessage").Text); checks.Add(name); }
+        var picker = Find<PartitionPicker>("PartitionSelector"); picker.AutomaticReadEnabled = false;
+        window.WindowState = WindowState.Normal; window.ShowActivated = false; window.Show(); BootSetupChecks.Acknowledge(window);
+        foreach (var language in new[] { "ChineseLanguage", "EnglishLanguage" })
+        {
+            Find<RadioButton>(language).IsChecked = true;
+            Click("TargetTab");
+            picker.LoadSnapshot(PartitionInventory.ExampleJson, false);
+            picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().First(r => r.Space != null);
+            picker.CapacityInput.Text = "64";
+            Click("NextButton");
+            Require(Find<Grid>("SafetyOverlay").IsVisible, "target-consent-required-" + language);
+            Click("SafetyContinue");
+            Find<CheckBox>("UsePrepared").IsChecked = true; Find<TextBox>("ImagePath").Text = prepared;
+            Click("NextButton");
+            Require(Find<StackPanel>("ContentPage").IsVisible, "physical-source-advances-to-contents-" + language);
+            Click("NextButton");
+            Require(Find<StackPanel>("ReviewPage").IsVisible && window.CurrentOptions.StorageMounts == null, "physical-contents-to-review-without-mounts-" + language);
+            Find<CheckBox>("PhysicalConsent").IsChecked = true; Click("NextButton");
+            Require(Find<StackPanel>("BootPage").IsVisible && window.CompletedSession == null, "physical-review-advances-to-boot-without-writing-" + language);
+            Click("BackButton"); Click("BackButton");
+            Require(Find<StackPanel>("ContentPage").IsVisible, "physical-back-skips-mount-page-" + language);
+        }
+        return JsonSerializer.Serialize(new { passed = true, checks, physical_disk_writes = false }, new JsonSerializerOptions { WriteIndented = true });
+    }
+
     public static string Run(MainWindow window, string prepared)
     {
         var directory = Path.Combine(Backend.Root, "logs", "wizard-ui-" + DateTime.Now.ToString("yyyyMMdd-HHmmss")); Directory.CreateDirectory(directory);
@@ -30,16 +63,14 @@ public static class WizardChecks
         var options = (InstallerOptionsPanel)Find<StackPanel>("ComponentOptionsHost").Children[0];
         options.OptionBoxes["decky"].IsChecked = false;
         Find<CheckBox>("UsePrepared").IsChecked = true; Find<TextBox>("ImagePath").Text = prepared; Click("NextButton");
-        Require(Find<StackPanel>("ContentPage").Visibility == Visibility.Visible, "source-advance-does-not-validate-component-choices");
+        Require(Find<StackPanel>("ContentPage").Visibility == Visibility.Visible, "source-advance-does-not-validate-component-choices: " + Find<TextBlock>("ValidationMessage").Text);
         Require(!Find<CheckBox>("Upgrade310").IsEnabled && Find<TextBlock>("SystemVersionNote").Text.Contains("不再替换版本"), "prepared-image-does-not-promise-version-replacement");
         Click("NextButton");
         Require(Find<StackPanel>("ContentPage").IsVisible && Find<TextBlock>("ValidationMessage").Text.Length > 0, "dependency-error-belongs-to-contents-page");
         options.OptionBoxes["decky"].IsChecked = true; Click("NextButton");
-        Require(Find<StackPanel>("StoragePage").IsVisible, "contents-advance-to-optional-storage");
+        Require(Find<StackPanel>("ReviewPage").IsVisible, "contents-advance-directly-to-review");
         Click("NextButton");
-        Require(Find<StackPanel>("ReviewPage").IsVisible, "empty-storage-advances-to-review");
-        Click("NextButton");
-        Require(Find<StackPanel>("BootPage").IsVisible && window.CompletedSession == null, "review-advances-to-boot-options-without-installing");
+        Require(Find<StackPanel>("BootPage").IsVisible && window.CompletedSession == null, "review-advances-to-boot-options-without-installing: " + Find<TextBlock>("ValidationMessage").Text);
         Click("BackButton");
         Require(((SolidColorBrush)Find<TextBlock>("NavSource").Foreground).Color != Color.FromRgb(255, 139, 139), "configured-source-clears-red-status");
         Click("BackButton"); Require(Find<TextBox>("ImagePath").Text == prepared, "back-retains-reviewed-source");
@@ -89,7 +120,7 @@ public static class WizardChecks
         Find<RadioButton>("EnglishLanguage").IsChecked = true;
         Require(Find<TextBlock>("IncompleteHeading").Text == "Some items are incomplete" && Find<TextBlock>("IncompleteItems").Text.Contains("Location:"), "incomplete-summary-supports-english");
         Find<RadioButton>("ChineseLanguage").IsChecked = true;
-        foreach (var pair in new[] { ("BootTab", "BootPage"), ("ContentTab", "ContentPage"), ("StorageTab", "StoragePage"), ("ReviewTab", "ReviewPage"), ("TargetTab", "TargetPage"), ("ProgressTab", "ProgressPage"), ("SourceTab", "SourcePage"), ("ResultTab", "ResultPage"), ("TargetTab", "TargetPage") })
+        foreach (var pair in new[] { ("BootTab", "BootPage"), ("ContentTab", "ContentPage"), ("ReviewTab", "ReviewPage"), ("TargetTab", "TargetPage"), ("ProgressTab", "ProgressPage"), ("SourceTab", "SourcePage"), ("ResultTab", "ResultPage"), ("TargetTab", "TargetPage") })
         {
             Click(pair.Item1);
             Require(Find<StackPanel>(pair.Item2).IsVisible, "arbitrary-navigation-" + pair.Item1);

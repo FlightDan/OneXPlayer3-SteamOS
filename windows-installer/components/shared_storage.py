@@ -25,7 +25,7 @@ def validate_mounts(mounts):
             raise ValueError('A canonical GPT partition identifier is required')
         if not MOUNT_NAME.fullmatch(name) or len(name) > 64:
             raise ValueError('Invalid shared storage mount name')
-        if item['filesystem'] not in ('ntfs', 'exfat', 'vfat'):
+        if item['filesystem'] not in ('ntfs', 'exfat', 'vfat', 'ext4', 'btrfs'):
             raise ValueError('Unsupported shared storage filesystem')
         if guid in identities or name in names:
             raise ValueError('Duplicate shared storage partition or mount path')
@@ -35,6 +35,15 @@ def validate_mounts(mounts):
 
 def mount_path(item):
     return '/mnt/shared/' + item['mount_name']
+
+
+def _mount_alias(path):
+    # SteamOS 3.10 has /mnt -> var/mnt. Treat both spellings as the same
+    # destination when checking administrator-owned mounts, even on fixtures.
+    normalized = '/' + str(PurePosixPath(path)).lstrip('/') if path.startswith('/') else path
+    if normalized == '/mnt' or normalized.startswith('/mnt/'):
+        return '/var' + normalized
+    return normalized
 
 
 def _unescape_fstab(value):
@@ -60,7 +69,7 @@ def render_fstab(original, mounts, owner, managed=False):
         outside = lines[:start] + lines[end + 1:]
     else:
         start = len(lines); outside = lines
-    requested = {mount_path(item) for item in mounts}
+    requested = {_mount_alias(mount_path(item)) for item in mounts}
     identities = {item['partuuid'] for item in mounts}
     for line in outside:
         fields = line.strip().split()
@@ -70,12 +79,11 @@ def render_fstab(original, mounts, owner, managed=False):
         partition = source.removeprefix('PARTUUID=') if source.startswith('PARTUUID=') else source.removeprefix('/dev/disk/by-partuuid/')
         if partition.lower() in identities:
             raise RuntimeError('Selected partition already has an unmanaged fstab mount')
-        normalized = str(PurePosixPath(destination))
-        if normalized.startswith('/'): normalized = '/' + normalized.lstrip('/')
-        if '..' in PurePosixPath(destination).parts and destination.startswith('/mnt'):
+        normalized = _mount_alias(destination)
+        if '..' in PurePosixPath(destination).parts:
             raise RuntimeError('Ambiguous existing fstab mount path')
         if any(normalized == path or normalized.startswith(path + '/') or
-               (normalized not in ('/', '/mnt') and path.startswith(normalized.rstrip('/') + '/'))
+               (normalized not in ('/', '/var', '/var/mnt') and path.startswith(normalized.rstrip('/') + '/'))
                for path in requested):
             raise RuntimeError('Shared storage mount path conflicts with existing fstab')
     block = BEGIN
@@ -84,8 +92,10 @@ def render_fstab(original, mounts, owner, managed=False):
         # noexec is intentional: this feature shares documents/media, not games.
         # Never force NTFS dirty/hibernated volumes or delete their hibernation file.
         options = ('rw,nosuid,nodev,noexec,nofail,x-systemd.automount,'
-                   'x-systemd.device-timeout=5s,x-systemd.mount-timeout=30s,'
-                   f'uid={owner[0]},gid={owner[1]},fmask=0133,dmask=0022')
+                   'x-systemd.device-timeout=5s,x-systemd.mount-timeout=30s')
+        # Linux filesystems retain their on-disk ownership and permissions.
+        if item['filesystem'] not in ('ext4', 'btrfs'):
+            options += f',uid={owner[0]},gid={owner[1]},fmask=0133,dmask=0022'
         if item['filesystem'] == 'ntfs': options += ',windows_names'
         block += f'PARTUUID={item["partuuid"]} {mount_path(item)} {filesystem} {options} 0 0\n'
     block += END
@@ -111,19 +121,31 @@ def _safe_existing(root, relative):
 
 
 def _check_mount_paths(root, mounts):
+    relative = 'mnt'
+    entry = root / 'mnt'
+    try: info = entry.lstat()
+    except FileNotFoundError: info = None
+    if info is not None and stat.S_ISLNK(info.st_mode):
+        # Verified in the official 3.10 image. Never resolve an absolute link
+        # against the guest host, or allow arbitrary image symlink chains.
+        if os.readlink(entry) != 'var/mnt' or (os.name == 'posix' and info.st_uid != 0):
+            raise RuntimeError('Unsafe shared storage path: ' + str(entry))
+        relative = 'var/mnt'
     for item in mounts:
-        path, exists = _safe_existing(root, mount_path(item).lstrip('/'))
+        path, exists = _safe_existing(root, relative + '/shared/' + item['mount_name'])
         if exists and (not path.is_dir() or any(path.iterdir())):
             raise RuntimeError('Shared storage mount point must be an empty ordinary directory')
-        escaped = mount_path(item).lstrip('/').replace('-', r'\x2d').replace('/', '-')
+        aliases = [mount_path(item), _mount_alias(mount_path(item))]
         directories = ['etc/systemd/system', 'usr/local/lib/systemd/system', 'usr/lib/systemd/system']
         # /lib is commonly an image-owned symlink to /usr/lib; inspect the latter.
         if (root / 'lib').exists() and not (root / 'lib').is_symlink():
             directories.append('lib/systemd/system')
         for directory in directories:
-            for suffix in ('.mount', '.automount', '.mount.d', '.automount.d'):
-                path, exists = _safe_existing(root, directory + '/' + escaped + suffix)
-                if exists: raise RuntimeError('Conflicting shared storage systemd unit: ' + str(path))
+            for alias in aliases:
+                escaped = alias.lstrip('/').replace('-', r'\x2d').replace('/', '-')
+                for suffix in ('.mount', '.automount', '.mount.d', '.automount.d'):
+                    path, exists = _safe_existing(root, directory + '/' + escaped + suffix)
+                    if exists: raise RuntimeError('Conflicting shared storage systemd unit: ' + str(path))
 
 
 def _require_kernel_ntfs3(root, kernel):
@@ -194,23 +216,24 @@ def verify_fstab(data, mounts, owner):
         seen.add(identity); selected = expected[identity]
         if fields[1] != '/mnt/shared/' + selected['mount_name'] or fields[4:] != ['0', '0']:
             raise RuntimeError('Installed shared storage destination/check policy differs from selection')
-        filesystem = {'ntfs':'ntfs3', 'exfat':'exfat', 'vfat':'vfat'}[selected['filesystem']]
+        filesystem = {'ntfs':'ntfs3', 'exfat':'exfat', 'vfat':'vfat', 'ext4':'ext4', 'btrfs':'btrfs'}[selected['filesystem']]
         if fields[2] != filesystem:
             raise RuntimeError('Installed shared storage filesystem differs from selection')
         required = {'rw', 'nosuid', 'nodev', 'noexec', 'nofail', 'x-systemd.automount',
-                    'x-systemd.device-timeout=5s', 'x-systemd.mount-timeout=30s',
-                    'uid=' + str(owner[0]), 'gid=' + str(owner[1]), 'fmask=0133', 'dmask=0022'}
+                    'x-systemd.device-timeout=5s', 'x-systemd.mount-timeout=30s'}
+        if filesystem not in ('ext4', 'btrfs'):
+            required.update({'uid=' + str(owner[0]), 'gid=' + str(owner[1]), 'fmask=0133', 'dmask=0022'})
         if filesystem == 'ntfs3': required.add('windows_names')
         actual = fields[3].split(',')
         if len(actual) != len(set(actual)) or set(actual) != required:
             raise RuntimeError('Installed shared storage permission/safety options differ from selection')
     # A duplicate unmanaged reference outside the block can supersede the intent.
-    destinations = {'/mnt/shared/' + item['mount_name'] for item in mounts}
+    destinations = {_mount_alias(mount_path(item)) for item in mounts}
     for line in lines[:begin[0]] + lines[end[0]+1:]:
         fields = line.split()
         if not fields or fields[0].startswith('#') or len(fields) < 2: continue
         source = _unescape_fstab(fields[0])
         if (source.removeprefix('PARTUUID=') in expected or
                 source.removeprefix('/dev/disk/by-partuuid/') in expected or
-                _unescape_fstab(fields[1]) in destinations):
+                _mount_alias(_unescape_fstab(fields[1])) in destinations):
             raise RuntimeError('Duplicate unmanaged installed shared storage reference')

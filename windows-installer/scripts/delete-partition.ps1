@@ -2,14 +2,16 @@ param([Parameter(Mandatory=$true)][string]$RequestPath, [switch]$ValidateOnly)
 $ErrorActionPreference = 'Stop'
 $request = Get-Content -LiteralPath $RequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($request.Example -ne $false) { throw 'Example or incomplete requests cannot delete real partitions.' }
-$expectedDisks = @($request.Snapshot | ConvertFrom-Json)
+# Windows PowerShell 5.1 emits a root JSON array as one pipeline object.
+# Enumerate the parsed array before selecting a disk, including disk number zero.
+$expectedDisks = @(($request.Snapshot | ConvertFrom-Json))
 $expected = @($expectedDisks | Where-Object { $_.number -eq $request.Disk })
 if ($expected.Count -ne 1) { throw 'Ambiguous reviewed disk.' }
 $expected = $expected[0]
 $target = @($expected.partitions | Where-Object { $_.offset -eq $request.Start })
 if ($target.Count -ne 1 -or $target[0].deletionAllowed -ne $true) { throw 'Selected partition was not eligible for deletion.' }
 $target = $target[0]
-$freshDisks = @((& (Join-Path $PSScriptRoot 'read-disks.ps1')) | ConvertFrom-Json)
+$freshDisks = @(((& (Join-Path $PSScriptRoot 'read-disks.ps1')) | ConvertFrom-Json))
 $fresh = @($freshDisks | Where-Object { $_.number -eq $request.Disk })
 if ($fresh.Count -ne 1) { throw 'Disk is missing; refresh the disk list.' }
 $fresh = $fresh[0]

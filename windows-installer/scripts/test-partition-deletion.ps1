@@ -14,10 +14,20 @@ function Reset-Fixture {
         [pscustomobject]@{ PartitionNumber=2; Guid='33333333-3333-3333-3333-333333333333'; Offset=261MB; Size=100GB; Type='Basic'; GptType='EBD0A0A2-B9E5-4433-87C0-68B6B72699C7'; DriveLetter='Z'; IsBoot=$false; IsSystem=$false; IsHidden=$false; IsReadOnly=$false; IsOffline=$false; AccessPaths=@('Z:\',$global:partitionDeletionTest_volumeRoot) })
     foreach ($part in $global:partitionDeletionTest_parts) { $part | Add-Member NoteProperty DiskNumber 42 }
     $global:partitionDeletionTest_volume = [pscustomobject]@{ Path=$global:partitionDeletionTest_volumeRoot; FileSystemType='NTFS'; FileSystemLabel='Disposable fixture'; SizeRemaining=50GB; HealthStatus='Healthy' }
+    $global:partitionDeletionTest_otherDisks = @()
     $global:partitionDeletionTest_pagefile = 'C:\pagefile.sys'; $global:partitionDeletionTest_windowsFiles = $false; $global:partitionDeletionTest_deletes = 0
 }
-function Get-Disk { param($Number) $global:partitionDeletionTest_disk }
-function Get-Partition { param($DiskNumber, $PartitionNumber) if ($PSBoundParameters.ContainsKey('PartitionNumber')) { $global:partitionDeletionTest_parts | Where-Object PartitionNumber -eq $PartitionNumber } else { $global:partitionDeletionTest_parts } }
+function Get-Disk {
+    param($Number)
+    $disks = @($global:partitionDeletionTest_otherDisks) + @($global:partitionDeletionTest_disk)
+    if ($PSBoundParameters.ContainsKey('Number')) { $disks | Where-Object Number -eq $Number } else { $disks }
+}
+function Get-Partition {
+    param($DiskNumber, $PartitionNumber)
+    $parts = $global:partitionDeletionTest_parts
+    if ($PSBoundParameters.ContainsKey('DiskNumber')) { $parts = @($parts | Where-Object DiskNumber -eq $DiskNumber) }
+    if ($PSBoundParameters.ContainsKey('PartitionNumber')) { $parts | Where-Object PartitionNumber -eq $PartitionNumber } else { $parts }
+}
 function Get-Volume { param([Parameter(ValueFromPipeline=$true)]$InputObject) process { $global:partitionDeletionTest_volume } }
 function Get-CimInstance { param($ClassName) if ($ClassName -ne 'Win32_PageFileUsage') { throw 'Unexpected CIM query' }; [pscustomobject]@{ Name=$global:partitionDeletionTest_pagefile } }
 function Get-ItemProperty { param($LiteralPath) [pscustomobject]@{ DumpFile='C:\Windows\MEMORY.DMP' } }
@@ -32,7 +42,12 @@ function Remove-Partition {
 }
 function Save-Request {
     $snapshot = & (Join-Path $PSScriptRoot 'read-disks.ps1')
-    @{ Snapshot=$snapshot; Example=$false; Disk=42; Start=261MB; Language='en-US' } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $requestPath -Encoding UTF8
+    @{ Snapshot=$snapshot; Example=$false; Disk=$global:partitionDeletionTest_disk.Number; Start=261MB; Language='en-US' } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $requestPath -Encoding UTF8
+}
+function Set-MultiDiskFixture([int]$Number) {
+    $global:partitionDeletionTest_disk.Number = $Number
+    foreach ($part in $global:partitionDeletionTest_parts) { $part.DiskNumber = $Number }
+    $global:partitionDeletionTest_otherDisks = @([pscustomobject]@{ Number=99; Guid='99999999-9999-9999-9999-999999999999'; SerialNumber='unrelated-fixture'; LogicalSectorSize=512; FriendlyName='Other mock disk'; Size=80GB; PartitionStyle='GPT'; BusType='SATA'; IsBoot=$false; IsSystem=$false; IsOffline=$false; IsReadOnly=$false })
 }
 function Require($Condition, [string]$Name) { if (-not $Condition) { throw "Failed: $Name" }; $global:partitionDeletionTest_proof += $Name }
 function Reject-Change([scriptblock]$Change, [string]$Name) {
@@ -46,6 +61,32 @@ Reset-Fixture; Save-Request
 Require ($global:partitionDeletionTest_deletes -eq 0) 'pre-confirmation-validation-never-deletes'
 & (Join-Path $PSScriptRoot 'delete-partition.ps1') -RequestPath $requestPath
 Require ($global:partitionDeletionTest_deletes -eq 1 -and $global:partitionDeletionTest_parts.Count -eq 1 -and $global:partitionDeletionTest_parts[0].PartitionNumber -eq 1) 'deletes-exactly-reviewed-data-partition-and-keeps-efi'
+foreach ($number in @(0,1,42)) {
+    Reset-Fixture; Set-MultiDiskFixture $number; Save-Request
+    & (Join-Path $PSScriptRoot 'delete-partition.ps1') -RequestPath $requestPath -ValidateOnly
+    Require ($global:partitionDeletionTest_deletes -eq 0) "multi-disk-$number-validation-never-deletes"
+    & (Join-Path $PSScriptRoot 'delete-partition.ps1') -RequestPath $requestPath
+    Require ($global:partitionDeletionTest_deletes -eq 1 -and $global:partitionDeletionTest_parts.Count -eq 1 -and $global:partitionDeletionTest_parts[0].IsSystem) "multi-disk-$number-deletes-only-reviewed-partition"
+}
+foreach ($stage in @('reviewed','fresh')) {
+    foreach ($kind in @('missing','duplicate')) {
+        Reset-Fixture; Set-MultiDiskFixture 0
+        if ($stage -eq 'fresh') { Save-Request }
+        if ($kind -eq 'missing') { $global:partitionDeletionTest_disk.Number = 98 }
+        else { $global:partitionDeletionTest_otherDisks[0].Number = 0 }
+        if ($stage -eq 'reviewed') {
+            Save-Request
+            # Keep the requested disk fixed even when it is absent from the snapshot.
+            $request = Get-Content -LiteralPath $requestPath -Raw | ConvertFrom-Json
+            $request.Disk = 0
+            $request | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $requestPath -Encoding UTF8
+        }
+        $message = ''
+        try { & (Join-Path $PSScriptRoot 'delete-partition.ps1') -RequestPath $requestPath } catch { $message = $_.Exception.Message }
+        $expectedMessage = if ($stage -eq 'reviewed') { 'Ambiguous reviewed disk.' } else { 'Disk is missing; refresh the disk list.' }
+        Require ($message -eq $expectedMessage -and $global:partitionDeletionTest_deletes -eq 0) "reject-$stage-$kind-disk-before-delete"
+    }
+}
 Reject-Change { $global:partitionDeletionTest_disk.Guid = '99999999-9999-9999-9999-999999999999' } 'reject-disk-swap'
 Reject-Change { $global:partitionDeletionTest_disk.SerialNumber = 'different' } 'reject-serial-change'
 Reject-Change { $global:partitionDeletionTest_disk.IsReadOnly = $true } 'reject-readonly-disk'

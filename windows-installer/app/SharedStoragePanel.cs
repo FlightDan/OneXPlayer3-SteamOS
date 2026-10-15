@@ -78,9 +78,9 @@ internal sealed class SharedStoragePanel : StackPanel
     }
     internal void RefreshLanguage()
     {
-        heading.Text = PartitionInventory.L("挂载分区到 SteamOS（Beta · 未测试）", "Mount partitions in SteamOS (Beta · Untested)");
+        heading.Text = PartitionInventory.L("挂载分区到 SteamOS", "Mount partitions in SteamOS");
         introduction.Text = PartitionInventory.L("选择要在 SteamOS 中访问的数据分区。安装后按需自动挂载，可在文件管理器中打开；不会自动添加 Steam 游戏库。", "Choose data partitions to access in SteamOS. They will mount on demand after installation and can be opened in the file manager. No Steam game library is added.");
-        details.Text = PartitionInventory.L("Beta · 未测试：尚未完成掌机实机验证，可直接跳过。支持 NTFS、exFAT 和 FAT32 数据分区。系统、启动和恢复分区不在列表中。缺盘时可正常启动；加密或 Windows 未完全关闭的分区可能无法挂载。", "Beta · Untested: handheld hardware validation is pending; you can skip this step. Supports NTFS, exFAT and FAT32 data partitions. System, boot and recovery partitions are excluded. Missing disks do not block startup; encrypted partitions or volumes left open by Windows may be unavailable.");
+        details.Text = PartitionInventory.L("此步骤可直接跳过。支持 GPT 磁盘和 SD 卡上的 NTFS、exFAT、FAT32、ext4 和单设备 Btrfs 数据分区。Linux 格式通过只读签名识别，保留原有文件权限。系统、启动、恢复和加密分区不在列表中。缺盘时可正常启动；Windows 未完全关闭的分区可能无法挂载。", "You can skip this step. Supports NTFS, exFAT, FAT32, ext4 and single-device Btrfs data partitions on GPT disks and SD cards. Linux formats are identified by read-only signatures and retain existing file permissions. System, boot, recovery and encrypted partitions are excluded. Missing disks do not block startup; volumes left open by Windows may be unavailable.");
         SkipButton.Content = PartitionInventory.L("跳过，不挂载分区", "Skip without mounting partitions");
         DiskButton.Content = PartitionInventory.L("返回安装位置", "Back to installation location");
         Render(Selection);

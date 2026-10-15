@@ -109,8 +109,13 @@ public static class PartitionPickerChecks
         T Find<T>(string name) => (T)window.FindName(name);
         void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var picker = Find<PartitionPicker>("PartitionSelector");
+        Require(picker.AlignRight.IsChecked == true && picker.AlignLeft.IsChecked != true, "new-picker-defaults-to-right-placement");
+        picker.LoadSnapshot(json, true);
+        picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().Single(r => r.Space != null);
+        Require(picker.Selection.AlignRight && picker.Selection.Target().Start + picker.Selection.Capacity == gap.Start + gap.Size,
+            "default-selection-reserves-right-end-of-gap");
         Require(picker.FormatRemainingButton.Visibility == Visibility.Visible && picker.FormatRemainingHint.Visibility == Visibility.Visible
-            && picker.FormatRemainingButton.Content.ToString()!.Contains("Beta · 未测试"), "ntfs-beta-untested-entry-visible");
+            && !picker.FormatRemainingButton.Content.ToString()!.Contains("未测试"), "ntfs-tested-entry-visible");
         picker.SelectReservedSpace(formattedExample, true, formatRequest);
         Require(picker.Selection.Capacity == formatSelection.Capacity && !picker.FormatRemainingButton.IsEnabled, "formatted-layout-reselected-and-repeat-disabled");
         var large = JsonNode.Parse(json)!;
@@ -148,7 +153,7 @@ public static class PartitionPickerChecks
         Require(picker.Selection.Capacity == 128 * PartitionInventory.GiB, "capacity-input-updates-selection");
         picker.Capacity64Button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(picker.Selection.Capacity == 64 * PartitionInventory.GiB, "64g-preset-updates-plan");
-        Require(picker.AlignLeft.IsChecked == true && !picker.Selection.AlignRight, "installation-defaults-to-left-placement");
+        Require(picker.AlignLeft.IsChecked == true && !picker.Selection.AlignRight, "restored-left-selection-keeps-placement");
         picker.AlignRight.IsChecked = true;
         Require(picker.Selection.AlignRight && picker.Selection.Target().Start == gap.Start + gap.Size - picker.Selection.Capacity,
             "right-placement-puts-steamos-at-gap-end");
@@ -183,7 +188,7 @@ public static class PartitionPickerChecks
         Click("BackButton"); Require(picker.CapacityInput.Text == "128.5", "back-retains-selection");
         Find<RadioButton>("EnglishLanguage").IsChecked = true;
         Require(picker.Selection.Capacity == 128 * PartitionInventory.GiB + 512 * PartitionInventory.MiB && picker.Heading.Text == "Choose disk and installation space", "language-switch-preserves-selection");
-        Require(picker.FormatRemainingButton.Content.ToString()!.Contains("Beta · Untested") && picker.FormatRemainingHint.Text.Contains("Untested on hardware"), "ntfs-english-beta-untested-entry");
+        Require(!picker.FormatRemainingButton.Content.ToString()!.Contains("Untested") && !picker.FormatRemainingHint.Text.Contains("Untested on hardware"), "ntfs-english-tested-entry");
         Find<RadioButton>("ChineseLanguage").IsChecked = true;
         window.PreviewStep(3);
         Require(Find<StackPanel>("ReviewPartitionHost").Children.Count > 5, "review-renders-selected-plan");
@@ -214,7 +219,7 @@ public static class PartitionPickerChecks
         {
             InstallerI18n.SetLanguage(language);
             var formatDialog = RemainingSpaceFormat.Confirmation(formatRequest with { Language = language });
-            Require(formatDialog.Title.Contains(language == "en-US" ? "Beta · Untested" : "Beta · 未测试"), "ntfs-confirmation-beta-untested-" + language);
+            Require(!formatDialog.Title.Contains(language == "en-US" ? "Untested" : "未测试"), "ntfs-confirmation-tested-" + language);
             formatDialog.ShowActivated = false; formatDialog.MaxHeight = 540; formatDialog.Show(); formatDialog.UpdateLayout();
             var formatPanel = (StackPanel)((ScrollViewer)formatDialog.Content).Content;
             var formatConsent = formatPanel.Children.OfType<CheckBox>().Single();

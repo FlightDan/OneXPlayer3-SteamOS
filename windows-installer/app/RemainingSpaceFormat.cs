@@ -89,13 +89,13 @@ public static class RemainingSpaceFormat
     {
         var plan = Plan(request.Selection);
         var disk = PartitionInventory.Read(request.Selection.Snapshot).Single(d => d.Number == plan.Disk);
-        var window = new Window { Title = L("格式化剩余空间（Beta · 未测试）", "Format remaining space (Beta · Untested)"), Width = 580, SizeToContent = SizeToContent.Height,
+        var window = new Window { Title = L("格式化剩余空间", "Format remaining space"), Width = 580, SizeToContent = SizeToContent.Height,
             MaxHeight = SystemParameters.WorkArea.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ResizeMode = ResizeMode.NoResize, FontSize = 15, Background = Brushes.White, Foreground = new SolidColorBrush(Color.FromRgb(25,43,67)) };
         var panel = new StackPanel { Margin = new Thickness(24) };
         void Text(string value) => panel.Children.Add(new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
         Text(request.Selection.Example ? L("示例操作 · 不影响真实磁盘", "Example operation · no real disk changes") : disk.Title);
-        Text(L("Beta · 未测试（实机）：请核对磁盘、SteamOS 保留容量和 NTFS 范围。", "Beta · Untested on hardware: verify the disk, reserved SteamOS capacity and NTFS range."));
+        Text(L("请核对磁盘、SteamOS 保留容量和 NTFS 范围。", "Verify the disk, reserved SteamOS capacity and NTFS range."));
         Text(L($"保留 {PartitionInventory.SizeText(request.Selection.Capacity)} 未分配空间用于 SteamOS。\n将同一段空间的剩余 {PartitionInventory.SizeText(plan.Size)} 创建为 NTFS 数据分区。", $"Reserve {PartitionInventory.SizeText(request.Selection.Capacity)} of unallocated space for SteamOS.\nCreate an NTFS data partition using the remaining {PartitionInventory.SizeText(plan.Size)} in this region."));
         Text(request.Selection.AlignRight ? L("SteamOS 靠右，NTFS 余量位于左侧。", "SteamOS on the right; remaining NTFS space on the left.")
             : L("SteamOS 靠左，NTFS 余量位于右侧。", "SteamOS on the left; remaining NTFS space on the right."));

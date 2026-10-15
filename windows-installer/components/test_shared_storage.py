@@ -21,7 +21,7 @@ class SharedStorageSchema(unittest.TestCase):
 
     def test_strict_schema_and_duplicate_rejection(self):
         invalid = [None, {}, [True], [dict(SELECTION, extra='bad')],
-                   [dict(SELECTION, filesystem='ext4')], [dict(SELECTION, partuuid=GUID.upper())],
+                   [dict(SELECTION, filesystem='xfs')], [dict(SELECTION, partuuid=GUID.upper())],
                    [dict(SELECTION, partuuid='{'+GUID+'}')], [dict(SELECTION, mount_name='../escape')],
                    [dict(SELECTION, mount_name='share-d00-p4')], [dict(SELECTION, mount_name='share-d0-p0')],
                    [dict(SELECTION, filesystem=True)], [SELECTION]*33,
@@ -50,6 +50,18 @@ class SharedStorageSchema(unittest.TestCase):
         self.assertNotIn(b'force', output); self.assertNotIn(b'remove_hiberfile', output)
         self.assertNotIn(b'Steam', output)
 
+    def test_linux_filesystems_preserve_native_permissions(self):
+        for filesystem in ('ext4', 'btrfs'):
+            selection = [dict(SELECTION, filesystem=filesystem)]
+            output = render_fstab(b'', selection, (1000,1000))
+            verify_fstab(output, selection, (1000,1000))
+            self.assertIn((' '+filesystem+' ').encode(), output)
+            for option in (b'uid=', b'gid=', b'fmask=', b'dmask='):
+                self.assertNotIn(option, output)
+            self.assertIn(b'nosuid,nodev,noexec,nofail', output)
+            with self.assertRaises(RuntimeError):
+                verify_fstab(output.replace(b'rw,',b'rw,uid=1000,'), selection, (1000,1000))
+
     def test_independent_verification_detects_tampering_and_missing_selection(self):
         output=render_fstab(b'# unrelated\n', [SELECTION], (1000,1000))
         verify_fstab(output,[SELECTION],(1000,1000))
@@ -72,6 +84,9 @@ class SharedStorageSchema(unittest.TestCase):
                    'UUID=other /mnt/shared/share-d0-p4/child exfat defaults 0 0\n',
                    'UUID=other //mnt/shared/share-d0-p4 exfat defaults 0 0\n',
                    'UUID=other /mnt/shared/../shared/share-d0-p4 exfat defaults 0 0\n',
+                   'UUID=other /var/mnt/shared/share-d0-p4 exfat defaults 0 0\n',
+                   'UUID=other /var/mnt/shared exfat defaults 0 0\n',
+                   'UUID=other /var/mnt/shared/share-d0-p4/child exfat defaults 0 0\n',
                    BEGIN + END, BEGIN, END, BEGIN + END + BEGIN + END]
         for entry in entries:
             with self.subTest(entry=entry), self.assertRaises(RuntimeError):
@@ -132,7 +147,9 @@ class SharedStorageLifecycle(unittest.TestCase):
         self.assertEqual(set(first['components']), {'shared-storage'})
         self.assertEqual(first['services'], [])
         self.assertEqual(stage(self.root,payload,options,'A'),first)
-        self.assertFalse((self.root/'etc/systemd/system/steamos-update.service').exists())
+        for unit in ('atomupd.service','rauc.service'):
+            self.assertFalse(os.path.lexists(self.root/'etc/systemd/system'/unit))
+        self.assertFalse((self.root/'var/lib/oxp3-installer/system-update-policy.json').exists())
         self.assertFalse((self.root/'home/deck/.local/share/Steam/steamapps/libraryfolders.vdf').exists())
         self.assertEqual(restore(self.root,'A','shared-storage'), [])
         self.assertEqual((self.root/'etc/fstab').read_bytes(), self.original)
@@ -166,6 +183,37 @@ class SharedStorageLifecycle(unittest.TestCase):
         (self.root/'etc/fstab').unlink(); (self.root/'etc/fstab').write_bytes(self.original)
         (self.root/'mnt').symlink_to(outside, target_is_directory=True)
         with self.assertRaises(RuntimeError): files(self.root,[SELECTION],(1000,1000))
+
+    def test_official_mnt_link_is_resolved_within_image(self):
+        (self.root/'mnt').symlink_to('var/mnt', target_is_directory=True)
+        (self.root/'var').mkdir()
+        output = files(self.root, [SELECTION], (1000,1000))['etc/fstab']['data']
+        verify_fstab(output, [SELECTION], (1000,1000))
+        self.assertFalse((self.root/'var/mnt').exists())
+        mount = self.root/'var/mnt/shared/share-d0-p4'
+        mount.mkdir(parents=True)
+        files(self.root, [SELECTION], (1000,1000))
+        (mount/'existing').write_text('keep')
+        with self.assertRaisesRegex(RuntimeError, 'empty ordinary directory'):
+            files(self.root, [SELECTION], (1000,1000))
+
+    def test_official_link_rejects_unsafe_targets_and_alias_units(self):
+        (self.root/'mnt').symlink_to('var/mnt', target_is_directory=True)
+        outside=self.root/'outside'; outside.mkdir()
+        (self.root/'var').symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(RuntimeError): files(self.root,[SELECTION],(1000,1000))
+        (self.root/'var').unlink(); (self.root/'var/mnt').mkdir(parents=True)
+        (self.root/'var').chmod(0o777)
+        with self.assertRaises(RuntimeError): files(self.root,[SELECTION],(1000,1000))
+        (self.root/'var').chmod(0o755)
+        unit=self.root/r'etc/systemd/system/var-mnt-shared-share\x2dd0\x2dp4.automount'
+        unit.parent.mkdir(parents=True); unit.write_text('[Automount]\n')
+        with self.assertRaisesRegex(RuntimeError, 'Conflicting shared storage systemd unit'):
+            files(self.root,[SELECTION],(1000,1000))
+        unit.unlink()
+        (self.root/'mnt').unlink(); (self.root/'mnt').symlink_to('/var/mnt', target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, 'Unsafe shared storage path'):
+            files(self.root,[SELECTION],(1000,1000))
 
     def test_nonempty_mountpoint_and_native_unit_conflicts(self):
         mount=self.root/'mnt/shared/share-d0-p4'; mount.mkdir(parents=True); (mount/'document').write_text('preserve')

@@ -6,9 +6,15 @@
 
 为 **ONEXPLAYER 3 掌机**提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 **Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）**。
 
-当前整合版为 **OXP3 SteamOS 0.1.2（stable 渠道）**，基于 **SteamOS 3.10**。这里的 stable 指本项目整合版渠道；完整全新安装与首次开箱配置尚未验收，自动跨版本适配尚未实现。请先阅读[0.1.2 发布说明](windows-installer/docs/RELEASE_0.1.2.md)。
+当前 main 分支整合版为 **OXP3 SteamOS 0.1.3（stable 渠道）**，目标为 **SteamOS 3.10**；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。新安装隐藏共享分区挂载选择，选择安装内容后可直接继续到确认方案。新装镜像让 `atomupd` 更新器继续运行并指向私有本地空更新源，因此正常运行时没有系统更新候选。请先阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
 
-0.1.2 新增可跳过的共享分区挂载页，并修复、恢复剩余空间 NTFS 格式化。两项功能均为 **Beta · 未测试（掌机实机）**。选择 64 GiB 安装时，SteamOS 系统及启动约 24.375 GiB、home 约 39.625 GiB；同一段空间的余量可另建为 4K 对齐、4096 字节簇的 NTFS，用于共用文件，不会自动共享 Steam 游戏库。
+**已知问题：**首次安装初始化切换阶段可能长时间黑屏。实机测试中，首次启动跳过系统下载后黑屏，按住电源键关机再开机后，桌面、Wi-Fi 和手柄正常。若出现此初始化黑屏，请至少等待 **5 分钟**，再按住电源键关机并重新开机。此操作仅适用于初始化黑屏；Windows 镜像写入或真实系统更新正在显示进度时不要强制关机。SteamOS 精确版本、槽位、Steam 登录及完整 OOBE 尚未确认；0.1.3 未修复此问题。
+
+**系统更新风险：**本构建当前暂停系统更新。若恢复更新或执行官方 SteamOS 系统更新，系统可能从 3.10 回滚至 3.8，并可能覆盖全部 OXP3 适配，包括 Wi-Fi 和手柄支持；兼容性尚未验证。
+
+用户此前于 **2026-10-15** 反馈在掌机实机测试了分区删除、剩余空间 NTFS 格式化和挂载分区到 SteamOS；最新反馈称挂载功能仍不可用，因此此前挂载记录只是历史反馈，不是当前版本实机可用证明，也不代表各种文件系统、重启后自动挂载、休眠或拔卡重连均已验证。选择 64 GiB 安装时，SteamOS 系统及启动约 24.375 GiB、home 约 39.625 GiB；同一段空间的余量可另建为 4K 对齐、4096 字节簇的 NTFS，用于共用文件，不会自动共享 Steam 游戏库。
+
+此更新器策略只随新准备的安装镜像生效，不会修改已经安装的 SteamOS；旧准备镜像须从官方原始下载重新准备，才能采用新版行为。
 
 发现问题，请发送邮件至 **[dan@devdan.cc](mailto:dan@devdan.cc)**，或提交 [GitHub Issue](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues)。
 
@@ -161,12 +167,12 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 ## 4. 安装方法
 
-完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前整合版为 **0.1.2 stable**；该渠道标签不代表所有硬件功能均已验收。完整全新安装与首次开箱配置尚未测试，自动跨版本适配尚未实现；使用前请阅读[0.1.2 发布说明](windows-installer/docs/RELEASE_0.1.2.md)。
+完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前 main 分支整合版为 **0.1.3 stable**；该渠道标签不代表所有硬件功能均已验收。共享分区挂载选择已隐藏。首次安装初始化可能长时间黑屏，请按上方说明等待至少 5 分钟后手动关机再开机；勿在镜像写入或真实更新进度中强制关机。使用前请阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
 3. 为目标 GPT 磁盘准备至少 **64 GiB 连续未分配空间**，并为 Windows 中的系统准备工作空间预留至少 **45 GiB** 可用空间，建议 **64 GiB**。
-4. 双击 **`SteamOSInstaller.exe`**，按八步向导选择安装位置、官方系统镜像及需要的适配组件；随后可选择共享分区挂载，也可明确跳过。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
+4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件；选择安装内容后直接进入“确认方案”。共享分区挂载功能暂时隐藏，新安装不提供挂载选择。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
 5. 核对目标磁盘、分区方案与安装选项，可按需启用 rEFInd 启动菜单，确认后开始安装。
 6. 安装完成后，按应用提示启动 SteamOS，并检查游戏模式、桌面、按键和插件。
 
