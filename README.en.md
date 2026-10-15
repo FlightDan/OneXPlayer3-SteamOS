@@ -12,8 +12,6 @@ The current main-branch integration release is **OXP3 SteamOS 0.1.3 (stable chan
 
 **SteamOS update risk:** OS updates are held in this build. Restoring updates or running an official SteamOS system update may roll the system back from 3.10 to 3.8 and overwrite all OXP3 adaptations, including Wi-Fi and controller support. Compatibility has not been verified.
 
-The user previously reported physical handheld tests of partition deletion, remaining-space NTFS formatting and mounting a shared partition into SteamOS on 2026-10-15. The latest report says mounting remains unavailable, so the earlier report is historical and does not prove current physical usability. The updater policy applies to newly prepared images and does not modify an installed SteamOS; old prepared images must be rebuilt from the original official download to use the new behavior. A 64 GiB SteamOS reservation contains approximately 24.375 GiB for system/boot and 39.625 GiB for home; remaining space in that region can become a separate NTFS partition with a 4K aligned start and 4096-byte clusters. This shares files without automatically sharing a Steam game library.
-
 Report bugs by email at **[dan@devdan.cc](mailto:dan@devdan.cc)** or through [GitHub Issues](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues).
 
 <details>
