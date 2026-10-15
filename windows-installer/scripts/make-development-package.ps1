@@ -11,6 +11,13 @@ if ($PublicRelease -and $release.version -eq '0.1.3') {
             throw "The 0.1.3 release requires the tested first-boot update hold: $required"
         }
     }
+    $pluginSource = [IO.File]::ReadAllText((Join-Path $projectRoot 'components/plugin_installer.py'))
+    $integrationSource = [IO.File]::ReadAllText((Join-Path $projectRoot 'components/integration.py'))
+    if (!$pluginSource.Contains('def patch_animation_changer(') -or
+        !$pluginSource.Contains("~/.local/share/Steam/config/uioverrides/movies") -or
+        !$integrationSource.Contains('files=patch_animation_changer(')) {
+        throw 'The refreshed 0.1.3 release requires the tested Animation Changer bootstrap path fix.'
+    }
 }
 $validStable = $release.version -match '^\d+\.\d+\.\d+$' -and $release.channel -eq 'stable'
 $validBeta = $release.version -match '^\d+\.\d+\.\d+-beta$' -and $release.channel -eq 'beta'
@@ -107,7 +114,10 @@ if ($release.version -eq '0.1.3' -and (Test-Path -LiteralPath (Join-Path $projec
     $buildInfo.firstboot_system_update_policy = 'local-empty-feed'
     $buildInfo.shared_partition_mount_ui_enabled = $false
     $buildInfo.unattended_firstboot_verified = $false
-    $buildInfo.known_firstboot_black_screen = $true
+    $buildInfo.known_firstboot_black_screen = $false
+    $buildInfo.animation_changer_bootstrap_path_fixed = $true
+    $buildInfo.client_update_progress_fix = 'animation-changer-canonical-steam-path'
+    $buildInfo.user_reported_fix_test_passed = $true
 }
 $buildInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'

@@ -532,6 +532,9 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                 plugin=json.loads(files[PLUGIN_ROOT+'/'+folder+'/plugin.json']['data'])
                 required={'steamgriddb':'SteamGridDB','protondb':'ProtonDB Badges','tabmaster':'TabMaster','css-loader':'CSS Loader','autoflatpaks':'AutoFlatpaks','deck-settings':'Deck Settings','hltb':'HLTB for Deck','animation-changer':'Animation Changer'}[name]
                 if plugin['name']!=required: raise RuntimeError('Selected plugin identity does not match archive')
+                if name=='animation-changer':
+                    from plugin_installer import patch_animation_changer
+                    files=patch_animation_changer(files,PLUGIN_ROOT+'/'+folder+'/')
                 if name in ('protondb','hltb','tabmaster'):
                     prefix=PLUGIN_ROOT+'/'+folder+'/'
                     package=json.loads(files[prefix+'package.json']['data'])

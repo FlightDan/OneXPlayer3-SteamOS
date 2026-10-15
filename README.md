@@ -8,7 +8,7 @@
 
 当前 main 分支整合版为 **OXP3 SteamOS 0.1.3（stable 渠道）**，目标为 **SteamOS 3.10**；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。新安装隐藏共享分区挂载选择，选择安装内容后可直接继续到确认方案。新装镜像让 `atomupd` 更新器继续运行并指向私有本地空更新源，因此正常运行时没有系统更新候选。请先阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
 
-**已知问题：**首次安装初始化切换阶段可能长时间黑屏。实机测试中，首次启动跳过系统下载后黑屏，按住电源键关机再开机后，桌面、Wi-Fi 和手柄正常。若出现此初始化黑屏，请至少等待 **5 分钟**，再按住电源键关机并重新开机。此操作仅适用于初始化黑屏；Windows 镜像写入或真实系统更新正在显示进度时不要强制关机。SteamOS 精确版本、槽位、Steam 登录及完整 OOBE 尚未确认；0.1.3 未修复此问题。
+**Steam 客户端更新界面：**Animation Changer 插件的路径冲突曾导致更新界面黑屏。0.1.3 已整合修复，用户测试确认更新界面现可正常显示。Steam 客户端更新可能下载数百 MB，请等待进度完成，进度仍在变化时不要强制关机。此项验证不代表完整无人值守全新安装已验收。
 
 **系统更新风险：**本构建当前暂停系统更新。若恢复更新或执行官方 SteamOS 系统更新，系统可能从 3.10 回滚至 3.8，并可能覆盖全部 OXP3 适配，包括 Wi-Fi 和手柄支持；兼容性尚未验证。
 
@@ -165,7 +165,7 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 ## 4. 安装方法
 
-完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前 main 分支整合版为 **0.1.3 stable**；该渠道标签不代表所有硬件功能均已验收。共享分区挂载选择已隐藏。首次安装初始化可能长时间黑屏，请按上方说明等待至少 5 分钟后手动关机再开机；勿在镜像写入或真实更新进度中强制关机。使用前请阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
+完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前 main 分支整合版为 **0.1.3 stable**；该渠道标签不代表所有硬件功能均已验收。共享分区挂载选择已隐藏。修复后的 Steam 客户端更新界面已通过用户测试；更新可能下载数百 MB，请等待进度完成，进度仍在变化时不要强制关机。使用前请阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。

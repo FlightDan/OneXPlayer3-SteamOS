@@ -42,6 +42,33 @@ WantedBy=multi-user.target
 '''
 
 
+def patch_animation_changer(files, prefix):
+    """Prepare the supported upstream backend without touching its cached ZIP.
+
+    Decky can initialize before Steam creates ~/.steam/root. Creating movies
+    below that future symlink makes it a directory, breaking Steam's ln -sfn.
+    Use Steam's canonical data directory for Animation Changer 1.3.2 instead.
+    The caller deploys these bytes through its existing file transaction.
+    """
+    try:
+        plugin = json.loads(files[prefix + 'plugin.json']['data'])
+        package = json.loads(files[prefix + 'package.json']['data'])
+        source = files[prefix + 'main.py']['data']
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError('Missing Animation Changer compatibility patch input') from error
+    if (not isinstance(plugin, dict) or not isinstance(package, dict) or
+            plugin.get('name') != 'Animation Changer' or
+            package.get('name') != 'decky-animation-changer' or package.get('version') != '1.3.2'):
+        raise RuntimeError('Unsupported Animation Changer identity or version for compatibility patch')
+    original = b"OVERRIDE_PATH = os.path.expanduser('~/.steam/root/config/uioverrides/movies')"
+    replacement = b"OVERRIDE_PATH = os.path.expanduser('~/.local/share/Steam/config/uioverrides/movies')"
+    if not isinstance(source, bytes) or source.splitlines().count(original) != 1 or source.count(original) != 1:
+        raise RuntimeError('Unsupported Animation Changer override path for compatibility patch')
+    changed = dict(files)
+    changed[prefix + 'main.py'] = dict(files[prefix + 'main.py'], data=source.replace(original, replacement, 1))
+    return changed
+
+
 def extract_plugin(archive, destination, plugin_id):
     name, version, folder = PLUGINS[plugin_id]
     destination = Path(destination)
