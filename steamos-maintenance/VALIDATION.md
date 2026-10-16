@@ -176,11 +176,23 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 
 证据：`.release-work/windows-maintenance-revision3-final-tests.txt`、`.release-work/maintenance-revision3-snapshot2-final-local-console.txt`。本修订公开下载及完整实机重启验收随后进行，Windows 发行继续等待最终验收。
 
+## 2026-10-16：修订 3 公开入口与实机应用
+
+[维护修订 3](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/maintenance-v0.1.4%2Bmaintenance.3) 已发布，源码为 `ceb38bcd4e104430fda42cf658ff96c4ae31c763`。两个仓库 22 个附件共 450,474,497 字节，匿名重新下载后摘要及大小全部匹配；签名和 12 个组件分片验证通过。核心包 SHA-256 为 `df943f37b9b2e11eb272826ae7a2abd39b61a35c93ff5920fc412728b74585dc`，29 份程序与已测源码及公开源码逐字节一致，发行公钥不变。强制 API 403 时，显式 `--version '0.1.4+maintenance.3'` 经真实 Atom 发现与验签通过；无参数发现仍不保证最新修订，未计为通过。
+
+实机从公开地址下载相同 Bash，验签并默认打开中文窗口。先审核并更新维护引擎至 generation 4，再选择原 26 项组件，审核 1,545 个文件并完成真实系统认证，应用成功至 generation 5，保留三处自定义配置。返回概览立即显示修订 3，版本缓存修复已实测。该流程延续上述公开 0.1.3 基线升级、失败恢复及修订 2 重启发现的完整记录，不将中间失败表述为一次通过。
+
+正常重启并进入 KDE 后，独立只读验收 30 项全部通过。generation 5、实际 B 槽、29 份程序、26 项组件收据和版本元数据一致，受管不可变文件无差异，202 项保留记录全部匹配；无 pending/live/abort，只读保护 enabled，无失败服务。TDP 与性能遥测均为 active/running、启动检查通过，TDP D-Bus 有所有者；InputPlumber、陀螺仪固定绑定、Decky、CPU、OXP EC 风扇正常。串口服务按策略跳过，20 秒前后重启计数均为 0；GRUB 与实际启动参数均含 split-lock 修复。整个验收没有手动重载或启动服务来替代重启结果。
+
+传感器审计如实记录无关 ACPI 风扇节点的 I/O 错误及 psys 域的零限额，不把它们当作 OXP EC 或 package 域；OXP EC 风扇实读 1,449 RPM，package 域 PL1/PL2 为 40/52 W。重启后的安装版维护窗口默认中文，概览显示修订 3。最终验收通过的是此设备、此系统基线和选定 26 项组件；Waydroid 安装、XMX 重新安装、槽位切换及 rEFInd 未纳入本次应用。
+
+证据：`.release-work/revision3-public-acceptance-summary.json`、`.release-work/maintenance-revision3-final-source-match.json`、`.release-work/revision3-device-audit/r3-after-reboot-kde-summary.json` 及同名前缀原始结果，以及 `research/evidence/maintenance-public-upgrade-20261016/70-revision3-public-bash-download.txt` 至 `97-revision3-rebooted-overview.png`。
+
 ## 尚未完成的验收与发行条件
 
 - 尚未在其他 SteamOS 版本逐项完成硬件验收；便携组件与原生内核相关组件按各自兼容条件处理，不能把可发现/下载等同于可安装全部组件。
-- 尚未在实机全面应用 31 项资源，也未完成真实跨项目版本升级和物理断电验收。隔离测试覆盖相应状态机，但不能替代硬件验证。
-- 正式维护包已公开发布且公开下载验证通过；0.1.3 → 0.1.4 实机升级待完成。设备 QA 信任配置不作为正式发行配置，不静默替换公钥。
+- 尚未在实机全面应用所有资源，也未进行物理断电验收。隔离测试覆盖相应状态机，但不能替代硬件验证。
+- 正式维护包已公开发布且公开下载验证通过；本设备的 0.1.3 → 0.1.4 选定组件升级及重启验收完成，中间失败和修复过程见上文。设备 QA 信任配置不作为正式发行配置，不静默替换公钥。
 - 所有更新能力仅针对本项目，未升级 SteamOS 或修改官方系统更新策略。
 
 发布前按 [README.md](README.md) 完成剩余验收与签名发行配置。
