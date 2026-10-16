@@ -26,6 +26,7 @@ from directory_transaction import DirectoryTransaction
 from release_notes import render as render_release_note
 from shared_storage import validate_mounts, files as shared_storage_files
 from update_hold import files as update_hold_files
+from serial_console import files as serial_console_files
 
 KERNEL='7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'
 VERSION={'ID':'steamos','VERSION_ID':'3.10','BUILD_ID':'20260924.1000'}
@@ -269,7 +270,12 @@ def seed_decky_order(root, state, owner):
         transaction=LogicalFiles(journal,root,{SETTINGS:{}},owner)
         value=transaction.load()
         # This is a first-install default, never a recurring sorting policy.
-        if value['phase']=='installed': return [SETTINGS]
+        if value['phase']=='installed':
+            # A distinct insertion journal preserves both the original default
+            # and any later user order; repeated preparation does not reseed it.
+            insertion=order_files(root)
+            if insertion: apply_files(root,state,'decky-order-light',insertion,owner)
+            return [SETTINGS]
         encoded=value.get('applied',{}).get(str(root/SETTINGS))
         if value['phase']!='rolled_back' and encoded is not None:
             files={SETTINGS:{'data':base64.b64decode(encoded)}}
@@ -315,7 +321,13 @@ def stage_shared_storage(root, state, mounts, owner):
     return {'status':'files_installed','files':list(files),
         'mounts':[{'partuuid':item['partuuid'],'filesystem':item['filesystem'],
                    'path':'/mnt/shared/'+item['mount_name']} for item in mounts],
-        'activation':'on_access_after_boot','steam_library_added':False}
+        'activation':('timer_after_boot_and_steam_login' if any(item.get('steam_library', False) for item in mounts)
+                      else 'on_access_after_boot'),
+        'steam_libraries':[{'partuuid':item['partuuid'],
+                            'path':'/var/mnt/steam-libraries/'+item['mount_name'],
+                            'registration':'pending-steam-login'}
+                           for item in mounts if item.get('steam_library', False)],
+        'steam_library_added':False}
 
 
 def refuse_legacy_update_policy(root):
@@ -347,6 +359,9 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
     trusted_tree(payload/'components'); trusted_tree(payload/'integration')
     bundle_release=json.loads((payload/'components/release.json').read_text())
     if bundle_release.get('schema')!=1 or bundle_release.get('product')!='OXP3 SteamOS' or not isinstance(bundle_release.get('version'),str): raise RuntimeError('Invalid integration release metadata')
+    from maintenance_tool import files as maintenance_files
+    trusted_tree(payload/'maintenance')
+    maintenance=maintenance_files(root,payload,bundle_release)
     user=[line.split(':') for line in (root/'etc/passwd').read_text().splitlines() if line.startswith('deck:')]
     if len(user)!=1 or user[0][5]!='/home/deck': raise RuntimeError('Expected deck account')
     owner=tuple(int(user[0][i]) for i in (2,3))
@@ -389,6 +404,12 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         'steam_game_updates':'unchanged',
         'restore':'Restore this component journal in both slots offline, or reboot after restoring before using the original update source.'}
     print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'system-update-hold',**reports['system-update-hold']}),flush=True)
+    console_files=serial_console_files()
+    apply_files(root,state,'serial-console-policy',console_files,owner)
+    reports['serial-console-policy']={
+        'status':'files_installed','activation':'next-boot','files':list(console_files),
+        'serial_login':'requires oxp3.serial-console=1','kernel_console':'unchanged'}
+    print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'serial-console-policy',**reports['serial-console-policy']}),flush=True)
     if options.get('set_deck_password',False) or options.get('enable_ssh',False):
         files={}; ssh_link_created=False; ssh_link_target=None
         if options.get('set_deck_password',False):
@@ -418,7 +439,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         reports['deck-access']={'status':'files_installed','activation':'boot-prepared','files':list(files),
             'ssh_link_created':ssh_link_created,'ssh_link_target':ssh_link_target}
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'deck-access',**reports['deck-access']}),flush=True)
-    order=['decky','windows-reboot','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','manager','fan-driver']+[x for x in options['repairs'] if x not in ('manager','fan-driver')]
+    order=['decky','windows-reboot','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','manager','fan-driver','gm7-resume','split-lock']+[x for x in options['repairs'] if x not in ('manager','fan-driver')]
     for name in dict.fromkeys(order):
         if name not in selected: continue
         applying=False
@@ -428,7 +449,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             if missing: raise RuntimeError('Dependency not installed: '+', '.join(missing))
             if name in options['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc') and not compatible: raise RuntimeError('Requires SteamOS 3.10 build 20260924.1000 and exact 7.2.4 kernel')
             files={}; metadata=manifests.get(name,{})
-            if name in options['repairs'] and name not in ('slot-switch','keyboard','gamescope-env','flathub-ustc','hdr','gm7-resume','multifunction') and name not in manifests:
+            if name in options['repairs'] and name not in ('slot-switch','keyboard','gamescope-env','flathub-ustc','hdr','gm7-resume','split-lock','multifunction') and name not in manifests:
                 raise RuntimeError('Component resource manifest is missing: '+name)
             for package,version in metadata.get('packages',{}).items():
                 if package_version(root,package)!=version: raise RuntimeError('Incompatible package: '+package+' '+version)
@@ -446,6 +467,16 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             if name=='gm7-resume':
                 from boot_repairs import gm7_files
                 files=gm7_files(root,target_disk)
+                if files and 'split-lock' in selected:
+                    from split_lock import GRUB, patch_grub, files as split_lock_files
+                    split_lock_files(root)  # Validate companion/license before either repair writes.
+                    # One authenticated original for the shared physical file.
+                    files[GRUB]['data']=patch_grub(files[GRUB]['data'].decode()).encode()
+            elif name=='split-lock':
+                from split_lock import GRUB, files as split_lock_files
+                files=split_lock_files(root)
+                if GRUB in reports.get('gm7-resume',{}).get('files',[]):
+                    files.pop(GRUB)
             if metadata.get('runtime_archive'):
                 runtime_prefix={'desktop-hdr':'opt/oxp3-desktop-gamma22/6.7.3-1.6/','opti2xmx':'opt/oxp3-opti2xmx/20261005/'}[name]
                 with tarfile.open(payload/'integration'/metadata['runtime_archive']) as archive:
@@ -523,7 +554,8 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                 files['home/deck/.local/share/applications/oxp3-waydroid-setup.desktop']={'data':desktop,'user':True}
             elif name in options['plugins']:
                 pinned={'protondb':'protondb-1.3.4.zip','hltb':'hltb-2.0.12.zip',
-                        'tabmaster':'tabmaster-2.15.1+oxp3.1.zip'}
+                        'tabmaster':'tabmaster-2.15.1+oxp3.1.zip',
+                        'autoflatpaks':'autoflatpaks-1.6.8+oxp3.1.zip'}
                 archives=([payload/'plugins'/name/pinned[name]] if name in pinned else
                           list((payload/'plugins'/name).glob('*.zip')))
                 archives=[path for path in archives if path.is_file()]
@@ -535,13 +567,14 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                 if name=='animation-changer':
                     from plugin_installer import patch_animation_changer
                     files=patch_animation_changer(files,PLUGIN_ROOT+'/'+folder+'/')
-                if name in ('protondb','hltb','tabmaster'):
+                if name in ('protondb','hltb','tabmaster','autoflatpaks'):
                     prefix=PLUGIN_ROOT+'/'+folder+'/'
                     package=json.loads(files[prefix+'package.json']['data'])
-                    expected={'protondb':'1.3.4','hltb':'2.0.12','tabmaster':'2.15.1+oxp3.1'}[name]
+                    expected={'protondb':'1.3.4','hltb':'2.0.12','tabmaster':'2.15.1+oxp3.1','autoflatpaks':'1.6.8+oxp3.1'}[name]
                     if package['version']!=expected: raise RuntimeError('Selected plugin version does not match the pinned release')
                     runtime={'protondb':('main.py','settings.py','dist/index.js'),
-                             'hltb':('dist/index.js',),'tabmaster':('dist/index.js',)}[name]
+                             'hltb':('dist/index.js',),'tabmaster':('dist/index.js',),
+                             'autoflatpaks':('main.py','dist/index.js')}[name]
                     if any(prefix+relative not in files for relative in runtime): raise RuntimeError('Missing pinned plugin runtime file')
                     if name=='tabmaster':
                         expected_patch='Allow absent Steam achievement cache during initialization'
@@ -553,6 +586,15 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                             )
                         ):
                             raise RuntimeError('TabMaster compatibility patch is missing from its frontend runtime')
+                    if name=='autoflatpaks':
+                        bundle=files[prefix+'dist/index.js']['data'].decode('utf-8')
+                        if (package.get('oxp3_compatibility_patch')!='Defer battery polling until Steam power state is available' or
+                            any(marker not in bundle for marker in (
+                                'OXP3 AutoFlatpaks compatibility: Steam may expose the store late.',
+                                'window.SystemPowerStore?.batteryState',
+                                '!Number.isFinite(currentState.eACState)',
+                            )) or 'window.SystemPowerStore.batteryState' in bundle):
+                            raise RuntimeError('AutoFlatpaks compatibility patch is missing from its frontend runtime')
                 if name=='css-loader': prepare_css_themes(root,owner)
             if not files and name!='gm7-resume': raise RuntimeError('No install payload')
             # Only failures before mutation are safe to skip. An interrupted
@@ -564,6 +606,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             services+=metadata.get('units',[])
             if name=='input' and 'inputplumber.service' not in services: services.append('inputplumber.service')
             reports[name]={'status':'files_installed','activation':'firstboot-pending' if name in options['repairs'] or name in ('decky','waydroid') else 'decky-session-pending','files':list(files)}
+            if name=='split-lock': reports[name].update(activation='next-boot',restart_required=True)
             if name=='gm7-resume': reports[name]['applicable']=bool(files)
         except (OSError,ValueError,RuntimeError,KeyError,zipfile.BadZipFile,tarfile.TarError) as error:
             if applying or isinstance(error,OSError) and error.errno in (errno.EIO,errno.ENOSPC,errno.EROFS,errno.ENODEV): raise
@@ -588,6 +631,12 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
     if mounts:
         reports['shared-storage']=stage_shared_storage(root,state,mounts,owner)
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'shared-storage',**reports['shared-storage']}),flush=True)
+    # Localize visible shortcuts only; the content-hashed runtime stays exact.
+    desktop_names({p:v for p,v in maintenance.items() if p.startswith('home/deck/')},options['installer_language'])
+    apply_files(root,state,'maintenance-tool',maintenance,owner)
+    reports['maintenance-tool']={'status':'files_installed','activation':'desktop-launch',
+                                 'files':list(maintenance)}
+    print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'maintenance-tool',**reports['maintenance-tool']}),flush=True)
     # The version note lives in shared home and is tracked once across A/B slots.
     # Fresh reconstructed homes do not inherit the recovery image's KDE launcher.
     launcher='home/deck/Desktop/Return.desktop'
@@ -605,11 +654,14 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         result={'schema':1,'release':bundle_release,'system':release(root),'options':options,'components':reports,'services':services,'slot':slot}
         atomic_write(state/'result.json',(json.dumps(result)+'\n').encode(),0o600,0,0)
         return result
-    for name in ('integration_runtime.py','system_update_policy.py','update_hold.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','shared_storage.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
+    for name in ('integration_runtime.py','system_update_policy.py','update_hold.py','serial_console.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','maintenance_tool.py','shared_storage.py','ntfs_steam.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
         runtime['usr/local/lib/oxp3-integration/'+name]={'data':(payload/'components'/name).read_bytes()}
     runtime['usr/local/lib/oxp3-integration/slot']={'data':(slot+'\n').encode()}
     for name in ('installer.py','generate.py','upstream.lua','UPSTREAM_LICENSE'):
         runtime['usr/local/lib/oxp3-integration/hdr/'+name]={'data':(payload/'components/hdr'/name).read_bytes()}
+    if reports.get('split-lock',{}).get('status')=='files_installed':
+        runtime['usr/local/lib/oxp3-integration/split_lock.py']={'data':(payload/'components/split_lock.py').read_bytes()}
+        runtime['usr/local/lib/oxp3-integration/split-lock/UPSTREAM_LICENSE']={'data':(payload/'components/split-lock/UPSTREAM_LICENSE').read_bytes()}
     runtime['etc/systemd/system/oxp3-selected-components.service']={'data':b'[Unit]\nDescription=Selected OXP3 repair and plugin activation\nAfter=local-fs.target\nBefore=display-manager.service\nRequiresMountsFor=/home\n[Service]\nType=oneshot\nExecStart=/usr/bin/python3 -I -B /usr/local/lib/oxp3-integration/integration_runtime.py run\nTimeoutStartSec=180\n[Install]\nWantedBy=multi-user.target\n'}
     apply_files(root,state,'runtime',runtime,owner)
     result={'schema':1,'release':bundle_release,'system':release(root),'options':options,'components':reports,'services':services,'slot':slot}
@@ -620,16 +672,48 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
     else: os.symlink('../oxp3-selected-components.service',link)
     return result
 
-def restore(root,slot,name):
+def restore(root,slot,name,_boot_group=False):
     root=Path(root).absolute(); base=root/'home/.oxp3-installer/integration'
     catalog=json.loads((root/'usr/local/lib/oxp3-integration/options.json').read_text())
     result_path=base/slot/'result.json'
     results=json.loads(base64.b64decode(snapshot(result_path,maximum=2*1024*1024)['data']))
-    dependents=[x['id'] for x in catalog['repairs']+catalog['plugins'] if name in x['dependencies'] and results['components'].get(x['id'],{}).get('status')=='files_installed']
-    if dependents: raise RuntimeError('Restore dependent components first: '+', '.join(dependents))
     users=[line.split(':') for line in (root/'etc/passwd').read_text().splitlines() if line.startswith('deck:')]
     owner=tuple(int(users[0][i]) for i in (2,3))
+    if name=='boot-repairs':
+        # The single GRUB owner may be the second journal restored. Preflight
+        # the entire group before removing even the first companion drop-in.
+        for repair in ('split-lock','gm7-resume'):
+            for group in (slot,'shared'):
+                state=base/group/repair
+                if not (state/'state.json').exists(): continue
+                record=json.loads(base64.b64decode(snapshot(state/'state.json',maximum=256*1024*1024)['data']))
+                transaction=LogicalFiles(state,root,{p:record['metadata'][p] for p in record['allowed']},owner)
+                value=transaction.load()
+                if value['phase']=='rolled_back': continue
+                for path in value['applied']:
+                    current=transaction.snapshot(path); original=value['original'][path]
+                    if current==original: continue
+                    if (current.get('data') not in [value['applied'][path],*value.get('accepted',{}).get(path,[])] or
+                        any(current.get(key)!=expected for key,expected in transaction.installed_metadata(path,original).items())):
+                        return [{'path':path,'error':'Boot repair group changed; no files restored'}]
+        errors=[]
+        for repair in ('split-lock','gm7-resume'):
+            if results['components'].get(repair,{}).get('status')=='files_installed':
+                errors+=restore(root,slot,repair,_boot_group=True)
+                if errors: return errors
+        return errors
+    boot={repair:results['components'].get(repair,{}) for repair in ('gm7-resume','split-lock')}
+    if (name in boot and not _boot_group
+            and all(item.get('status')=='files_installed' for item in boot.values())
+            and 'efi/EFI/steamos/grub.cfg' in boot['gm7-resume'].get('files',[])
+            and 'efi/EFI/steamos/grub.cfg' not in boot['split-lock'].get('files',[])):
+        raise RuntimeError('These repairs share boot settings; explicitly restore --component boot-repairs to restore GM7 and split-lock together')
+    dependents=[x['id'] for x in catalog['repairs']+catalog['plugins'] if name in x['dependencies'] and results['components'].get(x['id'],{}).get('status')=='files_installed']
+    if dependents: raise RuntimeError('Restore dependent components first: '+', '.join(dependents))
     errors=[]
+    if name in ('decky','decky-order') and (base/slot/'decky-order-light/state.json').exists():
+        errors=restore(root,slot,'decky-order-light')
+        if errors: return errors
     if name=='decky' and (base/slot/'decky-order/state.json').exists():
         errors=restore(root,slot,'decky-order')
         if errors: return errors
@@ -648,9 +732,9 @@ def restore(root,slot,name):
         if (root/'opt/oxp3-opti2xmx/.installer-state/state.json').exists():LogicalDirectory(root,name).rollback()
     if name=='desktop-hdr' and (root/'opt/oxp3-desktop-gamma22/.installer-state/state.json').exists():
         LogicalDirectory(root).rollback()
-    if name in ('windows-reboot','slot-switch'):
-        # Keep both entry points and their privileged helper together when the
-        # user has edited a launcher or administrator-managed component file.
+    if name in ('windows-reboot','slot-switch','shared-storage'):
+        # Keep each component's configuration, helpers and entry points together
+        # when an administrator has edited any journal-owned file.
         for group in (slot,'shared'):
             state=base/group/name
             if not (state/'state.json').exists(): continue
@@ -663,7 +747,7 @@ def restore(root,slot,name):
                 if current==original: continue
                 if (current.get('data') not in [value['applied'][path],*value.get('accepted',{}).get(path,[])] or
                     any(current.get(key)!=expected for key,expected in transaction.installed_metadata(path,original).items())):
-                    return [{'path':path,'error':'Reboot component file changed; preserve user changes before restoring'}]
+                    return [{'path':path,'error':name+' component file changed; preserve user changes before restoring'}]
     for group in (slot,'shared'):
         state=base/group/name
         if not (state/'state.json').exists(): continue

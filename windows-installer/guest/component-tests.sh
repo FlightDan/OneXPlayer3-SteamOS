@@ -6,6 +6,7 @@ python3 -B -m unittest -v test_windows_reboot.py
 python3 -B -m unittest -v test_slot_switch.py
 python3 -B -m unittest -v test_file_transaction.py
 python3 -B -m unittest -v test_directory_transaction.py
+python3 -B -m unittest -v test_shared_storage.py test_ntfs_steam.py
 python3 -B -m unittest -v test_plugin_installer.py
 python3 -B -m unittest -v test_animation_changer_compat.py
 python3 -B -m unittest -v test_decky_order.py
@@ -33,5 +34,5 @@ PY
 cd /tmp/oxp3-control-regression/rapl
 python3 -B -m unittest -v test_provider.py
 cd /tmp/oxp3-control-regression/overlay
-python3 -B -m unittest -v test_cpu_control.py test_fan.py
+python3 -B -m unittest -v test_cpu_control.py test_power_control.py test_fan.py
 printf '\nOXP_TASK_RESULT=passed\n'

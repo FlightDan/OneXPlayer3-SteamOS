@@ -19,6 +19,7 @@ import sys
 import uuid
 from opti import OptiMixin
 from download_progress import OperationProgress
+from runtime_setup import RuntimeMixin
 
 
 def vdf(text):
@@ -73,7 +74,7 @@ def ini_set(text, section, key, value):
     return '\n'.join(lines) + '\n'
 
 
-class Manager(OptiMixin):
+class Manager(OptiMixin, RuntimeMixin):
     def __init__(self, home=None, engine=None):
         self.home = Path(home or Path.home()).resolve()
         self.root = self.home / '.local/share/opti2xmx'
@@ -150,8 +151,13 @@ class Manager(OptiMixin):
         # discovery is read-only and never makes it into a public binary bundle.
         config = self.root / 'runtime.json'
         if config.exists():
-            data = json.loads(config.read_text())
-            package, sr = Path(data['package']), Path(data['sr'])
+            try:
+                data = json.loads(config.read_text())
+                package, sr = Path(data['package']), Path(data['sr'])
+                if not package.is_absolute() or not sr.is_absolute():
+                    raise ValueError('Runtime paths must be absolute')
+            except (OSError, ValueError, KeyError, TypeError):
+                return self.root / 'runtime', self.root / 'sdk/libxess.dll', False
         else:
             package = self.home / '.local/share/opti2xmx/runtime'
             sr = self.home / '.local/share/opti2xmx/sdk/libxess.dll'
@@ -159,7 +165,10 @@ class Manager(OptiMixin):
                 package = self.home / 'oxp3-research/xess/xess-xmx-linux-20261005'
             if not sr.is_file():
                 sr = self.home / 'oxp3-research/xess-sr/payload/libxess.dll'
-        ready = (package / 'igdext64.dll').is_file() and sr.is_file() and (pe_version(sr) or ()) >= (2, 0, 2, 68)
+        ready = all((package / name).is_file() for name in ('igdext64.dll', 'lib/libvulkan_intel.so',
+                    'tools/cm-compile.sh', 'tools/cmk_pack.py')) and sr.is_file() and (pe_version(sr) or ()) >= (2, 0, 2, 68)
+        ready = ready and all(any(p.is_file() for p in package.glob(pattern)) for pattern in
+                    ('igc/neo/bin/ocloc*', 'igc/igc/local/lib/libigc.so*', 'igc/igc/local/lib/libigdfcl.so*'))
         return package, sr, ready
 
     def inspect_game(self, appid):
@@ -250,6 +259,9 @@ class Manager(OptiMixin):
         # Only replace launchers we understand; arbitrary chains may copy DLLs
         # after us or override the environment. Never silently discard them.
         owned = self.opti_record(appid)
+        self.opti_require_settings_complete(owned)
+        if owned and owned.get('pending'):
+            raise RuntimeError('上次操作待完成，请先完成启动项设置或回退')
         if old_launch not in ('', '%command%', '~/fgmod/fgmod %command%', owned['launch'] if owned and owned['status']=='active' else None):
             raise RuntimeError('检测到自定义启动项，请先保留并清理，首版不自动合并')
         if route == 'native' and old_launch == '~/fgmod/fgmod %command%':
@@ -319,14 +331,12 @@ class Manager(OptiMixin):
                     record['files'].append(dict(path=str(p), original=str(original), applied=str(applied)))
                     self.save(record)
                     rt.atomic_copy(applied, p)
-                config = state / 'xmx/game.conf'
-                dll = rt.prefix_dll_path(prefix)
-                winpath = 'C:\\' + str(dll.parent.relative_to(prefix / 'drive_c')).replace('/', '\\')
-                text = config.read_text() + '\nexport INTC_ALT_DRIVER_EXTENSIONS_PATH=' + shlex.quote(winpath) + '\n'
-                rt.atomic_text(config, text)
-                overrides = 'igdext64=n,b' + (';dxgi=n,b' if route == 'opti' else '')
+                # Core owns the shim environment. Its recorded path is authoritative,
+                # including when reading a journal made with the legacy DriverStore path.
+                record['shim_path'] = str(rt.recorded_dll_path(rt.load(state / 'xmx')))
                 launcher = '#!/bin/bash\nset -eu\n'
-                launcher += 'export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}' + overrides + '"\n'
+                if route == 'opti':
+                    launcher += rt.dll_overrides_config('dxgi')
                 launcher += 'exec ' + shlex.quote(str(state / 'xmx/launch.sh')) + ' "$@"\n'
                 rt.atomic_text(state / 'launch.sh', launcher, mode=0o700)
                 record['launch'] = shlex.quote(str(state / 'launch.sh')) + ' %command%'
@@ -361,6 +371,7 @@ class Manager(OptiMixin):
     def restore(self, appid, actual):
         rt = self.runtime(); rt.ordinary_user()
         self.game(appid)
+        self.opti_require_settings_complete(self.opti_record(appid))
         record = self.state(appid)
         if not record or record['status'] == 'restored':
             raise RuntimeError('没有需要恢复的接入')

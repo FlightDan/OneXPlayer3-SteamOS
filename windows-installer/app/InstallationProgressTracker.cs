@@ -96,8 +96,11 @@ internal sealed class InstallationProgressTracker
                     var id = item.GetProperty("id").GetString();
                     changed |= components.Add(slot + ":" + id);
                     ComponentStep = slot == "A" ? "02.01" : "02.02";
-                    ComponentDetail = slot + " / " + (id == "system-update-hold"
-                        ? PartitionInventory.L("保留当前系统版本", "Preserve current system version") : id);
+                    ComponentDetail = slot + " / " + (id switch {
+                        "system-update-hold" => PartitionInventory.L("保留当前系统版本", "Preserve current system version"),
+                        "maintenance-tool" => PartitionInventory.L("修复与更新工具", "Repairs and project updates"),
+                        "serial-console-policy" => PartitionInventory.L("串口兼容性", "Serial console compatibility"),
+                        _ => id });
                 }
             }
             catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException) { }

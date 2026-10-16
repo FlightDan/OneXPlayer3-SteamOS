@@ -1,10 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace OxpInstaller;
 
-public sealed record StorageMount(string Partuuid, string Filesystem, string MountName);
+public sealed record StorageMount(string Partuuid, string Filesystem, string MountName,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SteamLibrary = false);
 internal sealed record StorageCandidate(StorageMount Mount, string Title, string DiskGuid, string Serial,
     long DiskSize, long Start, long Size);
 
@@ -13,12 +15,16 @@ internal static class SharedStorage
     private const string BasicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7";
     private const string LinuxData = "0fc63daf-8483-4772-8e79-3d69d8477de4";
     internal static string MountPath(StorageMount mount) => "/mnt/shared/" + mount.MountName;
+    internal static string SteamLibraryPath(StorageMount mount) => "/var/mnt/steam-libraries/" + mount.MountName;
+    private static bool SamePartition(StorageMount left, StorageMount right) =>
+        (left with { SteamLibrary = false }) == (right with { SteamLibrary = false });
     internal static void Validate(StorageMount[]? mounts)
     {
         if (mounts == null) return;
         if (mounts.Length > 32 || mounts.Any(m => m == null
             || !Guid.TryParseExact(m.Partuuid, "D", out var guid) || guid == Guid.Empty || guid.ToString("D") != m.Partuuid
             || m.Filesystem is not ("ntfs" or "exfat" or "vfat" or "ext4" or "btrfs")
+            || m.SteamLibrary && m.Filesystem != "ntfs"
             || m.MountName == null || !Regex.IsMatch(m.MountName, @"\Ashare-d(?:0|[1-9][0-9]{0,4})-p[1-9][0-9]{0,4}\z"))
             || mounts.Select(m => m.Partuuid).Distinct().Count() != mounts.Length
             || mounts.Select(m => m.MountName).Distinct().Count() != mounts.Length)
@@ -71,7 +77,7 @@ internal static class SharedStorage
         Validate(mounts);
         if (mounts is not { Length: > 0 }) return;
         var candidates = Candidates(snapshot);
-        if (mounts.Any(m => !candidates.Any(c => c.Mount == m)))
+        if (mounts.Any(m => !candidates.Any(c => SamePartition(c.Mount, m))))
             throw new IOException(PartitionInventory.L("所选共享分区已变化或不可挂载。请返回安装位置刷新磁盘，再重新选择。", "A selected shared partition changed or is unavailable. Refresh disks at Installation location, then select it again."));
     }
     internal static void Revalidate(StorageMount[] mounts, string original, string fresh)
@@ -80,7 +86,7 @@ internal static class SharedStorage
         var before = Candidates(original); var after = Candidates(fresh);
         foreach (var mount in mounts)
         {
-            var a = before.Single(c => c.Mount == mount); var b = after.Single(c => c.Mount == mount);
+            var a = before.Single(c => SamePartition(c.Mount, mount)); var b = after.Single(c => SamePartition(c.Mount, mount));
             if (a.DiskGuid != b.DiskGuid || a.Serial != b.Serial || a.DiskSize != b.DiskSize || a.Start != b.Start || a.Size != b.Size)
                 throw new IOException(PartitionInventory.L("共享分区所在磁盘或范围已变化，请刷新并重新确认。", "The shared partition's disk or range changed. Refresh and review the selection again."));
         }

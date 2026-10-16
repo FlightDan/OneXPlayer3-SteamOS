@@ -1,5 +1,25 @@
 # 安装修复与第三方预装
 
+2026-10-15 共享存储后端修正：仅对已明确选择的 ext4 / Btrfs 挂载写入 `rw,nosuid,nodev,exec`，保留盘内所有权和权限，避免 `noexec` 阻止 Steam 的游戏库执行检查。Linux 数据卷可在权限允许时手动添加为 Steam 游戏库；安装器不自动注册游戏库。NTFS / exFAT / FAT32 继续使用 `noexec` 和 `fmask=0133,dmask=0022` 文件共享策略，不强制挂载未正常关闭或休眠的 NTFS。所有格式保留按需挂载、缺盘容错和超时策略。
+
+挂载页面及入口继续隐藏、禁用，新安装选项始终清除 `StorageMounts`，因此上述后端修正不会自动选择或挂载 Windows 分区，也不会恢复共享存储界面。更新源码或安装包不会修改已安装设备的挂载配置。
+
+文件共享挂载与 Steam 存储列表是两个步骤。后端现在支持为单个 NTFS 选择显式传入 `steam_library: true`；省略或传入 `false` 仍只提供原有文件共享。此字段只接受布尔值且只适用于 NTFS，不会自动选择 Windows 分区。C# 的 `StorageMount.SteamLibrary` 默认 `false`，隐藏页面继续不提交 `StorageMounts`。
+
+启用后仍以原来的 `noexec,fmask=0133,dmask=0022,nosuid,nodev` 挂载 NTFS 父分区，只将其 `SteamLibrary` 子目录绑定到 `/var/mnt/steam-libraries/<mount_name>`，对该目录绑定开放 `exec,nosuid,nodev`。父挂载和绑定均按需挂载、缺盘不阻止启动；绑定显式依赖对应父挂载。离线阶段只安装带日志的 fstab、配置、程序和 systemd 单元，不挂载源分区、不创建源盘游戏目录。
+
+启动后的 root 准备计时器核对 PARTUUID、NTFS 类型、设备号、父挂载限制和绑定范围，以 deck 身份创建目录并执行自己的临时文件；同一文件从原路径执行必须被拒绝。成功后记录当前绑定挂载 ID，重复运行不会反复写测试文件。缺盘、挂载拒绝或目录冲突记录为等待状态，不强制挂载，不运行格式化、fsck、ntfsfix 或休眠文件清理。
+
+deck 会话的独立计时器等待准备完成和 Steam 本地接口，然后使用 Steam 自身的 `GetInstallFolders`、`AddInstallFolder`、`SetFolderLabel` 登记库；已有库和标签保持，不改默认库，也不手工写 `libraryfolders.vdf`。该模式要求镜像里已有安全的 `.cef-enable-remote-debugging` 标记，正常由已选择的 Decky 组件提供；缺少前置条件时共享存储组件报告未安装及原因，不擅自开启调试。Steam 尚未启动或接口暂不可用时稍后重试。
+
+安装报告中的登记状态先记为 `pending-steam-login`，不把“离线文件安装完成”当成已登记成功。运行状态可通过 `journalctl -u oxp3-ntfs-steam-prepare.service`、`journalctl --user -u oxp3-ntfs-steam-register.service` 和 `/run/oxp3-ntfs-steam/status.json` 检查。显式恢复共享存储时先停止本功能的重试及子目录绑定；被占用的绑定或管理员改动会阻止恢复，不删除目录、游戏文件或现有 Steam 库登记。存储识别通过不代表 Proton 游戏运行或重启后的游戏文件权限已完成验收。
+
+后端请求示例（不解除界面隐藏）：
+
+```json
+{"partuuid":"11111111-2222-3333-4444-555555555555","filesystem":"ntfs","mount_name":"share-d0-p4","steam_library":true}
+```
+
 2026-10-15 TabMaster 修复：固定使用官方 Decky 商店的 2.15.1 原始归档，并构建本地兼容版 `2.15.1+oxp3.1`。补丁仅在 Steam 成就缓存尚未初始化时安全读取两个 `mapCache` 值；`GetAchievementProgress` 保持原样，以便 Steam 继续排入缓存更新。补丁 TypeScript、统一差异和说明随源码保存；安装器固定新归档，检查版本和 `dist/index.js` 中的补丁运行时代码。旧安装包不会自动更新。
 
 2026-10-14 插件修复：离线资源固定为上游预构建的 ProtonDB Badges 1.3.4 和 HLTB for Deck 2.0.12，随新安装包携带，不依赖安装时下载。实机确认 ProtonDB 使用新版 `useParams` 接口，HLTB 已成功取得《黑神话：悟空》和《博德之门 3》的时长数据。CSS Loader 2.1.2 保持原版代码；安装时提前创建 deck 拥有的 `homebrew/themes`，保留 root 拥有的插件代码目录，修复初始化权限错误。六项隔离 Linux 组件测试和 Windows 构建通过；既有安装包不会自动更新。

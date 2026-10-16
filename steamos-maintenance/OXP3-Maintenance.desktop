@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OXP3 Repairs and Project Updates
+Name[zh_CN]=OXP3 修复与项目更新
+Comment=Maintain OXP3 project repairs on an existing SteamOS installation
+Comment[zh_CN]=维护已安装 SteamOS 上的 OXP3 项目修复
+Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py gui
+Icon=system-software-update
+Terminal=false
+Categories=System;Settings;

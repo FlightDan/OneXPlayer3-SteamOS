@@ -1,0 +1,9 @@
+{
+  "name": "oxp3-light",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "BSD-3-Clause AND LGPL-2.1-or-later",
+  "scripts": {"test": "node --test test_light_ui.mjs"},
+  "description": "OXP3 Light uses native Steam/Decky components; dist/index.js is readable source."
+}

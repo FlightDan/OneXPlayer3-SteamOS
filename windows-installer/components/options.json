@@ -39,7 +39,9 @@
       "zh": "Opti2XMX · 每游戏 XMX / Opti 注入与版本管理",
       "en": "Opti2XMX · per-game XMX / Opti injection and version management",
       "default": true,
-      "dependencies": ["decky"]
+      "dependencies": [
+        "decky"
+      ]
     },
     {
       "id": "gamescope-env",
@@ -97,7 +99,9 @@
       "zh": "BMI260 陀螺仪 · BIOS 5.09（新装需校准）",
       "en": "BMI260 gyro · BIOS 5.09 (calibrate after installation)",
       "default": true,
-      "dependencies": ["input"]
+      "dependencies": [
+        "input"
+      ]
     },
     {
       "id": "xe-dsb",
@@ -110,6 +114,13 @@
       "id": "gm7-resume",
       "zh": "GM7 休眠恢复 · 自动匹配目标 SSD",
       "en": "GM7 suspend recovery · match target SSD",
+      "default": true,
+      "dependencies": []
+    },
+    {
+      "id": "split-lock",
+      "zh": "Split-lock 报告洪泛修复 · 需要重启",
+      "en": "Split-lock report flood workaround · restart required",
       "default": true,
       "dependencies": []
     },
@@ -180,6 +191,15 @@
       ]
     },
     {
+      "id": "oxp3-light",
+      "zh": "OXP3 Light · 三分区灯光控制",
+      "en": "OXP3 Light · three-zone lighting controls",
+      "default": true,
+      "dependencies": [
+        "decky"
+      ]
+    },
+    {
       "id": "legacy-runtime",
       "zh": "音量键与电量显示修复",
       "en": "Volume keys and battery display fixes",
@@ -193,7 +213,9 @@
       "zh": "重启进入 Windows · Decky 按钮与桌面快捷方式",
       "en": "Restart into Windows · Decky button and desktop shortcut",
       "default": true,
-      "dependencies": ["decky"]
+      "dependencies": [
+        "decky"
+      ]
     },
     {
       "id": "decky",
@@ -201,78 +223,6 @@
       "en": "Decky Loader · plugin runtime",
       "default": true,
       "dependencies": []
-    },
-    {
-      "id": "steamgriddb",
-      "zh": "SteamGridDB · 游戏封面",
-      "en": "SteamGridDB · game artwork",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "protondb",
-      "zh": "ProtonDB Badges · 兼容性标记",
-      "en": "ProtonDB Badges · compatibility ratings",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "tabmaster",
-      "zh": "TabMaster · 游戏库分页",
-      "en": "TabMaster · library tabs",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "css-loader",
-      "zh": "CSS Loader · 界面主题",
-      "en": "CSS Loader · interface themes",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "autoflatpaks",
-      "zh": "AutoFlatpaks · 应用更新",
-      "en": "AutoFlatpaks · application updates",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "deck-settings",
-      "zh": "Deck Settings · 游戏设置建议",
-      "en": "Deck Settings · game settings recommendations",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "hltb",
-      "zh": "HLTB for Deck · 游戏时长",
-      "en": "HLTB for Deck · playtime estimates",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
-    },
-    {
-      "id": "animation-changer",
-      "zh": "Animation Changer · 启动画面",
-      "en": "Animation Changer · startup animations",
-      "default": true,
-      "dependencies": [
-        "decky"
-      ]
     },
     {
       "id": "waydroid",

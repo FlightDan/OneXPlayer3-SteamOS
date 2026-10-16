@@ -50,7 +50,68 @@ class SharedStorageSchema(unittest.TestCase):
         self.assertNotIn(b'force', output); self.assertNotIn(b'remove_hiberfile', output)
         self.assertNotIn(b'Steam', output)
 
-    def test_linux_filesystems_preserve_native_permissions(self):
+    def test_steam_library_requires_explicit_ntfs_boolean(self):
+        self.assertEqual(validate_mounts([SELECTION]), [SELECTION])
+        ntfs = dict(SELECTION, filesystem='ntfs', steam_library=True)
+        self.assertEqual(validate_mounts([ntfs]), [ntfs])
+        validate_mounts([dict(SELECTION, steam_library=False)])
+        for value in (1, 0, 'true', None, [], {}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_mounts([dict(ntfs, steam_library=value)])
+        for filesystem in ('ext4', 'btrfs', 'exfat', 'vfat'):
+            with self.subTest(filesystem=filesystem), self.assertRaises(ValueError):
+                validate_mounts([dict(ntfs, filesystem=filesystem)])
+
+    def test_ntfs_steam_bind_only_exposes_dedicated_directory(self):
+        legacy = dict(SELECTION, filesystem='ntfs')
+        selected = dict(legacy, steam_library=True)
+        original = b'# existing administrator settings\r\nUUID=root / ext4 ro 0 1\r\n'
+        shared = render_fstab(original, [legacy], (1000,1000))
+        output = render_fstab(original, [selected], (1000,1000))
+        parent = next(line for line in shared.splitlines() if line.startswith(b'PARTUUID='))
+        self.assertIn(parent+b'\n', output)
+        self.assertIn(b'nosuid,nodev,noexec', parent)
+        self.assertIn(b'fmask=0133,dmask=0022', parent)
+        self.assertIn(b'/var/mnt/shared/share-d0-p4/SteamLibrary /var/mnt/steam-libraries/share-d0-p4 none ', output)
+        self.assertIn(b'bind,exec,nosuid,nodev,nofail,x-systemd.automount', output)
+        self.assertIn(b'x-systemd.requires-mounts-for=/var/mnt/shared/share-d0-p4', output)
+        self.assertTrue(output.startswith(original))
+        verify_fstab(output, [selected], (1000,1000))
+        self.assertEqual(output, render_fstab(output, [selected], (1000,1000), managed=True))
+        for changed in (
+                output.replace(b'/share-d0-p4/SteamLibrary ', b'/share-d0-p4 '),
+                output.replace(b'bind,exec,', b'bind,noexec,'),
+                output.replace(b'bind,exec,', b'bind,exec,noexec,'),
+                output.replace(b'bind,exec,nosuid,nodev,', b'bind,exec,nodev,'),
+                output.replace(b'x-systemd.requires-mounts-for=/var/mnt/shared/share-d0-p4,', b''),
+                output.replace(b'fmask=0133', b'fmask=0022'),
+                shared):
+            with self.subTest(changed=changed), self.assertRaises(RuntimeError):
+                verify_fstab(changed, [selected], (1000,1000))
+        with self.assertRaises(RuntimeError): verify_fstab(output, [legacy], (1000,1000))
+
+    def test_steam_alias_conflicts_do_not_replace_administrator_mounts(self):
+        selection = [dict(SELECTION, filesystem='ntfs', steam_library=True)]
+        for destination in ('/var/mnt/steam-libraries', '/var/mnt/steam-libraries/share-d0-p4',
+                            '/mnt/steam-libraries/share-d0-p4', '/var/mnt/steam-libraries/share-d0-p4/child'):
+            original = f'UUID=admin {destination} ext4 defaults 0 0\n'.encode()
+            with self.subTest(destination=destination), self.assertRaises(RuntimeError):
+                render_fstab(original, selection, (1000,1000))
+
+    def test_windows_formats_remain_nonexecutable_file_shares(self):
+        for filesystem in ('ntfs', 'exfat', 'vfat'):
+            with self.subTest(filesystem=filesystem):
+                selection = [dict(SELECTION, filesystem=filesystem)]
+                output = render_fstab(b'', selection, (1001,1002))
+                verify_fstab(output, selection, (1001,1002))
+                self.assertIn(b'nosuid,nodev,noexec,nofail', output)
+                self.assertIn(b'uid=1001,gid=1002,fmask=0133,dmask=0022', output)
+                with self.assertRaises(RuntimeError):
+                    verify_fstab(output.replace(b'noexec,', b'exec,'), selection, (1001,1002))
+                with self.assertRaises(RuntimeError):
+                    verify_fstab(output.replace(b'fmask=0133', b'fmask=0022'), selection, (1001,1002))
+
+    def test_linux_filesystems_allow_games_and_preserve_native_permissions(self):
         for filesystem in ('ext4', 'btrfs'):
             selection = [dict(SELECTION, filesystem=filesystem)]
             output = render_fstab(b'', selection, (1000,1000))
@@ -58,7 +119,13 @@ class SharedStorageSchema(unittest.TestCase):
             self.assertIn((' '+filesystem+' ').encode(), output)
             for option in (b'uid=', b'gid=', b'fmask=', b'dmask='):
                 self.assertNotIn(option, output)
-            self.assertIn(b'nosuid,nodev,noexec,nofail', output)
+            self.assertIn(b'nosuid,nodev,exec,nofail', output)
+            self.assertEqual(output, render_fstab(output, selection, (1000,1000), managed=True))
+            for changed in (output.replace(b'nodev,exec,', b'nodev,noexec,'),
+                            output.replace(b'nodev,exec,', b'nodev,'),
+                            output.replace(b'nodev,exec,', b'nodev,exec,noexec,')):
+                with self.subTest(filesystem=filesystem, changed=changed), self.assertRaises(RuntimeError):
+                    verify_fstab(changed, selection, (1000,1000))
             with self.assertRaises(RuntimeError):
                 verify_fstab(output.replace(b'rw,',b'rw,uid=1000,'), selection, (1000,1000))
 
@@ -130,21 +197,28 @@ class SharedStorageLifecycle(unittest.TestCase):
             self.assertEqual((root/'etc/fstab').read_bytes(), self.original)
             self.assertFalse((root/'mnt').exists())
 
-    def test_full_stage_only_shared_storage_preserves_update_policy_and_restores(self):
-        from integration import stage, restore, VERSION
+    def stage_fixture(self, selection):
+        from integration import VERSION
+        from test_integration import supported_update_fixture, copy_maintenance_fixture
         source=Path(__file__).parent
         payload=self.root/'payload'; (payload/'components/hdr').mkdir(parents=True)
         (payload/'integration').mkdir()
+        copy_maintenance_fixture(payload)
         for item in source.glob('*.py'): shutil.copyfile(item,payload/'components'/item.name)
         for name in ('options.json','release.json'): shutil.copyfile(source/name,payload/'components'/name)
         for name in ('installer.py','generate.py','upstream.lua','UPSTREAM_LICENSE'):
             shutil.copyfile(source/'hdr'/name,payload/'components/hdr'/name)
         (self.root/'etc/os-release').write_text(''.join(f'{key}={value}\n' for key,value in VERSION.items()))
         (self.root/'etc/passwd').write_text('root:x:0:0:root:/root:/bin/bash\ndeck:x:1000:1000:Deck:/home/deck:/bin/bash\n')
-        options={'schema':1,'repairs':[],'plugins':[],'installer_language':'en-US',
-                 'kde_language':'system','storage_mounts':[SELECTION]}
+        supported_update_fixture(self.root)
+        return payload, {'schema':1,'repairs':[],'plugins':[],'installer_language':'en-US',
+                         'kde_language':'system','storage_mounts':[selection]}
+
+    def test_full_stage_shared_storage_keeps_required_update_hold_and_restores(self):
+        from integration import stage, restore
+        payload, options = self.stage_fixture(SELECTION)
         first=stage(self.root,payload,options,'A')
-        self.assertEqual(set(first['components']), {'shared-storage'})
+        self.assertEqual(set(first['components']), {'system-update-hold', 'maintenance-tool', 'shared-storage'})
         self.assertEqual(first['services'], [])
         self.assertEqual(stage(self.root,payload,options,'A'),first)
         for unit in ('atomupd.service','rauc.service'):
@@ -153,6 +227,37 @@ class SharedStorageLifecycle(unittest.TestCase):
         self.assertFalse((self.root/'home/deck/.local/share/Steam/steamapps/libraryfolders.vdf').exists())
         self.assertEqual(restore(self.root,'A','shared-storage'), [])
         self.assertEqual((self.root/'etc/fstab').read_bytes(), self.original)
+
+    def test_full_stage_ntfs_registration_is_pending_and_restores_as_one_group(self):
+        from integration import stage, restore
+        from shared_storage import verify_steam_runtime
+        selection = dict(SELECTION, filesystem='ntfs', steam_library=True)
+        payload, options = self.stage_fixture(selection)
+        (self.root/'mnt').symlink_to('var/mnt', target_is_directory=True)
+        (self.root/'var').mkdir(exist_ok=True)
+        builtin=self.root/'usr/lib/modules/6.1-fixture/modules.builtin'
+        builtin.parent.mkdir(parents=True); builtin.write_text('kernel/fs/ntfs3/ntfs3.ko\n')
+        marker=self.root/'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
+        marker.parent.mkdir(parents=True); marker.write_bytes(b'preexisting-debug-marker')
+        result=stage(self.root,payload,options,'A')
+        report=result['components']['shared-storage']
+        self.assertEqual(report['status'],'files_installed')
+        self.assertFalse(report['steam_library_added'])
+        self.assertEqual(report['steam_libraries'][0]['registration'],'pending-steam-login')
+        self.assertEqual(stage(self.root,payload,options,'A'),result)
+        verify_steam_runtime(self.root,[selection],(1000,1000))
+        self.assertFalse((self.root/'var/mnt/shared/share-d0-p4/SteamLibrary').exists())
+        config=self.root/'usr/local/lib/oxp3-ntfs-steam/config.json'
+        original_config=config.read_bytes()
+        config.write_bytes(original_config+b'\n')
+        self.assertTrue(restore(self.root,'A','shared-storage'))
+        self.assertNotEqual((self.root/'etc/fstab').read_bytes(),self.original)
+        config.write_bytes(original_config)
+        self.assertEqual(restore(self.root,'A','shared-storage'),[])
+        self.assertEqual((self.root/'etc/fstab').read_bytes(),self.original)
+        self.assertFalse(config.exists())
+        self.assertEqual(marker.read_bytes(),b'preexisting-debug-marker')
+        self.assertFalse((self.root/'home/deck/.local/share/Steam/steamapps/libraryfolders.vdf').exists())
 
     def test_manual_edit_is_preserved_on_retry_and_restore(self):
         from integration import LogicalFiles
@@ -174,6 +279,32 @@ class SharedStorageLifecycle(unittest.TestCase):
         self.assertIn(b' ntfs3 ', files(self.root, selection, (1000,1000))['etc/fstab']['data'])
         (other/'modules.builtin').unlink(); other.rmdir(); other.symlink_to(metadata.parent, target_is_directory=True)
         with self.assertRaises(RuntimeError): files(self.root, selection, (1000,1000))
+
+    def test_ntfs_library_runtime_is_offline_journaled_and_restorable(self):
+        from integration import apply_files, LogicalFiles
+        selection = [dict(SELECTION, filesystem='ntfs', steam_library=True)]
+        (self.root/'mnt').symlink_to('var/mnt', target_is_directory=True)
+        (self.root/'var').mkdir()
+        builtin=self.root/'usr/lib/modules/6.1-fixture/modules.builtin'
+        builtin.parent.mkdir(parents=True); builtin.write_text('kernel/fs/ntfs3/ntfs3.ko\n')
+        with self.assertRaisesRegex(RuntimeError, 'requires the local Steam interface'):
+            files(self.root, selection, (1000,1000))
+        marker=self.root/'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
+        marker.parent.mkdir(parents=True); marker.write_bytes(b'')
+        planned = files(self.root, selection, (1000,1000))
+        self.assertIn('usr/local/lib/oxp3-ntfs-steam/config.json', planned)
+        self.assertIn('usr/local/lib/oxp3-ntfs-steam/ntfs_steam.py', planned)
+        self.assertFalse((self.root/'var/mnt/shared/share-d0-p4/SteamLibrary').exists())
+        self.assertFalse((self.root/'home/deck/.local/share/Steam/steamapps/libraryfolders.vdf').exists())
+        state=self.root/'home/.oxp3-installer/integration/A'
+        apply_files(self.root,state,'shared-storage',planned,(1000,1000))
+        verify_fstab((self.root/'etc/fstab').read_bytes(),selection,(1000,1000))
+        transaction=LogicalFiles(state/'shared-storage',self.root,planned,(1000,1000))
+        self.assertEqual(transaction.rollback(), [])
+        self.assertEqual((self.root/'etc/fstab').read_bytes(),self.original)
+        self.assertFalse((self.root/'usr/local/lib/oxp3-ntfs-steam/config.json').exists())
+        self.assertTrue(marker.is_file())
+        self.assertFalse((self.root/'home/deck/.local/share/Steam/steamapps/libraryfolders.vdf').exists())
 
     def test_symlink_fstab_and_mount_ancestors_are_refused(self):
         outside=self.root/'outside'; outside.mkdir(); (outside/'fstab').write_bytes(b'preserve')

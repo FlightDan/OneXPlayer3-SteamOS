@@ -57,6 +57,15 @@
       "source": "windows-installer/docs/early-repair-audit-20261014.json"
     },
     {
+      "id": "split-lock",
+      "name": "Split-lock 报告洪泛修复",
+      "default": true,
+      "dependencies": [],
+      "state": "offline_integrated_hardware_pending",
+      "reason": "为受支持的 Valve 内核启动项添加 split_lock_detect=off，保留其他参数，重启后生效。维护工具中与 GM7 修复共用启动文件时必须显式同时选择两项恢复；不自动清理历史报告。",
+      "source": "windows-installer/components/split-lock/README.md"
+    },
+    {
       "id": "wifi",
       "name": "BE201 无线固件",
       "state": "research",
@@ -146,6 +155,15 @@
       "default": false,
       "reason": "EPP 与 2P/8E/4LP-E 限频、恢复通过，IBC 只读。默认不应用设置；首次加载错误根因未确认，单独重载/RPC 正常，生命周期待验。不提供 CPU 硬瓦数限制。",
       "source": "research/overlay/cpu_control.py"
+    },
+    {
+      "id": "oxp3-light",
+      "name": "OXP3 Light · 原生灯效控制",
+      "dependencies": ["decky"],
+      "state": "offline_integrated_hardware_pending",
+      "default": true,
+      "reason": "独立 Decky 插件使用原生 LED 接口；无接口时显示不支持，默认不改灯效。安装适配继续限定精确 SteamOS 3.10 / 内核 7.2.4 基线，实体灯效及休眠恢复待验收。",
+      "source": "windows-installer/components/light/README.md"
     },
     {
       "id": "desktop-hdr",

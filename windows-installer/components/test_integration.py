@@ -50,10 +50,131 @@ def tree_snapshot(root):
         output[path.relative_to(root).as_posix()]=(data,info.st_mode,info.st_uid,info.st_gid)
     return output
 
+
+def copy_maintenance_fixture(payload):
+    source=Path(__file__).resolve().parent.parent
+    source=(source/'maintenance') if (source/'maintenance').is_dir() else source/'cache/maintenance'
+    shutil.copytree(source,Path(payload)/'maintenance')
+
 PAYLOAD=Path('/mnt/payload')
 CATALOG=json.loads((PAYLOAD/'components/options.json').read_text())
 
 class IntegrationChecks(unittest.TestCase):
+    def test_serial_console_policy_repeat_and_restore_both_slots(self):
+        from serial_console import DROPIN, DATA
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        original=self.root/'etc/systemd/system/getty@tty1.service.d/keep.conf'
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b'[Service]\nTTYVTDisallocate=no\n')
+        for slot in ('A','B'):
+            with self.subTest(slot=slot):
+                result=stage(self.root,PAYLOAD,self.options,slot)
+                self.assertEqual(stage(self.root,PAYLOAD,self.options,slot),result)
+                report=result['components']['serial-console-policy']
+                self.assertEqual(report['activation'],'next-boot')
+                self.assertEqual((self.root/DROPIN).read_bytes(),DATA)
+                self.assertEqual((self.root/DROPIN).stat().st_uid,0)
+                runtime=self.root/'usr/local/lib/oxp3-integration'
+                self.assertEqual((runtime/'serial_console.py').read_bytes(),(PAYLOAD/'components/serial_console.py').read_bytes())
+                restored=subprocess.run([sys.executable,'-I','-B',str(runtime/'integration.py'),'restore',
+                    '--root',str(self.root),'--slot',slot,'--component','serial-console-policy'],
+                    capture_output=True,text=True,timeout=30)
+                self.assertEqual(restored.returncode,0,restored.stderr)
+                self.assertEqual(json.loads(restored.stdout),[])
+                self.assertFalse((self.root/DROPIN).exists())
+        self.assertEqual(original.read_bytes(),b'[Service]\nTTYVTDisallocate=no\n')
+
+    def test_serial_console_policy_preserves_later_admin_edit(self):
+        from serial_console import DROPIN
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        changed=b'[Unit]\nConditionKernelCommandLine=custom-serial\n'
+        (self.root/DROPIN).write_bytes(changed)
+        errors=restore(self.root,'A','serial-console-policy')
+        self.assertTrue(errors)
+        self.assertEqual((self.root/DROPIN).read_bytes(),changed)
+
+    def test_autoflatpaks_pinned_patch_stages_and_restores(self):
+        # 0.1.4 intentionally omits third-party plugins from its default catalog.
+        # Exercise the retained compatibility deployment with an explicit private
+        # catalog, without reintroducing that option into the product UI.
+        temporary=tempfile.TemporaryDirectory(prefix='oxp3-autoflatpaks-payload-')
+        self.addCleanup(temporary.cleanup)
+        payload=Path(temporary.name)
+        shutil.copytree(PAYLOAD/'components',payload/'components')
+        copy_maintenance_fixture(payload)
+        (payload/'integration').mkdir()
+        (payload/'plugins').symlink_to(PAYLOAD/'plugins',target_is_directory=True)
+        catalog=json.loads((payload/'components/options.json').read_text())
+        catalog['plugins'].append({'id':'autoflatpaks','default':False,'dependencies':['decky']})
+        (payload/'components/options.json').write_text(json.dumps(catalog))
+        self.options.update(repairs=[],plugins=['decky','autoflatpaks'],kde_language='system')
+        result=stage(self.root,payload,self.options,'A')
+        self.assertEqual(result['components']['autoflatpaks']['status'],'files_installed')
+        directory=self.root/'var/lib/oxp3-installer/decky/runtime/plugins/decky-autoflatpaks'
+        package=json.loads((directory/'package.json').read_text())
+        self.assertEqual(package['version'],'1.6.8+oxp3.1')
+        self.assertEqual(package['oxp3_compatibility_patch'],'Defer battery polling until Steam power state is available')
+        self.assertIn('window.SystemPowerStore?.batteryState',(directory/'dist/index.js').read_text())
+        self.assertNotIn('window.SystemPowerStore.batteryState',(directory/'dist/index.js').read_text())
+        self.assertEqual((directory/'dist/index.js').stat().st_uid,0)
+        self.assertEqual(stage(self.root,payload,self.options,'A'),result)
+        self.assertEqual(restore(self.root,'A','autoflatpaks'),[])
+        self.assertFalse((directory/'dist/index.js').exists())
+
+    def test_maintenance_tool_repeat_launch_and_restore(self):
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        for slot in ('A','A'):
+            result=stage(self.root,PAYLOAD,self.options,slot)
+            report=result['components']['maintenance-tool']
+            self.assertEqual(report['status'],'files_installed')
+            runtime=self.root/'usr/local/lib/oxp3-maintenance'
+            release=json.loads((runtime/'current-release.json').read_text())
+            self.assertEqual(release['version'],result['release']['version'])
+            generation=runtime/'releases'/release['maintenance_runtime']
+            self.assertIn('/usr/local/lib/oxp3-maintenance/releases/'+release['maintenance_runtime']+'/entry.py',
+                          (runtime/'entry.py').read_text())
+            launch=subprocess.run([sys.executable,'-I','-B',str(generation/'entry.py'),'--help'],capture_output=True,text=True)
+            self.assertEqual(launch.returncode,0,launch.stderr)
+            self.assertIn('gui',launch.stdout)
+            desktop=self.root/'home/deck/Desktop/OXP3-Maintenance.desktop'
+            menu=self.root/'home/deck/.local/share/applications/OXP3-Maintenance.desktop'
+            self.assertEqual(desktop.read_bytes(),menu.read_bytes())
+            self.assertIn('Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py gui',desktop.read_text())
+            self.assertEqual(desktop.stat().st_uid,1000)
+            self.assertEqual(desktop.stat().st_mode&0o777,0o755)
+            for relative in report['files']:
+                if relative.startswith('usr/'):
+                    path=self.root/relative
+                    self.assertEqual(path.stat().st_uid,0)
+                    self.assertFalse(path.stat().st_mode&0o022)
+            self.assertEqual(json.loads((runtime/'activation.json').read_text())['components'],{})
+            self.assertFalse((self.root/'home/.oxp3-maintenance').exists())
+            self.assertFalse((self.root/'etc/systemd/system/multi-user.target.wants/oxp3-maintenance-activate.service').exists())
+            self.assertFalse((self.root/'home/deck/.config/systemd/user/timers.target.wants/oxp3-maintenance-check.timer').exists())
+            self.assertNotIn('oxp3-maintenance-activate.service',result['services'])
+        self.assertEqual(restore(self.root,'A','maintenance-tool'),[])
+        self.assertFalse((self.root/'home/deck/Desktop/OXP3-Maintenance.desktop').exists())
+        self.assertFalse((self.root/'usr/local/lib/oxp3-maintenance/entry.py').exists())
+
+    def test_maintenance_missing_payload_refuses_before_image_writes(self):
+        from unittest.mock import patch
+        before=tree_snapshot(self.root)
+        with patch('maintenance_tool.files',side_effect=FileNotFoundError('Maintenance application missing')):
+            with self.assertRaises(FileNotFoundError):
+                stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(tree_snapshot(self.root),before)
+
+    def test_maintenance_manifest_tampering_is_refused(self):
+        from maintenance_tool import files
+        with tempfile.TemporaryDirectory() as temporary:
+            payload=Path(temporary)
+            shutil.copytree(PAYLOAD/'maintenance',payload/'maintenance')
+            app=payload/'maintenance/app'
+            (app/'entry.py').write_bytes(b'raise SystemExit("tampered")\n')
+            with self.assertRaisesRegex(RuntimeError,'differs'):
+                files(self.root,payload,{'version':'0.1.4'})
+
     def assert_hold(self,root,result,slot='A'):
         report=result['components']['system-update-hold']
         self.assertEqual(report['status'],'files_installed')
@@ -683,7 +804,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
     def test_disabled_items_do_not_install(self):
         self.options.update(repairs=[],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')
-        self.assertEqual(set(result['components']),{'system-update-hold'})
+        self.assertEqual(set(result['components']),{'system-update-hold','serial-console-policy','maintenance-tool'})
         self.assert_hold(self.root,result)
         self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
         self.assertFalse((self.root/'home/deck/.config/plasma-localerc').exists())
@@ -768,6 +889,13 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         try:
             stage(other,PAYLOAD,self.options,'B')
             self.assertEqual((other/'usr/local/lib/oxp3-integration/slot').read_text().strip(),'B')
+            for target in (self.root,other):
+                runtime=target/'usr/local/lib/oxp3-maintenance'
+                current=json.loads((runtime/'current-release.json').read_text())
+                self.assertTrue((runtime/'releases'/current['maintenance_runtime']/'oxp3_maintenance/touch_ui.py').is_file())
+                self.assertTrue((target/'home/deck/Desktop/OXP3-Maintenance.desktop').is_file())
+            # Reprepare A after B using separate roots and the real shared home.
+            stage(self.root,PAYLOAD,self.options,'A')
             self.assertEqual(restore(other,'B','keyboard'),[])
             self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
         finally: subprocess.run(['umount',str(other/'home')],check=True)
@@ -813,7 +941,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
                 if component:
                     self.assertEqual(result['components'][component]['status'],
                                      'not_installed' if name=='skipped' else 'files_installed')
-                else: self.assertEqual(set(result['components']),{'system-update-hold'})
+                else: self.assertEqual(set(result['components']),{'system-update-hold','serial-console-policy','maintenance-tool'})
                 if name=='repair':
                     self.assertIn('InputMethod=/usr/share/applications/org.kde.plasma.keyboard.desktop',
                                   (root/'home/deck/.config/kwinrc').read_text())

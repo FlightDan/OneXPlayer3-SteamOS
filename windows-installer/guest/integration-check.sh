@@ -5,6 +5,28 @@ mkfs.ext4 -q -F /dev/vda
 mkdir -p /mnt/integration-test-scratch
 mount /dev/vda /mnt/integration-test-scratch
 export TMPDIR=/mnt/integration-test-scratch
+if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"log-spam"})'; then
+    python3 -B /mnt/payload/components/test_integration.py -v \
+        IntegrationChecks.test_serial_console_policy_repeat_and_restore_both_slots \
+        IntegrationChecks.test_serial_console_policy_preserves_later_admin_edit \
+        IntegrationChecks.test_autoflatpaks_pinned_patch_stages_and_restores \
+        IntegrationChecks.test_disabled_items_do_not_install \
+        IntegrationChecks.test_mandatory_update_hold_real_journals_restore_both_slots
+    umount /mnt/integration-test-scratch
+    printf '\nOXP_TASK_RESULT=passed\n'
+    exit 0
+fi
+if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"maintenance-tool"})'; then
+    python3 -B /mnt/payload/components/test_integration.py -v \
+        IntegrationChecks.test_maintenance_tool_repeat_launch_and_restore \
+        IntegrationChecks.test_maintenance_missing_payload_refuses_before_image_writes \
+        IntegrationChecks.test_maintenance_manifest_tampering_is_refused \
+        IntegrationChecks.test_desktop_language_presets_stage_and_restore \
+        IntegrationChecks.test_cross_slot_home_original_and_recovery
+    umount /mnt/integration-test-scratch
+    printf '\nOXP_TASK_RESULT=passed\n'
+    exit 0
+fi
 # Exercise the required update hold through the real offline staging journal.
 if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"update-hold"})'; then
     python3 -B /mnt/payload/components/test_integration.py -v \
@@ -27,6 +49,7 @@ if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exi
 fi
 if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"shared-storage"})'; then
     python3 -B /mnt/payload/components/test_shared_storage.py -v
+    python3 -B /mnt/payload/components/test_ntfs_steam.py -v
     umount /mnt/integration-test-scratch
     printf '\nOXP_TASK_RESULT=passed\n'
     exit 0

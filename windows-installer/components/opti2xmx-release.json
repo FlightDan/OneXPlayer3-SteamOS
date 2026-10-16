@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "plugin_version": "0.2.4",
+  "plugin_sha256": "21149eb40674b21fc70a0054ca5b02c025a7de4669bb0721f6e2ee8956290f3a",
+  "source_commit": "ba677d2e23ea6f53b87fa8f0893562ab35405a31",
+  "source_url": "https://github.com/FlightDan/Opti2XMX/tree/ba677d2e23ea6f53b87fa8f0893562ab35405a31",
+  "release_url": "https://github.com/FlightDan/Opti2XMX/releases/tag/v0.2.4",
+  "files_sha256": "4d7ee7eee24d197f393e30b1e14875f3826270059aca3e754222cf700f79bc22",
+  "files": {
+    "plugin.json": "60120e7e4d1914b49805c1a3499bffc43c3833e5190b3896d0f8f3ab72482bcf",
+    "package.json": "ecd56688fa0d4f50be3a2b56514b4c52e94359ac662e04a9965e75bc4cfe7ff7",
+    "main.py": "fd8a655a5e618acf3237eee46a663b0aab43aa2ff43a0a5303bf0555177fceb2",
+    "manager.py": "5ca0febbe67e01fbb0b432d30d6f001074c96e77873215a54babafcdd52daa0a",
+    "opti.py": "c12a6f6b8321f1c64cddee6afa7e3d9f6c61d980e72c166076cfdcc21ac27cf9",
+    "download_progress.py": "b583686246be05c098a8a510e5ee89dfb31dd75f502c4057a0242b8955423e1f",
+    "runtime_setup.py": "2b097c5c7c25385452c6c01ca7ebafe2d2f20f99ca78b72a05209f08e12e0d0e",
+    "runtime-source.json": "2b207a1c94a92f4a695e787096ad6e2268e038e32e5368217ceff9c8bb158670",
+    "per_game.py": "fcd34a7393fb6c9cb0ee4b22313794544f6d031d67dfaf38137fcc483f7a79af",
+    "dist/index.js": "c15247dacdc33deab27628ee3b69aacc0323448920b583d60bf7f43b0fd6cbb8",
+    "README.md": "3dc246f212574889f3a7869e0651687448890ad9abf9379f24b3a8dc28151794",
+    "README.zh-CN.md": "64fcca71af23926aa0798ded67405f95030b599e6585b2e7fb30d5d492664d66",
+    "LICENSE": "9cf448c34a21ce7a4f637264c7bc89ed46403ad939d08aa1d35584a975ad354d",
+    "THIRD_PARTY_NOTICES.md": "0e0ac0e8dd1c8142bea425dfc638539260fa937c66bf11fd7a6e02af9263bbd5",
+    "docs/RUNTIME.md": "355957683b63c950425e2e9a85da33d48226278152aa6f94ca953236da824da1",
+    "docs/FRAME_GENERATION.md": "fd798ffe29ac7683761405b79ce86b130e072ee13e28a7eb709c63f604d46178"
+  },
+  "runtime": {
+    "schema": 1,
+    "version": "20261005",
+    "size_bytes": 195558423,
+    "sha256": "aa384e5704286e2d765ed9770e6599ad8e46e2d15821c1f9e51682f3521aa50b",
+    "published": true,
+    "url": "https://github.com/FlightDan/Opti2XMX/releases/download/v0.2.3/opti2xmx-xmx-runtime-20261005-aa384e5704286e2d.tar.gz"
+  }
+}

@@ -8,11 +8,13 @@ const progressTimeouts = new Map();
 let savedSelection=null, timeoutId=0, inspectCount=0;
 let timerId=0;
 let operation={schema:1,instance_id:'backend-1',operation_id:null,appid:null,kind:'',version:'',phase:'completed',running:false,downloaded_bytes:0,total_bytes:null,error:null,revision:0};
+let runtime={ready:false,available:true,version:'fixture',size_bytes:195433378,host_issue:'',error:'',availability_message:''};
 const info = {appid:42,name:'Demo',executables:['game.exe','Launcher.exe'],libraries:[{path:'libxess.dll'}],optis:[],
   runtime_ready:true,prefix_ready:true,external_managed:false,state:null,
   automatic:{executable:'game.exe',route:'native',reason:'',candidates:['game.exe']}};
 const copy = value => JSON.parse(JSON.stringify(value));
 const methods = {
+  runtime_status: async () => ({ok:true,data:copy(runtime)}),
   operation_progress: async () => ({ok:true,data:copy(operation)}),
   inventory: async () => ({ok:true,data:[{appid:42,name:'Demo'}]}),
   inspect_game: async id => {inspectCount++;return {ok:true,data:{...copy(info),appid:id}};},
@@ -101,7 +103,9 @@ methods.opti_confirm=async(_id,actual)=>{
   return {ok:true,data:true};
 };
 function button(label){return nodes(render()).find(n=>n.type==='button'&&n.props.children===label)?.props;}
+info.runtime_ready=false;info.automatic.reason='XMX 运行组件未就绪。';
 button('刷新').onClick();await settle();
+assert.equal(toggle().disabled,true);assert.equal(button('安装 Opti 0.9.4').disabled,false,'Opti install stays available without the XMX runtime');
 button('安装 Opti 0.9.4').onClick();await new Promise(resolve=>setTimeout(resolve,20));
 for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 assert.match(textOf(render()),/正在下载 Opti/);assert.match(textOf(render()),/1\.0 MiB.*2\.0 MiB.*50%/);
@@ -112,6 +116,7 @@ assert.doesNotMatch(textOf(render()),/50%/,'unknown total must not invent a perc
 releaseDownload();await settle();
 operation={...operation,running:false,phase:'completed',revision:3};for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 assert.equal(installCount,1);assert.equal(current,'/opti/launch %command%');assert.ok(button('打开 Opti 面板'));
+info.runtime_ready=true;info.automatic.reason='';
 button('高级设置').onClick();
 assert.ok(button('卸载 Opti'));assert.ok(button('回退上次操作'));
 const version=nodes(render()).find(n=>n.type==='select'&&n.props.label==='Opti 版本');
@@ -149,9 +154,40 @@ englishOpti.props.onChange(false);await settle();
 assert.match(notifications.at(-1).body,/game is still running/);
 assert.equal(nodes(render()).find(n=>n.props?.label==='Opti injection').props.checked,true);
 context.document.documentElement.lang='zh-cn';
-assert.equal(textOf(toggle().description),'仅支持 Intel 设备。\n为游戏启用 XMX 加速，使兼容的游戏中的 XeSS 帧生成可以正常使用。\n更改状态前请先关闭游戏！');
+assert.equal(textOf(toggle().description),'仅支持 Intel 设备。\n启用 Intel XMX 执行路径；帧生成仍需游戏、运行时和 Proton 支持。\n更改状态前请先关闭游戏！');
 assert.equal(textOf(optiToggle().description),'游戏原生支持 XeSS 帧生成时，请关闭此选项。\n使用 OptiScaler 修改游戏内的超分辨率/帧生成设置');
 console.log('PASS: Steam language takes precedence; bilingual descriptions, controls and running-game error.');
+// Only XeFG exposes the experimental request; saving and undo do not touch launch options.
+const multiplier=()=>nodes(render()).find(n=>n.type==='select'&&n.props.label==='XeSS FG 倍率（实验）')?.props;
+assert.equal(multiplier(),undefined);
+nodes(render()).find(n=>n.type==='select'&&n.props.label==='帧生成输出').props.onChange({data:'xefg'});
+assert.equal(multiplier().selectedOption,'2');
+assert.equal(multiplier().rgOptions.map(x=>x.data).join(','),'2,3,4');
+multiplier().onChange({data:'4'});
+let settingsCalls=0,restoreSettingsCalls=0;
+const launchBeforeSettings=current;
+methods.opti_settings=async(id,value,reset)=>{
+  settingsCalls++;assert.equal(id,42);assert.equal(reset,false);assert.equal(value.fg,'xefg');assert.equal(value.fg_multiplier,'4');
+  info.opti.settings=copy(value);info.opti.settings_rollback=true;return {ok:true,data:true};
+};
+methods.opti_restore_settings=async(id)=>{
+  restoreSettingsCalls++;assert.equal(id,42);info.opti.settings={sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'2'};
+  info.opti.settings_rollback=false;info.opti.settings_recovery=false;return {ok:true,data:true};
+};
+button('保存设置').onClick();await settle();
+assert.equal(settingsCalls,1);assert.equal(multiplier().selectedOption,'4');assert.ok(button('撤销上次设置'));
+context.document.documentElement.lang='en';
+assert.ok(nodes(render()).some(n=>n.props?.label==='XeSS FG multiplier (experimental)'));
+assert.ok(button('Undo last settings change'));
+context.document.documentElement.lang='zh-cn';
+button('撤销上次设置').onClick();await settle();assert.equal(restoreSettingsCalls,1);assert.equal(multiplier(),undefined);
+assert.equal(current,launchBeforeSettings);
+info.opti.settings_recovery=true;button('刷新').onClick();await settle();
+assert.equal(button('保存设置').disabled,true);assert.equal(button('恢复默认').disabled,true);assert.ok(button('恢复中断的设置'));
+assert.equal(toggle().disabled,true);assert.equal(optiToggle().disabled,true);assert.equal(button('安装所选版本').disabled,true);
+assert.equal(button('恢复中断的设置').disabled,false);
+button('恢复中断的设置').onClick();await settle();assert.equal(restoreSettingsCalls,2);
+console.log('PASS: experimental 2x/3x/4x request, bilingual copy, independent undo/recovery and unchanged launch options.');
 // Reopening attaches to a backend operation without starting a second install.
 for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;
 operation={...operation,operation_id:'download-2',phase:'downloading',running:true,downloaded_bytes:3145728,total_bytes:null,revision:10};
@@ -186,8 +222,23 @@ methods.inspect_game=inspectOriginal;releaseInspect();await settle();
 assert.ok(button('完成 Opti 启动设置'),'fixture loads stale pending info before deferred refresh');
 for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 assert.equal(button('完成 Opti 启动设置'),undefined,'completed confirmation must refresh after local lock releases');
+// A failed terminal refresh is retried on the next snapshot without repeating a mutation.
+operation={...operation,phase:'awaiting-launch',revision:3};
+info.opti.pending={expected:current,target:current,kind:'install'};info.opti.status='pending_launch';
+for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
+button('刷新').onClick();await settle();
+assert.ok(button('完成 Opti 启动设置'));
+info.opti.pending=null;info.opti.status='active';
+let refreshFailures=1;
+methods.inspect_game=async id=>{if(refreshFailures-- > 0)throw new Error('temporary inspect failure');return inspectOriginal(id);};
+operation={...operation,phase:'completed',revision:4};
+for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
+assert.ok(button('完成 Opti 启动设置'),'failed read retains pending UI until a successful refresh');
+for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
+assert.equal(button('完成 Opti 启动设置'),undefined,'terminal refresh retries after a transient read failure');
+methods.inspect_game=inspectOriginal;
 // A stuck read-only RPC times out, retains the last running snapshot, and cannot apply a late reply.
-operation={...operation,operation_id:'reconnect',phase:'downloading',running:true,downloaded_bytes:4194304,revision:3};
+operation={...operation,operation_id:'reconnect',phase:'downloading',running:true,downloaded_bytes:4194304,revision:5};
 for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 let lateReply;
 methods.operation_progress=()=>new Promise(resolve=>{lateReply=resolve;});
@@ -212,3 +263,28 @@ assert.equal(nodes(render()).find(n=>n.type==='select'&&n.props.label==='游戏'
 for(const cleanup of cleanups)cleanup();
 assert.equal(progressTimeouts.size,0);
 console.log('PASS: backend epoch reconnect, deferred confirmation refresh, hung snapshot timeout/late-reply refusal and saved-game selection.');
+
+// The global runtime button works without a game and never starts on mount.
+cleanups.length=0;slots.length=0;effects.length=0;let runtimeCalls=0, finishRuntime;
+methods.inventory=async()=>({ok:true,data:[]});
+methods.runtime_install=async()=>{
+  runtimeCalls++;
+  operation={...operation,kind:'runtime_install',operation_id:'runtime-1',appid:null,phase:'downloading',running:true,downloaded_bytes:1048576,total_bytes:195433378,revision:2};
+  await new Promise(resolve=>{finishRuntime=resolve;});
+  runtime.ready=true;operation={...operation,running:false,phase:'completed',revision:3};
+  return {ok:true,data:copy(runtime)};
+};
+render();for(const effect of effects){const cleanup=effect();if(cleanup)cleanups.push(cleanup);}await settle();
+assert.equal(runtimeCalls,0);assert.match(textOf(button('下载并配置 XMX 运行环境').description),/195\.4 MB/);
+button('下载并配置 XMX 运行环境').onClick();
+button('下载并配置 XMX 运行环境').onClick();await new Promise(resolve=>setTimeout(resolve,20));
+for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
+assert.equal(runtimeCalls,1);assert.match(textOf(render()),/正在下载 XMX 运行环境/);assert.match(textOf(render()),/1\.0 MiB/);
+finishRuntime();await settle();assert.ok(button('XMX 运行环境已就绪').disabled);
+assert.match(textOf(render()),/XMX 运行环境已配置/);
+for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;
+runtime={...runtime,ready:false,available:false,availability_message:'Pinned runtime release not published'};
+render();for(const effect of effects){const cleanup=effect();if(cleanup)cleanups.push(cleanup);}await settle();
+assert.equal(button('下载并配置 XMX 运行环境').disabled,true);assert.match(textOf(button('下载并配置 XMX 运行环境').description),/not published/);
+for(const cleanup of cleanups)cleanup();
+console.log('PASS: global explicit runtime action, no automatic download, size/progress/outcome, duplicate guard and unpublished-release state.');

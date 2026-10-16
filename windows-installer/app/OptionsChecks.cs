@@ -70,6 +70,8 @@ public static class OptionsChecks
         Require(File.ReadAllText(exported) == boot.Configuration(), "refind-export-matches-settings");
         boot.Seconds.Text = "5"; boot.TimedChoice.IsChecked = true;
         var boxes = panel.OptionBoxes;
+        Require(new[] { "steamgriddb", "protondb", "tabmaster", "css-loader", "autoflatpaks", "deck-settings", "hltb", "animation-changer" }
+            .All(id => !boxes.ContainsKey(id)), "user-installed-third-party-plugins-are-not-bundled-options");
         ((RadioButton)window.FindName("ChineseLanguage")).IsChecked = true;
         Require(boxes["flathub-ustc"].IsChecked == true, "chinese-mirror-default-enabled");
         ((RadioButton)window.FindName("EnglishLanguage")).IsChecked = true;
@@ -82,7 +84,7 @@ public static class OptionsChecks
         ((RadioButton)window.FindName("ChineseLanguage")).IsChecked = true;
         Require(boxes["flathub-ustc"].IsChecked == false, "explicit-mirror-opt-out-survives-chinese");
         boxes["hdr"].IsChecked = false; Require(!panel.Selection.Repairs.Contains("hdr"), "disabled-repair-is-absent-from-request");
-        boxes["tabmaster"].IsChecked = false; Require(!panel.Selection.Plugins.Contains("tabmaster"), "disabled-third-party-plugin-is-absent-from-request");
+        boxes["windows-reboot"].IsChecked = false; Require(!panel.Selection.Plugins.Contains("windows-reboot"), "disabled-project-plugin-is-absent-from-request");
         boxes["decky"].IsChecked = false;
         try { InstallerOptions.Validate(panel.Selection); throw new IOException("disabled-dependency-was-accepted"); } catch (IOException e) when (e.Message != "disabled-dependency-was-accepted") { events.Add("disabled-dependency-refused"); }
         boxes["decky"].IsChecked = true;
@@ -90,7 +92,7 @@ public static class OptionsChecks
         Require(InstallerI18n.Language == "en-US" && ((Button)window.FindName("NextButton")).Content.ToString() == "Next", "english-navigation-applied");
         Require(((TextBlock)window.FindName("ModeBanner")).Text.Contains("Back up"),"backup-warning-translated");
         Require(((TextBlock)boxes["hdr"].Content).Text.Contains("Game mode HDR"), "english-repair-label-applied");
-        Require(boxes["hdr"].IsChecked == false && boxes["tabmaster"].IsChecked == false, "language-switch-preserves-disabled-choices");
+        Require(boxes["hdr"].IsChecked == false && boxes["windows-reboot"].IsChecked == false, "language-switch-preserves-disabled-choices");
         Require(boot.WindowsChoice.IsChecked == true && boot.Seconds.Text == "5" && boot.InstallChoice.IsChecked == true, "language-switch-preserves-refind-settings");
         var kde = panel.KdeChoice; kde.SelectedIndex = 1;
         Require(panel.Selection.KdeLanguage == "zh_CN" && panel.Selection.InstallerLanguage == "en-US", "kde-language-independent-of-installer-language");

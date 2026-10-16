@@ -6,10 +6,17 @@ import shutil
 import tarfile
 import runpy
 from pathlib import PurePosixPath
+import argparse
+from opti_payload import read_plugin_tree, validate_runtime
 
 root = Path(__file__).resolve().parents[1]
 research = root.parent / 'research'
-store = root / 'cache/integration'
+controls = root / 'components/controls'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--output', type=Path, default=root / 'cache/integration')
+parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
+arguments = parser.parse_args()
+store = arguments.output
 store.mkdir(parents=True, exist_ok=True)
 manifest = {}
 
@@ -33,16 +40,16 @@ def emitted_definitions(path):
     exec(compile(code, str(path), 'exec'), scope)
     return scope
 
-opti=root/'components/opti2xmx'
-if not opti.is_dir():opti=research/'xess/decky'
+opti=arguments.opti_source
+opti_records=read_plugin_tree(opti)
 component('opti2xmx', {
-    **{'/home/deck/homebrew/plugins/opti2xmx/'+name:(opti/name).read_bytes() for name in ('plugin.json','package.json','main.py','manager.py','opti.py','download_progress.py','dist/index.js','README.md')},
-    '/home/deck/homebrew/plugins/opti2xmx/per_game.py':((opti/'per_game.py') if (opti/'per_game.py').is_file() else research/'xess/per_game.py').read_bytes(),
+    **{'/home/deck/homebrew/plugins/opti2xmx/'+name:data for name,data in opti_records.items()},
     '/home/deck/.local/share/opti2xmx/runtime.json':(json.dumps({'package':'/opt/oxp3-opti2xmx/20261005/runtime','sr':'/opt/oxp3-opti2xmx/20261005/sdk/libxess.dll'})+'\n').encode()})
 for item in manifest['opti2xmx']['files']:
     if '/homebrew/plugins/' in item['target']:item['user']=False
 manifest['opti2xmx']['runtime_archive']='opti2xmx/runtime.tar.gz'
 if not (store/'opti2xmx/runtime.tar.gz').is_file():manifest['opti2xmx']['missing']=['Run prepare-opti2xmx.py to stage the public runtime']
+else: validate_runtime(store/'opti2xmx/runtime.tar.gz')
 
 def plugin_files(name, values):
     return {f'/home/deck/homebrew/plugins/{name}/{key}': data for key, data in values.items()}
@@ -55,16 +62,26 @@ for which in ('domains','limits','fan'):
 component('oxp3-fan', {**{p:d for p,d in fan['files'].items() if p not in ('/home/deck/.config/MangoHud/presets.conf','/var/lib/oxp3-overlay-telemetry/telemetry.py','/var/lib/oxp3-fan/load-fan-module.py','/etc/systemd/system/oxp3-fan-module.service')}, **plugin_files('OXP3-Fan',fan['plugin'])}, ['oxp3-fan.service','oxp3-fan-sleep.service'])
 fan_sleep=store/'oxp3-fan/sleep-target.conf'; fan_sleep.write_bytes(b'[Unit]\nWants=oxp3-fan-sleep.service\n')
 manifest['oxp3-fan']['files'].append({'target':'etc/systemd/system/sleep.target.d/90-oxp3-fan.conf','source':'oxp3-fan/sleep-target.conf','mode':0o644,'user':False})
-cpu = emitted_definitions(research / 'overlay/deploy-cpu.py')
+cpu = emitted_definitions(controls / 'cpu/deploy-cpu.py')
 component('oxp3-cpu', {**cpu['files'], **plugin_files('OXP3-CPU',cpu['plugin'])}, ['oxp3-cpu.service'])
 battery = emitted_definitions(research / 'charging/deploy-battery.py')
 component('charging', {**battery['files'], **plugin_files('OXP3-battery',battery['plugin'])}, ['oxp3-battery.service'], {'steamos-manager':'26.4.1-2'})
+def light_plugin_files(directory):
+    # Explicit recursive paths keep tests and Python caches out of the runtime.
+    names = ('main.py', 'light_control.py', 'plugin.json', 'package.json',
+             'dist/index.js', 'LICENSE', 'LICENSE-HHD', 'LICENSE-HueSync',
+             'THIRD_PARTY_NOTICES.md', 'README.md')
+    return plugin_files('OXP3-Light', {name: (directory / name).read_bytes() for name in names})
+
+component('oxp3-light', light_plugin_files(root / 'components/light'))
+for item in manifest['oxp3-light']['files']:
+    item['user'] = False
 component('fan-driver', {
     '/var/lib/oxp3-fan/oxpec.ko':(research/'charging/module/oxpec.ko').read_bytes(),
     '/usr/lib/modules/7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9/updates/oxpec.ko':(research/'charging/module/oxpec.ko').read_bytes(),
     '/var/lib/oxp3-fan/load-fan-module.py':(research/'overlay/load-fan-module.py').read_bytes(),
     '/etc/systemd/system/oxp3-fan-module.service':fan['files']['/etc/systemd/system/oxp3-fan-module.service']}, ['oxp3-fan-module.service'])
-component('native-tdp', { '/var/lib/oxp3-rapl/provider.py':(research/'rapl/provider.py').read_bytes(),
+component('native-tdp', { '/var/lib/oxp3-rapl/provider.py':(controls/'rapl/provider.py').read_bytes(),
     '/etc/systemd/system/oxp3-rapl.service':(research/'rapl/oxp3-rapl.service').read_bytes(),
     '/etc/steamos-manager/remotes.d/oxp3-rapl.toml':(research/'rapl/oxp3-rapl.toml').read_bytes(),
     '/etc/dbus-1/system.d/org.onexplayer.SteamOSManager.PowerControl.conf':(research/'rapl/org.onexplayer.SteamOSManager.PowerControl.conf').read_bytes()}, ['oxp3-rapl.service'], {'steamos-manager':'26.4.1-2'})

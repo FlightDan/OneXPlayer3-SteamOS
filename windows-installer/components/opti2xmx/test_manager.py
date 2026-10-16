@@ -65,6 +65,9 @@ class Tests(unittest.TestCase):
         self.assertIn('Dx12Upscaler=xess', ini); self.assertIn('Dxgi=false', ini)
         cfg = (Path(r['state'])/'xmx/game.conf').read_text()
         self.assertIn('INTC_ALT_DRIVER_EXTENSIONS_PATH=',cfg)
+        self.assertEqual(cfg.count('INTC_ALT_DRIVER_EXTENSIONS_PATH='),1)
+        self.assertEqual(Path(r['shim_path']),engine.recorded_dll_path(engine.load(Path(r['state'])/'xmx')))
+        self.assertEqual(Path(r['shim_path']),self.prefix/'drive_c/opti2xmx-driver/igdext64.dll')
         import subprocess
         result=subprocess.check_output(['bash','-c',cfg+'\nprintf "%s" "$DXVK_CONFIG"'],
                                        env=dict(os.environ,DXVK_CONFIG='dxgi.maxFrameRate = 60'),text=True)

@@ -1,4 +1,4 @@
-"""Cache selected Decky plugins and reproducibly build the TabMaster compatibility archive."""
+"""Cache selected Decky plugins and reproducibly build pinned compatibility archives."""
 from pathlib import Path
 import json
 import subprocess
@@ -11,6 +11,15 @@ root=Path(__file__).resolve().parents[1]
 opener=urllib.request.build_opener(); opener.addheaders=[('User-Agent','OXP3-SteamOS-Installer/0.1')]; urllib.request.install_opener(opener)
 names={'tabmaster':'TabMaster','css-loader':'CSS Loader','autoflatpaks':'AutoFlatpaks','deck-settings':'Deck Settings','hltb':'HLTB for Deck','animation-changer':'Animation Changer'}
 pinned={
+    'autoflatpaks': {
+        'version':'1.6.8+oxp3.1',
+        'url':'https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions/344fce82cfb4800caccb4d6c0ec46e1ad6c9594a622d5baa0bb31286baf2d1a5.zip',
+        'archive':'autoflatpaks-1.6.8+oxp3.1.zip',
+        'source':'local-compatibility-patch',
+        'upstream_version':'1.6.8',
+        'upstream_url':'https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions/344fce82cfb4800caccb4d6c0ec46e1ad6c9594a622d5baa0bb31286baf2d1a5.zip',
+        'upstream_archive':'autoflatpaks-1.6.8.zip',
+    },
     'hltb': {
         'version':'2.0.12',
         'url':'https://github.com/morwy/hltb-for-deck/releases/download/v2.0.12/hltb-for-deck.zip',
@@ -51,20 +60,20 @@ for identifier,name in names.items():
         if len(metadata)!=1 or json.loads(archive.read(metadata[0]))['name']!=name: raise RuntimeError('Unexpected plugin identity')
     folder=root/'cache/plugins'/identifier; folder.mkdir(parents=True,exist_ok=True)
     target=folder/archive_name
-    if identifier=='tabmaster':
-        with tempfile.TemporaryDirectory(prefix='oxp3-tabmaster-') as temporary:
+    if identifier in ('tabmaster','autoflatpaks'):
+        with tempfile.TemporaryDirectory(prefix='oxp3-'+identifier+'-') as temporary:
             upstream=Path(temporary)/provenance['upstream_archive']
             upstream.write_bytes(data)
             subprocess.run([
-                sys.executable,str(root/'scripts/patch-tabmaster.py'),
+                sys.executable,str(root/('scripts/patch-'+identifier+'.py')),
                 '--source',str(upstream),'--destination',str(target),
-                '--patch-directory',str(root/'components/tabmaster-compat'),
+                '--patch-directory',str(root/('components/'+identifier+'-compat')),
             ],check=True)
         with zipfile.ZipFile(target) as archive:
             packages=[x for x in archive.namelist() if x.endswith('/package.json')]
             runtimes=[x for x in archive.namelist() if x.endswith('/dist/index.js')]
-            if len(packages)!=1 or len(runtimes)!=1: raise RuntimeError('Incomplete patched TabMaster archive')
-            if json.loads(archive.read(packages[0]))['version']!=version: raise RuntimeError('Unexpected patched TabMaster version')
+            if len(packages)!=1 or len(runtimes)!=1: raise RuntimeError('Incomplete patched '+name+' archive')
+            if json.loads(archive.read(packages[0]))['version']!=version: raise RuntimeError('Unexpected patched '+name+' version')
     elif identifier in pinned or not target.exists():
         target.write_bytes(data)
     records.append({'id':identifier,'name':name,'version':version,'url':url,'source':source,'archive':target.name,**provenance})

@@ -9,6 +9,8 @@ internal static class ComponentOutcome
     {
         var expected = options.Repairs.Concat(options.Plugins).ToHashSet();
         expected.Add("system-update-hold");
+        expected.Add("serial-console-policy");
+        expected.Add("maintenance-tool");
         if (options.KdeLanguage != "system") expected.Add("kde-language");
         if (options.SetDeckPassword || options.EnableSsh) expected.Add("deck-access");
         if (options.StorageMounts is { Length: > 0 }) expected.Add("shared-storage");

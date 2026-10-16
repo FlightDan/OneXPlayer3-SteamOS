@@ -147,7 +147,7 @@ public static partial class InstallationController
             if (request.Options != null)
             {
                 Phase("components", InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…"), "02.01");
-                var expected = 2 * (1 + request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
+                var expected = 2 * (3 + request.Options.Repairs.Length + request.Options.Plugins.Length + (request.Options.KdeLanguage == "system" ? 0 : 1)
                     + (request.Options.SetDeckPassword || request.Options.EnableSsh ? 1 : 0)
                     + (request.Options.StorageMounts is { Length: > 0 } ? 1 : 0));
                 var componentMessage = InstallerI18n.T("正在配置所选修复、插件与 KDE 语言…");

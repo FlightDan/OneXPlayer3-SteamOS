@@ -29,6 +29,12 @@ internal static class SharedStorageChecks
         Refuses(() => SharedStorage.Validate([mount with { MountName = "../../etc" }]), "mount-path-traversal-refused");
         Refuses(() => SharedStorage.Validate([mount with { Partuuid = mount.Partuuid + "\n" }]), "fstab-injection-refused");
         Refuses(() => SharedStorage.Validate([mount with { Filesystem = "auto" }]), "unapproved-filesystem-refused");
+        var library = mount with { SteamLibrary = true };
+        SharedStorage.ValidateSelection([library], snapshot);
+        SharedStorage.Revalidate([library], snapshot, snapshot);
+        Require(SharedStorage.SteamLibraryPath(library) == "/var/mnt/steam-libraries/" + mount.MountName,
+            "ntfs-library-directory-is-scoped-to-selected-partition");
+        Refuses(() => SharedStorage.Validate([library with { Filesystem = "ext4" }]), "steam-bind-only-for-explicit-ntfs");
         string Change(Action<JsonObject, JsonObject> edit)
         {
             var tree = JsonNode.Parse(snapshot)!.AsArray(); var disk = tree[0]!.AsObject();
@@ -72,12 +78,20 @@ internal static class SharedStorageChecks
         var payload = JsonSerializer.Serialize(options, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
         using var parsed = JsonDocument.Parse(payload);
         Require(parsed.RootElement.GetProperty("storage_mounts")[0].GetProperty("partuuid").GetString() == mount.Partuuid, "python-payload-uses-canonical-guid-and-schema");
+        Require(!parsed.RootElement.GetProperty("storage_mounts")[0].TryGetProperty("steam_library", out _),
+            "old-selections-do-not-request-steam-registration");
+        var libraryPayload = JsonSerializer.Serialize(options with { StorageMounts = [library] },
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+        using var libraryParsed = JsonDocument.Parse(libraryPayload);
+        Require(libraryParsed.RootElement.GetProperty("storage_mounts")[0].GetProperty("steam_library").GetBoolean(),
+            "explicit-steam-library-option-roundtrips-to-python");
         var hold = new[] { "A", "B" }.Select(slot => JsonSerializer.SerializeToElement(new {
             slot, id = "system-update-hold", status = "files_installed", os_image_updates = "held", steam_client_updates = "unchanged"
         })).ToArray();
-        var results = hold.Concat(new[] { "A", "B" }.Select(slot => JsonSerializer.SerializeToElement(new { slot, id = "shared-storage", status = "files_installed" }))).ToArray();
+        var mandatory = hold.Concat(new[] { "serial-console-policy", "maintenance-tool" }.SelectMany(id => new[] { "A", "B" }.Select(slot => JsonSerializer.SerializeToElement(new { slot, id, status = "files_installed" })))).ToArray();
+        var results = mandatory.Concat(new[] { "A", "B" }.Select(slot => JsonSerializer.SerializeToElement(new { slot, id = "shared-storage", status = "files_installed" }))).ToArray();
         ComponentOutcome.Validate(results, options);
-        Refuses(() => ComponentOutcome.Validate(hold, options), "missing-mount-result-blocks-installation");
+        Refuses(() => ComponentOutcome.Validate(mandatory, options), "missing-mount-result-blocks-installation");
         return JsonSerializer.Serialize(new { passed = true, checks }, new JsonSerializerOptions { WriteIndented = true });
     }
 
@@ -108,9 +122,8 @@ internal static class SharedStorageChecks
             Require(Find<TextBlock>("NavReview").Text.StartsWith("04") && Find<TextBlock>("NavResult").Text.StartsWith("07"),
                 "visible-step-numbers-are-contiguous-" + language);
         }
-        Find<CheckBox>("DebugMode").IsChecked = true;
-        Require(Find<Button>("StorageTab").Visibility == Visibility.Collapsed, "debug-mode-does-not-reveal-mounts");
-        Find<CheckBox>("DebugMode").IsChecked = false;
+        Require(window.FindName("DebugMode") == null && Find<Button>("StorageTab").Visibility == Visibility.Collapsed,
+            "debug-entry-removed-and-mounts-remain-hidden");
         checks.AddRange(WizardChecks.CheckFreeNavigation(window));
         Require(window.CompletedSession == null, "navigation-does-not-start-installation");
         Find<RadioButton>("ChineseLanguage").IsChecked = true;

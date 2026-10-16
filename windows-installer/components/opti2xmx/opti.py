@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -29,6 +30,42 @@ def ini_values(path):
     c = configparser.ConfigParser(interpolation=None, strict=False)
     c.read(path, encoding='utf-8-sig')
     return c
+
+
+def ini_equivalent(left, right):
+    """Compare strict UTF-8 INI data without folding names, values or defaults."""
+    def parse(data):
+        text=data.decode('utf-8-sig')
+        sections=set()
+        for line in text.split('\n'):
+            if line.lstrip(' \t\r\n').startswith((';','#')):continue
+            # ConfigParser strips Unicode whitespace that SimpleIni retains.
+            # Reject that syntax ambiguity before splitlines/strip can erase it.
+            if any(char.isspace() and char not in ' \t\r\n' for char in line):
+                raise ValueError('Ambiguous INI whitespace')
+            stripped=line.strip()
+            if stripped.startswith('['):
+                header=re.fullmatch(r'\[([^\[\]]+)\]',stripped)
+                if not header or header[1]!=header[1].strip():
+                    raise ValueError('Ambiguous INI section header')
+                identity=header[1].casefold()
+                # ConfigParser silently merges repeated DEFAULT sections. Also
+                # reject case-only aliases: SimpleIni treats them as one name.
+                if identity in sections:raise ValueError('Duplicate INI section')
+                sections.add(identity)
+        config = configparser.ConfigParser(interpolation=None, strict=True, delimiters=('=',))
+        config.optionxform = str
+        config.read_string(text)
+        for values in [config.defaults(),*config._sections.values()]:
+            if len({name.casefold() for name in values})!=len(values):
+                raise ValueError('Ambiguous INI option names')
+        # items(section) inherits DEFAULT values; explicit placement is part of
+        # the identity, so retain the separately parsed section dictionaries.
+        return dict(config.defaults()), {name: dict(values) for name, values in config._sections.items()}
+    try:
+        return parse(left) == parse(right)
+    except (UnicodeError, configparser.Error, ValueError):
+        return False
 
 
 def system_env():
@@ -67,12 +104,17 @@ class OptiMixin:
         if get('FrameGen', 'Enabled', 'false').lower() != 'true': fg = 'native'
         fg_input=get('FrameGen','FGInput','upscaler').lower()
         if fg_input not in ('fsrfg30','fsrfg','dlssg','upscaler'):fg_input='upscaler'
+        interpolation=get('XeFG','InterpolationCount','auto').strip()
+        multiplier={'1':'2','2':'3','3':'4'}.get(interpolation,'2')
+        settings_undo=(r or {}).get('settings_undo') or {}
         return dict(managed=bool(active), installed=bool(ini), version=r.get('version', '') if active else '',
                     injection_enabled=r.get('injection_enabled', True) if active else bool(ini),
                     status=r.get('status', '') if r else '', rollback=bool(r and r.get('undo')),
                     pending=r.get('pending') if r else None,
+                    settings_rollback=bool(active and settings_undo.get('status') in ('saved','applying','restoring')),
+                    settings_recovery=settings_undo.get('status') in ('applying','restoring'),
                     settings=dict(sr=get('Upscalers', 'Dx12Upscaler', 'xess'), fg=fg,
-                                  fg_input=fg_input,
+                                  fg_input=fg_input, fg_multiplier=multiplier,
                                   spoof='real' if spoof.lower() == 'false' else
                                   {'0x8086':'intel','0x1002':'amd'}.get(vendor, 'nvidia')))
 
@@ -159,6 +201,7 @@ class OptiMixin:
             if not allow_xmx or xmx['status'] != 'active': raise RuntimeError('请先关闭 XMX，再安装、回退或卸载 Opti')
             if actual != xmx['launch']: raise RuntimeError('Steam 启动项与 XMX 记录不一致')
         r = self.opti_record(appid)
+        self.opti_require_settings_complete(r)
         if r and r.get('pending'): raise RuntimeError('上次操作待完成，请先完成启动项设置或回退')
         known = ['', '%command%', '~/fgmod/fgmod %command%', str(self.home/'fgmod/fgmod')+' %command%']
         if r: known.append(r['launch'])
@@ -195,6 +238,10 @@ class OptiMixin:
             files.append(dict(path=name, before=str(before) if before.exists() else None,
                               after=str(after) if value is not None else None))
         launch = shlex.quote(str(parent/'launch.sh'))+' %command%'
+        # Lifecycle revisions invalidate settings undo, including when that revision
+        # is later rolled back. Installation undo remains a separate history.
+        previous=copy.deepcopy(previous)
+        if previous: previous.pop('settings_undo',None)
         rollback_launch = previous['launch'] if previous and previous['status']=='active' else actual
         r = dict(appid=appid, executable=executable, version=version, status='applying',
                  injection_enabled=previous.get('injection_enabled', True) if previous else True,
@@ -256,7 +303,8 @@ class OptiMixin:
                         text=ini_set(text,section,key,old.get(section,key,fallback=default))
                     for section,key,value in [('Spoofing','Dxgi','false'),('Spoofing','StreamlineSpoofing','false'),
                                                ('FrameGen','Enabled','false'),('FrameGen','FGInput','nofg'),
-                                               ('FrameGen','FGOutput','nofg'),('FrameGen','FGType','nofg'),('OptiFG','Enabled','false')]:
+                                                ('FrameGen','FGOutput','nofg'),('FrameGen','FGType','nofg'),('OptiFG','Enabled','false'),
+                                                ('XeFG','InterpolationCount','1')]:
                         text=ini_set(text,section,key,value)
                     data=text.encode()
                 changes[str(target)]=data
@@ -404,6 +452,7 @@ class OptiMixin:
 
     def opti_rollback(self,appid,actual):
         r=self.opti_record(appid)
+        self.opti_require_settings_complete(r)
         if not r or not r.get('undo'):raise RuntimeError('没有可回退的操作')
         info=self.inspect_game(appid);x=info['state']
         if x and x['status'] not in ('restored','failed'):raise RuntimeError('请先关闭 XMX 再回退 Opti')
@@ -445,22 +494,152 @@ class OptiMixin:
             r['pending']['target']=target;self.opti_save(appid,r)
             return r['pending']
 
-    def opti_settings(self,appid,settings,reset=False):
-        from manager import ini_set
+    def opti_require_settings_complete(self, record):
+        if ((record or {}).get('settings_undo') or {}).get('status') in ('applying','restoring'):
+            raise RuntimeError('设置保存或恢复未完成，请先恢复上次设置')
+
+    def _settings_regular(self, path):
+        rt=self.runtime();rt.no_symlink_parents(path)
+        if path.is_symlink() or not path.is_file() or path.stat().st_uid!=os.getuid():
+            raise RuntimeError('设置文件必须是当前用户的普通文件：'+path.name)
+
+    def _settings_context(self, appid, recovery=False):
+        rt=self.runtime();rt.ordinary_user()
         r=self.opti_record(appid)
-        if not r or r['status']!='active':raise RuntimeError('请先安装或迁移 Opti')
-        info=self.inspect_game(appid);prefix=Path(info['prefix']);rt=self.runtime()
-        if not r['version'].startswith('0.9'):raise RuntimeError('请先升级 Opti 0.9 再使用简化设置')
-        allowed={'sr':{'xess','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
-                 'fg_input':{'fsrfg30','fsrfg','dlssg','upscaler'},'spoof':{'real','nvidia','amd','intel'}}
-        if set(settings)!=set(allowed) or any(settings[k] not in v for k,v in allowed.items()):raise ValueError('不支持的设置值')
-        x=info['state'];active=x and x['status']=='active'
-        if active and (settings['sr']!='xess' or settings['spoof']!='real'):
-            raise RuntimeError('XMX 开启时保留 XeSS 和真实显卡；请先关闭 XMX 再改这两项')
-        ini=Path(info['game'])/Path(r['executable']).parent/'OptiScaler.ini'
+        if not r:raise RuntimeError('请先安装或迁移 Opti')
+        if r.get('pending'):raise RuntimeError('上次操作待完成，请先完成启动项设置或回退')
+        if r['status']!='active':raise RuntimeError('请先安装或迁移 Opti')
+        if not recovery:self.opti_require_settings_complete(r)
+        info=self.inspect_game(appid)
+        x=info['state']
+        if x and x['status'] not in ('active','restored','failed'):
+            raise RuntimeError('XMX 操作待完成，请先完成或恢复')
+        if r['executable'] not in info['executables']:raise RuntimeError('游戏程序已经变化，请刷新')
+        exe=Path(info['game'])/r['executable']
+        self._settings_regular(exe)
+        ini=exe.parent/'OptiScaler.ini'
+        targets=[ini]
+        owned=next((f for f in r['files'] if f['path']==str(ini)),None)
+        if not owned:raise RuntimeError('没有已管理的 Opti 设置文件')
+        targets.append(Path(owned['applied']))
+        if x and x['status']=='active':
+            for f in x['files']:
+                if f['path']==str(ini):targets.extend(Path(f[k]) for k in ('applied','original'))
+        targets=list(dict.fromkeys(targets))
+        # All mutation targets are derived from installed-game/owned journal records,
+        # never accepted from a settings RPC or settings-undo journal.
+        for path in targets:self._settings_regular(path)
+        return r,info,ini,targets
+
+    def _settings_journal(self, appid, r, ini, targets, after):
+        rt=self.runtime()
+        folder=self.opti_path(appid).parent/('settings-'+uuid.uuid4().hex)
+        rt.no_symlink_parents(folder/'placeholder');folder.mkdir(mode=0o700)
+        before=folder/'before.ini';before.write_bytes(ini.read_bytes())
+        desired=folder/'after.ini';desired.write_bytes(after)
+        files=[]
+        for n,path in enumerate(targets):
+            saved=folder/('observed-'+str(n)+'.ini');saved.write_bytes(path.read_bytes())
+            files.append(dict(path=str(path),observed=str(saved)))
+        return dict(status='applying',folder=str(folder),ini=str(ini),before=str(before),after=str(desired),
+                    version=r['version'],executable=r['executable'],files=files)
+
+    def _settings_validate_journal(self, appid, r, ini, journal):
+        folder=Path(journal['folder'])
+        if (folder.parent!=self.opti_path(appid).parent or not folder.name.startswith('settings-') or
+                '..' in folder.parts or journal.get('ini')!=str(ini) or
+                journal.get('version')!=r['version'] or journal.get('executable')!=r['executable']):
+            raise RuntimeError('设置恢复记录与当前安装不一致')
+        for key in ('before','after'):
+            path=Path(journal[key])
+            if path.parent!=folder:raise RuntimeError('无效设置备份路径')
+            self._settings_regular(path)
+        for f in journal['files']:
+            path=Path(f['observed'])
+            if path.parent!=folder:raise RuntimeError('无效设置备份路径')
+            self._settings_regular(path)
+        if journal.get('live_format_capture'):
+            path=Path(journal['live_format_capture'])
+            if path!=folder/'live-formatted.ini':raise RuntimeError('无效设置备份路径')
+            self._settings_regular(path)
+            if not ini_equivalent(path.read_bytes(),Path(journal['after']).read_bytes()):
+                raise RuntimeError('设置格式备份与保存值不一致，保留现场')
+
+    def opti_restore_settings(self,appid):
+        r,info,ini,targets=self._settings_context(appid,True)
+        rt=self.runtime();prefix=Path(info['prefix'])
         with rt.prefix_lock(prefix):
             rt.game_idle(prefix,Path(r['executable']).name)
-            rt.no_symlink_parents(ini)
+            # Reload under the lock so a waiting RPC cannot restore a replaced undo.
+            r,info,ini,targets=self._settings_context(appid,True)
+            if Path(info['prefix'])!=prefix:raise RuntimeError('游戏 Proton 环境已变化，请刷新')
+            journal=r.get('settings_undo')
+            if not journal or journal.get('status') not in ('saved','applying','restoring'):
+                raise RuntimeError('没有可恢复的设置')
+            self._settings_validate_journal(appid,r,ini,journal)
+            new=Path(journal['after']).read_bytes()
+            captured={f['path']:Path(f['observed']).read_bytes() for f in journal['files']}
+            current=set(map(str,targets))
+            if ((journal['status']=='saved' and not current.issubset(captured)) or
+                    (journal['status'] in ('applying','restoring') and set(captured)!=current)):
+                raise RuntimeError('设置恢复目标已变化，保留现场')
+            formatted=None
+            for path in targets:
+                allowed=(new,) if journal['status']=='saved' else (new,captured[str(path)])
+                observed=path.read_bytes()
+                if observed not in allowed:
+                    # SimpleIni rewrites the live INI on game exit. Only that
+                    # file may match by strict meaning; owned mirrors stay exact.
+                    if (path==ini and journal['status'] in ('saved','restoring') and
+                            ini_equivalent(observed,new)):
+                        formatted=observed
+                        continue
+                    raise RuntimeError('设置文件已被外部修改，保留现场：'+path.name)
+            if formatted is not None:
+                capture=Path(journal['folder'])/'live-formatted.ini'
+                rt.no_symlink_parents(capture)
+                if capture.exists() or capture.is_symlink():
+                    self._settings_regular(capture)
+                    if capture.read_bytes()!=formatted:
+                        raise RuntimeError('设置格式备份已有后续改动，保留现场')
+                else:
+                    rt.atomic_copy(ini,capture)
+                    if capture.read_bytes()!=formatted:
+                        raise RuntimeError('设置文件在备份期间变化，保留现场')
+                journal['live_format_capture']=str(capture)
+            # When XMX has since been disabled, restore only currently owned mirrors.
+            # Keep each target's original observed snapshot: XMX's original INI may
+            # intentionally differ from its applied INI and the current game file.
+            # Persist the reduced topology before any writes for interrupted retries.
+            if journal['status']=='saved':
+                journal['files']=[f for f in journal['files'] if f['path'] in current]
+            journal['status']='restoring';self.opti_save(appid,r)
+            try:
+                originals={f['path']:Path(f['observed']) for f in journal['files']}
+                for path in targets:rt.atomic_copy(originals[str(path)],path)
+                journal['status']='restored';self.opti_save(appid,r)
+            except Exception as error:
+                raise RuntimeError('设置恢复未完成，已保留恢复记录；请重试恢复上次设置：'+str(error)) from error
+        return True
+
+    def opti_settings(self,appid,settings,reset=False,fg_multiplier='2'):
+        from manager import ini_set
+        r,info,ini,targets=self._settings_context(appid)
+        prefix=Path(info['prefix']);rt=self.runtime()
+        allowed={'sr':{'xess','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
+                 'fg_input':{'fsrfg30','fsrfg','dlssg','upscaler'},'spoof':{'real','nvidia','amd','intel'},
+                 'fg_multiplier':{'2','3','4'}}
+        settings=dict(settings)
+        settings.setdefault('fg_multiplier',fg_multiplier)
+        if set(settings)!=set(allowed) or any(settings[k] not in v for k,v in allowed.items()):raise ValueError('不支持的设置值')
+        with rt.prefix_lock(prefix):
+            rt.game_idle(prefix,Path(r['executable']).name)
+            r,info,ini,targets=self._settings_context(appid)
+            if Path(info['prefix'])!=prefix:raise RuntimeError('游戏 Proton 环境已变化，请刷新')
+            if not r['version'].startswith('0.9'):raise RuntimeError('请先升级 Opti 0.9 再使用简化设置')
+            x=info['state'];active=x and x['status']=='active'
+            if active and (settings['sr']!='xess' or settings['spoof']!='real'):
+                raise RuntimeError('XMX 开启时保留 XeSS 和真实显卡；请先关闭 XMX 再改这两项')
             before=ini.read_bytes()
             text=(self.opti_package(r['version'],'github')/'OptiScaler.ini').read_text(encoding='utf-8-sig') if reset else before.decode('utf-8-sig')
             fg=settings['fg'];spoof=settings['spoof']
@@ -470,17 +649,17 @@ class OptiMixin:
                                 'real':('auto','auto','auto')}[spoof]
             updates=[('Upscalers','Dx12Upscaler',settings['sr']),('FrameGen','Enabled','false' if fg=='native' else 'true'),
                      ('FrameGen','FGInput','nofg' if fg=='native' else settings['fg_input']),('FrameGen','FGOutput','nofg' if fg=='native' else fg),
+                     ('XeFG','InterpolationCount',str(int(settings['fg_multiplier'])-1)),
                      ('Spoofing','Dxgi','false' if spoof=='real' else 'true'),('Spoofing','StreamlineSpoofing','false'),
                      ('Spoofing','SpoofedVendorId',vendor),('Spoofing','SpoofedDeviceId',device),('Spoofing','SpoofedGPUName',name)]
             for section,key,value in updates:text=ini_set(text,section,key,value)
-            backup=self.opti_path(appid).parent/('settings-'+uuid.uuid4().hex+'.ini');backup.write_bytes(before)
-            rt.atomic_text(ini,text)
-            # XMX off should keep the user's selected Opti preferences.
-            if active:
-                for f in x['files']:
-                    if f['path']==str(ini):
-                        rt.atomic_copy(ini,Path(f['applied']));rt.atomic_copy(ini,Path(f['original']))
-            self.opti_sync(appid)
+            journal=self._settings_journal(appid,r,ini,targets,text.encode('utf-8'))
+            r['settings_undo']=journal;self.opti_save(appid,r)
+            try:
+                for path in targets:rt.atomic_copy(Path(journal['after']),path)
+                journal['status']='saved';self.opti_save(appid,r)
+            except Exception as error:
+                raise RuntimeError('设置保存未完成，已保留恢复记录；请先恢复上次设置：'+str(error)) from error
         return True
 
     def opti_panel(self,appid):

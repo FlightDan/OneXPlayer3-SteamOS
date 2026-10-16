@@ -41,6 +41,9 @@ class WiringChecks(unittest.TestCase):
         shutil.copytree(COMPONENTS, cls.payload/'components',
                         ignore=shutil.ignore_patterns('__pycache__', 'test_*.py'))
         (cls.payload/'integration').mkdir()
+        if os.name == 'posix':
+            from test_integration import copy_maintenance_fixture
+            copy_maintenance_fixture(cls.payload)
         shutil.copyfile(HERE/'update_hold.py', cls.payload/'components/update_hold.py')
         shutil.copyfile(HERE/'integration.py', cls.payload/'components/integration.py')
         # The product runs on Linux. Keep this unchanged catalog readable by

@@ -31,6 +31,8 @@
 .aws/
 .codex/
 .agents/
+/.release-private/
+/.release-work/
 
 # Installer build products and large runtime/media resources.
 /windows-installer/cache/

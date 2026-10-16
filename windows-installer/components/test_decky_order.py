@@ -26,14 +26,34 @@ class DeckyOrderChecks(unittest.TestCase):
             self.plugin(str(index), name)
         value = json.loads(files(self.root)[SETTINGS]['data'])
         order = value['pluginOrder']
-        self.assertEqual(order[:5], list(PRIORITY))
+        self.assertEqual(order[:len(PRIORITY)], list(PRIORITY))
         self.assertEqual(set(order), {'SteamGridDB', *PRIORITY, 'Custom 用户插件'})
-        self.assertEqual(len(order), 7)
+        self.assertEqual(len(order), len(PRIORITY) + 2)
         self.assertIs(value['sortPlugins'], False)
 
     def test_only_deployed_plugins_enter_default_order(self):
         self.plugin('cpu', 'OXP3 CPU'); self.plugin('thirdparty', 'SteamGridDB')
         self.assertEqual(json.loads(files(self.root)[SETTINGS]['data'])['pluginOrder'], ['OXP3 CPU', 'SteamGridDB'])
+
+    def test_new_light_inserts_once_without_reordering_custom_preferences(self):
+        self.plugin('light', 'OXP3 Light')
+        custom = ['Custom', 'OXP3 Battery', 'SteamGridDB', 'OXP3 CPU']
+        self.write(SETTINGS, json.dumps({'pluginOrder': custom, 'sortPlugins': False, 'language': 'zh-CN'}))
+        data = files(self.root)[SETTINGS]['data']
+        value = json.loads(data)
+        self.assertEqual(value['pluginOrder'], ['Custom', 'OXP3 Battery', 'OXP3 Light', 'SteamGridDB', 'OXP3 CPU'])
+        self.assertEqual([name for name in value['pluginOrder'] if name != 'OXP3 Light'], custom)
+        self.assertEqual(value['language'], 'zh-CN')
+        self.write(SETTINGS, data.decode())
+        self.assertEqual(files(self.root), {})
+
+    def test_new_light_preserves_explicit_alphabetical_sort_and_empty_order(self):
+        self.plugin('light', 'OXP3 Light')
+        for value in ({'pluginOrder': [], 'sortPlugins': False},
+                      {'pluginOrder': ['OXP3 Battery'], 'sortPlugins': True},
+                      {'pluginOrder': 'unfamiliar'}, {'sortPlugins': False}):
+            self.write(SETTINGS, json.dumps(value))
+            self.assertEqual(files(self.root), {})
 
     def test_no_own_plugins_leaves_defaults_untouched(self):
         self.plugin('thirdparty', 'SteamGridDB')

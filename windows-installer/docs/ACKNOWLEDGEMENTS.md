@@ -8,6 +8,16 @@
 
 ## 系统、驱动与桌面
 
+0.1.4 开发分支的 split-lock 报告修复源自 **kas5852** 的
+[PR #16](https://github.com/HHHHanasak1/onexplayer3-steamos-setup/pull/16)，
+本项目将其适配到安装器与维护工具，并增加严格 JSON 分类清理；保留
+**HANA & Claude** 的原版权声明及 [完整 MIT 许可](../components/split-lock/UPSTREAM_LICENSE)。
+
+**OXP3 Light** 的三分区灯光协议参考 **honjow** 的 HueSync、
+**HHHHanasak1** 的 OXP3 分支及 **Antheas Kapenekakis** 的 HHD 协议实现。
+来源固定提交、改动范围和完整 BSD/LGPL 许可见
+[OXP3 Light 第三方说明](../components/light/THIRD_PARTY_NOTICES.md)。
+
 | 项目／维护者 | 本项目使用或参考的工作 |
 | --- | --- |
 | Valve / SteamOS、Gamescope、SteamOS Manager | 官方系统与恢复镜像、A/B 引导、游戏模式合成及系统管理接口 |

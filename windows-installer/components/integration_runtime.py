@@ -32,6 +32,10 @@ def restore_live(component, slot):
     restart_input=component=='gyro' and subprocess.run(['systemctl','is-active','--quiet','inputplumber.service']).returncode==0
     changed=False
     try:
+        if component=='shared-storage' and Path('/usr/local/lib/oxp3-ntfs-steam/config.json').exists():
+            # Stop retries and unmount only our executable directory aliases.
+            # A busy game library must block restore; never delete library data.
+            run('/usr/bin/python3','-I','-B','/usr/local/lib/oxp3-ntfs-steam/ntfs_steam.py','stop')
         if component=='gyro': run('systemctl','stop','inputplumber.service')
         for unit in units.get(component,[]): run('systemctl','stop',unit)
         readonly=run('steamos-readonly','status').strip().lower()

@@ -246,6 +246,8 @@ class LifecycleChecks(unittest.TestCase):
             (self.root / 'usr/bin' / name).write_bytes(b'fixture')
         shutil.copytree(HERE, self.payload / 'components', ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
         (self.payload / 'integration').mkdir(); (self.payload / 'integration/manifest.json').write_text('{}')
+        from test_integration import copy_maintenance_fixture
+        copy_maintenance_fixture(self.payload)
         (self.payload / 'plugins/decky').mkdir(parents=True)
         (self.payload / 'plugins/decky/PluginLoader').write_bytes(b'\x7fELF' + b'fixture')
         self.options = dict(schema=1, repairs=[], plugins=['windows-reboot', 'decky'], installer_language='zh-CN', kde_language='system')

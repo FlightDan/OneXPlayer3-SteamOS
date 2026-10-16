@@ -5,8 +5,9 @@ import zipfile
 
 root = Path(__file__).resolve().parents[1]
 research = root.parent / 'research'
+controls = root / 'components/controls'
 destination = root / 'cache/components/oxp3-controls'; destination.mkdir(parents=True, exist_ok=True)
-archive = destination / 'oxp3-controls-20261013-r5.zip'
+archive = destination / 'oxp3-controls-20261016-r6.zip'
 selected = {
     'rapl/provider.py': 'rapl/provider.py', 'rapl/test_provider.py': 'rapl/test_provider.py',
     'manager/tdp-error-propagation.patch': 'manager/tdp-error-propagation.patch',
@@ -21,13 +22,25 @@ selected = {
     'PLUGIN_LANGUAGES.md': 'PLUGIN_LANGUAGES.md',
     'check-plugin-i18n.mjs': 'check-plugin-i18n.mjs',
 }
+selected.update({f'overlay/{name}': f'overlay/{name}' for name in (
+    'power_control.py', 'test_power_control.py', 'test_cpu_power_ui.mjs')})
+
+def source_path(source):
+    if source.startswith('rapl/'):
+        return controls / source
+    if source.startswith('overlay/') and source.split('/', 1)[1] in (
+            'cpu_control.py', 'cpu-plugin-main.py', 'cpu-plugin-index.js', 'test_cpu_control.py',
+            'power_control.py', 'test_power_control.py', 'test_cpu_power_ui.mjs'):
+        return controls / 'cpu' / source.split('/', 1)[1]
+    return research / source
+
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
     for target, source in selected.items():
-        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 13, 0, 0, 0))
+        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 16, 0, 0, 0))
         entry.compress_type = zipfile.ZIP_DEFLATED; entry.external_attr = 0o100644 << 16
-        package.writestr(entry, (research / source).read_bytes())
+        package.writestr(entry, source_path(source).read_bytes())
 profile = {
-    'schema': 1, 'id': 'oxp3-controls', 'version': '20261013-r5', 'archive': archive.name,
+    'schema': 1, 'id': 'oxp3-controls', 'version': '20261016-r6', 'archive': archive.name,
     'source_files': list(selected), 'deployment': 'resources_only', 'default': False,
     'target': {'vendor': 'ONE-NETBOOK', 'product': 'ONEXPLAYER 3', 'cpu': 'Intel Arc G3 Extreme',
                'system_version': '3.10', 'system_build': '20260924.1000',
@@ -35,7 +48,9 @@ profile = {
                'mangoapp': '0.8.3.rc1.r24.g33c2c7dd-4', 'core_groups': [2, 8, 4]},
     'components': ['native-tdp', 'manager', 'overlay', 'oxp3-fan', 'oxp3-cpu', 'charging'],
     'reference_only': ['charging/deploy-battery.py', 'charging/update-battery-ui.py'],
-    'tdp': {'min_watts': 10, 'max_watts': 40, 'default_power_change': False, 'long_40w_thermal_acceptance': False},
+    'tdp': {'min_watts': 10, 'max_watts': 40, 'pl2_max_watts': 80,
+            'independent_pl2': True, 'steam_pl1_sync': True,
+            'default_power_change': False, 'long_40w_thermal_acceptance': False},
     'fan': {'default': 'firmware_auto', 'driver_binary_included': False, 'driver_rebuild_and_module_restore': 'pending'},
     'cpu': {'default_enabled': False, 'independent_watt_limit': False, 'ibc_manual_control': False,
             'first_load_error_root_cause': 'not_confirmed'},
