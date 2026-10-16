@@ -196,3 +196,18 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 - 所有更新能力仅针对本项目，未升级 SteamOS 或修改官方系统更新策略。
 
 发布前按 [README.md](README.md) 完成剩余验收与签名发行配置。
+
+
+## 2026-10-16：修订 4 默认版本选择
+
+修复旧排序将 `+maintenance.N` 视为同级、导致默认入口可能选中首版的问题。通用 SemVer 比较仍忽略任意 build metadata；项目发行策略只对规范 `maintenance.N` 正整数后缀增加数字修订排序，主版本及预发行顺序优先。API 列表、Atom 回退、后台通知、GUI 更新动作和应用降级保护统一使用该规则。显式版本仍按完整字符串绑定，签名目录、核心包和公钥验证不变。
+
+Atom 查询不再被前三个没有维护目录的 Windows 发行挡住：按版本顺序最多探测 20 个候选，收集最多 3 个验签成功的维护目录；达到上限且无可用目录时报告未知。发现范围仍受公开 feed 与请求安全上限约束。
+
+独立复审和 71 项针对性测试通过。最终 Windows 全量 540 项：527 通过、13 项平台跳过；隔离 Linux 全量 540 项：525 通过、15 项条件跳过，无失败。Linux 无网络、无宿主实盘，校验冻结的 279 项输入。正式核心的 29 份程序及 Bash 内嵌代码与已测源码一致；12 个组件包与修订 3 摘要相同，发行公钥不变。
+
+发布前，新脚本不带 `--version` 的真实下载验签已通过：普通请求遇到 API 限流后和强制 API 403 两条路径，均经真实 Atom 选择当时公开的最新修订 3，下载核心并验证签名、目录摘要和私有副本。测试只模拟 Windows 主机的环境/已安装版本读取，并适配本机 OpenSSL 路径；未启动下载的 GUI、未安装、未连接设备。修订 4 发布后的公开默认入口复验结果记录在 Release 说明及本地证据中。
+
+README 仅将三处脚本 URL 指向修订 4 并移除对应的 `--version` 参数，其余内容不变。旧脚本附件保留，使用旧下载副本的用户需要重新下载新入口。旧安装版可先通过该入口审核“仅更新维护工具”。本次没有重新执行实机组件安装；此前修订 3 的实机结果保持其原验收范围。
+
+证据：`.release-work/windows-maintenance-revision4-tests.txt`、`.release-work/maintenance-revision4-full-final-report.json`、`.release-work/revision4-final-source-match.json`、`.release-work/revision4-final-artifact-verification.json`、`.release-work/revision4-default-before-publication/report.json`；公开复验使用 `.release-work/revision4-default-public/report.json`。
