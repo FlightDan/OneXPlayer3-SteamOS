@@ -20,3 +20,5 @@
 当前工具状态和公钥指纹见 [发布工具记录](docs/PUBLISHER.md)。本环境受限沙箱的 DPAPI 用户配置不可用；正式密钥操作需要通过正常权限工具在实际 Windows 用户上下文运行。不要把沙箱解密失败当成丢失密钥或重新生成密钥的理由。
 
 用户确认的顺序：通过检查后发布维护工具 Release，再实机验证正式 0.1.3 → 0.1.4 升级，最后发布 Windows 0.1.4 安装包。维护发布时旧 Windows 安装器保持 Latest；Windows 0.1.4 通过验收发布后再设为 Latest。
+
+2026-10-16 发布后的实机预检发现 EFI/VFAT 与风扇配置元数据接管问题。原 `maintenance-v0.1.4` 资产已公开，不覆盖。修复准备使用 `-Version 0.1.4+maintenance.1` 及对应新 Tag；项目主版本与 Windows 安装包仍为 0.1.4。发布前验证原 Bash 入口的实际 API/Atom 发现结果，不把 SemVer build metadata 当作更高版本或承诺自动更新通知。修订版通过公开下载和实机升级前，Windows 发布门槛保持关闭。

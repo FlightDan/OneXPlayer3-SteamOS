@@ -47,7 +47,11 @@ class DesktopService:
     def _network_progress(self, event):
         if self.on_progress:
             if 'attempt' not in event:
-                self.on_progress(self.t('正在获取所选组件：', 'Downloading selected component: ') + str(event.get('package', event.get('phase', ''))))
+                message = self.t('正在下载所选组件', 'Downloading selected components')
+                received, total = event.get('received'), event.get('total')
+                if isinstance(received, int) and isinstance(total, int) and total > 0:
+                    message += ' (%d%%)' % max(0, min(100, received * 100 // total))
+                self.on_progress(message)
                 return
             message = self.t('正在重试项目发布服务' if event['phase'] == 'retrying_github' else '正在连接项目发布服务',
                              'Retrying project release service' if event['phase'] == 'retrying_github' else 'Contacting project release service')
@@ -128,6 +132,9 @@ class DesktopService:
         if expected_manifest:
             command += ['--expected-manifest', expected_manifest]
         try:
+            if self.on_progress and action == 'plan':
+                self.on_progress(self.t('正在检查安装条件；如出现身份验证窗口，请输入系统密码。',
+                                        'Checking installation requirements; enter your system password if authentication appears.'))
             # A write is allowed to finish; closing the UI never kills a transaction.
             value = subprocess.run(command, capture_output=True, text=True,
                                    timeout=None if action in self.mutating_actions else 300)

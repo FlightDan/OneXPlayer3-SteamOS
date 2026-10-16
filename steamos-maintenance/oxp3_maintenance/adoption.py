@@ -1,9 +1,11 @@
 """Import trusted installer originals without executing the old activation loop."""
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import stat
+import re
 
 _RUNTIMES = {
     'desktop-hdr': 'opt/oxp3-desktop-gamma22/6.7.3-1.6',
@@ -11,6 +13,10 @@ _RUNTIMES = {
 }
 _MAX_FILE = 256 * 1024 * 1024
 _MAX_TREE = 1024 * 1024 * 1024
+_FAN_WRITERS = {
+    'var/lib/oxp3-fan/fan.py': '5ed6af94055a22454ad28a43feff257383918c21804460da5287658399ab9f9c',
+    'var/lib/oxp3-installer/decky/runtime/plugins/OXP3-Fan/main.py': '147cc10a5448d36de7c3a88ccfeb4007174d732121177d0c750805d778689b4d',
+}
 _MUTABLE_SETTINGS = {
     'input': {'etc/inputplumber/devices.d/50-onexplayer_3.yaml'},
     'gyro': {'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml', 'etc/inputplumber/oxp3-gyro-steer.conf'},
@@ -112,6 +118,90 @@ def _file(path, boundary, *, user_uid=None):
             raise RuntimeError('Legacy runtime file changed during reading')
     return {'exists': True, 'data': base64.b64encode(data).decode(),
             'mode': stat.S_IMODE(opened.st_mode), 'uid': opened.st_uid, 'gid': opened.st_gid}
+
+
+def _mountinfo_text():
+    return Path('/proc/self/mountinfo').read_text()
+
+
+def _mount_stat(path):
+    return path.stat()
+
+
+def _mount_device(major, minor):
+    return os.makedev(major, minor)
+
+
+def _gm7_vfat_metadata(root, relative, installed, current):
+    """Recognize only the live SteamOS EFI mask, not arbitrary chmod drift."""
+    if (relative != 'efi/EFI/steamos/grub.cfg'
+            or {key: installed[key] for key in ('mode', 'uid', 'gid')} != {'mode': 0o755, 'uid': 0, 'gid': 0}
+            or {key: current[key] for key in ('mode', 'uid', 'gid')} != {'mode': 0o700, 'uid': 0, 'gid': 0}):
+        return None
+    root = Path(root).absolute()
+    target, efi = root / relative, root / 'efi'
+    try:
+        target_info, efi_info = _mount_stat(target), _mount_stat(efi)
+        def unescape(value):
+            return re.sub(r'\\(040|011|012|134)', lambda match: chr(int(match[1], 8)), value)
+        candidates = []
+        for line in _mountinfo_text().splitlines():
+            left, right = line.split(' - ', 1)
+            fields, filesystem = left.split(), right.split()
+            if Path(unescape(fields[4])) != efi or filesystem[0] != 'vfat' or fields[3] != '/':
+                continue
+            major, minor = (int(value) for value in fields[2].split(':'))
+            device = _mount_device(major, minor)
+            if target_info.st_dev != device or efi_info.st_dev != device:
+                continue
+            source = unescape(filesystem[1])
+            if not source.startswith('/dev/') or '..' in PurePosixPath(source).parts:
+                continue
+            source_info = _mount_stat(Path(source))
+            if not stat.S_ISBLK(source_info.st_mode) or source_info.st_rdev != device:
+                continue
+            options = {}
+            for option in (fields[5] + ',' + filesystem[2]).split(','):
+                key, _, value = option.partition('=')
+                if key in options and options[key] != value:
+                    raise ValueError('Conflicting EFI mount options')
+                options[key] = value
+            if ('rw' not in options or 'ro' in options or 'showexec' in options
+                    or options.get('uid', '0') != '0' or options.get('gid', '0') != '0'
+                    or not all(re.fullmatch(r'0?[0-7]{3}', options.get(key, '')) for key in ('fmask', 'dmask'))):
+                continue
+            file_mode = 0o777 & ~int(options['fmask'], 8)
+            directory_mode = 0o777 & ~int(options['dmask'], 8)
+            if (file_mode != current['mode'] or directory_mode != 0o700
+                    or (stat.S_IMODE(target_info.st_mode), target_info.st_uid, target_info.st_gid) != (file_mode, 0, 0)
+                    or not stat.S_ISREG(target_info.st_mode) or not stat.S_ISDIR(efi_info.st_mode)
+                    or (stat.S_IMODE(efi_info.st_mode), efi_info.st_uid, efi_info.st_gid) != (directory_mode, 0, 0)):
+                continue
+            candidates.append({'filesystem': 'vfat', 'mountpoint': str(efi), 'device': fields[2],
+                               'source': source, 'fmask': options['fmask'], 'dmask': options['dmask'],
+                               'mode': file_mode, 'uid': 0, 'gid': 0})
+        return candidates[0] if len(candidates) == 1 else None
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None
+
+
+def _fan_writer_metadata(root, relative, record, installed, current):
+    # Public0.1.3 Plugin.configure/_unload call fan.atomic(CONFIG), whose
+    # explicit chmod(0644) differs from the installer's initial 0600 snapshot.
+    if (relative != 'var/lib/oxp3-fan/config.json'
+            or {key: installed[key] for key in ('mode', 'uid', 'gid')} != {'mode': 0o600, 'uid': 0, 'gid': 0}
+            or {key: current[key] for key in ('mode', 'uid', 'gid')} != {'mode': 0o644, 'uid': 0, 'gid': 0}):
+        return None
+    for path, expected in _FAN_WRITERS.items():
+        encoded = record.get('applied', {}).get(path)
+        if not isinstance(encoded, str) or hashlib.sha256(base64.b64decode(encoded, validate=True)).hexdigest() != expected:
+            return None
+        writer = _file(Path(root) / path, Path(root))
+        if (writer['uid'] or writer['gid'] or writer['mode'] != 0o644
+                or hashlib.sha256(base64.b64decode(writer['data'], validate=True)).hexdigest() != expected):
+            return None
+    return {'writer': 'public0.1.3-fan.atomic(CONFIG)', 'sha256': dict(_FAN_WRITERS),
+            'mode': 0o644, 'uid': 0, 'gid': 0}
 
 
 def validate_current(root, originals, probe):
@@ -265,7 +355,21 @@ def import_originals(root, probe, selected):
                 if record.get('phase') == 'installed' and relative in _MUTABLE_SETTINGS.get(component, ()):
                     current = _file(root / relative, root, user_uid=probe['uid'] if relative.startswith('home/deck/') else None)
                     if any(current[key] != installed[key] for key in ('mode', 'uid', 'gid')):
-                        raise RuntimeError('Legacy mutable file metadata changed: ' + relative)
+                        provenance = (_gm7_vfat_metadata(root, relative, installed, current) if component == 'gm7-resume'
+                                      else _fan_writer_metadata(root, relative, record, installed, current) if component == 'oxp3-fan' else None)
+                        if provenance is None:
+                            raise RuntimeError('Legacy mutable file metadata changed: ' + relative)
+                        output[relative]['legacy_metadata'] = {'applied': installed, 'original': original,
+                                                               'effective_metadata_source': provenance}
+                        installed = dict(installed, **{key: current[key] for key in ('mode', 'uid', 'gid')})
+                        output[relative]['applied'] = installed
+                        if component == 'gm7-resume' and original.get('exists'):
+                            if any(original.get(key) != value for key, value in {'mode': 0o755, 'uid': 0, 'gid': 0}.items()):
+                                raise RuntimeError('Unsupported legacy EFI original metadata: ' + relative)
+                            # VFAT cannot represent the offline mount's mode;
+                            # retain it above while giving Store a restorable
+                            # effective snapshot. The old journal is untouched.
+                            output[relative]['original'] = dict(original, **{key: current[key] for key in ('mode', 'uid', 'gid')})
                     if current['data'] != installed['data']:
                         output[relative].update(applied=current, preserve=True, baseline=installed)
     for component in sorted(set(selected) & _RUNTIMES.keys()):

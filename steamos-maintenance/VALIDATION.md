@@ -108,11 +108,29 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 
 证据保存在忽略目录 `.release-work/windows-maintenance-final-tests-fixed.txt`、`.release-work/linux-maintenance-final-tests-complete.txt`，以及 `research/evidence/maintenance-language-20261016/`。测试均未应用正式维护包或替换设备 QA 信任。
 
+## 2026-10-16：正式维护 Release 与公开下载验证
+
+[maintenance-v0.1.4](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/maintenance-v0.1.4) 已发布，源码提交为 `83877625b35c89c748171112b2444a677d9db38c`。Opti 附件先发布于独立的 `maintenance-assets-v0.1.4`，随后开放维护目录。Windows Latest 仍为 `v0.1.3`；Opti Latest 仍为 `v0.2.4`。
+
+从两个公开 Release 匿名重新下载全部 22 个附件，与正式签名产物逐字节比对通过。重新验证 Ed25519 目录签名、核心包签名与摘要、12 个组件分片的大小、摘要和精确文件清单，以及可选 XMX 原始运行库摘要；目录包含 30 项能力（含独立操作）。实机普通用户也已从公开地址下载 Bash 脚本，摘要一致，尚未据此宣称升级完成。
+
+公开脚本 SHA-256：`b010f70e2af34e10d74ec47f1ee45b82bb0a06dbeda1c31117decb2ea9faa088`；核心包 SHA-256：`31e60e6cd954ab6ae512fada8dc1fad9b623b1d82296ab0af3dd01a097de788b`。证据：`.release-work/public-anonymous-download-verification.json`、`.release-work/public-maintenance-signature-verification.json`。
+
+## 2026-10-16：公开入口实机升级预检
+
+保留完整 QA 状态与原始恢复证据后，设备恢复到公开 0.1.3 项目文件基线并重启。重启后的项目元数据为 0.1.3，启动编排成功，Decky、原生 TDP、CPU、InputPlumber 和陀螺仪服务均为 active，无失败服务，只读保护 enabled。用户配置及第三方插件保留。此步骤没有升级 SteamOS。
+
+公开 Bash 入口在真实 KDE 会话下载并验证正式 0.1.4 核心包，默认显示中文，正确识别已安装项目 0.1.3。按选择下载组件并完成系统认证后，27 项预检中出现两个生产兼容性阻断：GM7 的旧日志模式为 0755，而真实 EFI/VFAT 挂载以 fmask=0077 映射为 0700；风扇配置的旧日志模式为 0600，而公开 0.1.3 风扇程序保存配置使用 0644。工具拒绝应用，没有绕过校验或写入组件。
+
+另一个 Light 目录冲突来自 QA 回滚后留下的两个空目录；独立检查确认无文件，保存私有恢复凭据后移除空目录，未修改插件代码或用户配置。权限认证首次因测试自动化未识别 KDE 弹窗而超时；重试并通过真实密码认证后得到上述预检结果，不把首次超时计为安装成功。
+
+生产兼容性修复与后续完整升级、重启验收仍在进行。证据保存在 `research/evidence/maintenance-public-upgrade-20261016/`；公开 Release 说明已补充阻断情况。
+
 ## 尚未完成的验收与发行条件
 
 - 尚未在其他 SteamOS 版本逐项完成硬件验收；便携组件与原生内核相关组件按各自兼容条件处理，不能把可发现/下载等同于可安装全部组件。
 - 尚未在实机全面应用 31 项资源，也未完成真实跨项目版本升级和物理断电验收。隔离测试覆盖相应状态机，但不能替代硬件验证。
-- 正式签名身份已配置；正式维护包公开发布、公开下载验证及 0.1.3 → 0.1.4 实机升级仍需按顺序执行。设备 QA 信任配置不作为正式发行配置，不静默替换公钥。
+- 正式维护包已公开发布且公开下载验证通过；0.1.3 → 0.1.4 实机升级待完成。设备 QA 信任配置不作为正式发行配置，不静默替换公钥。
 - 所有更新能力仅针对本项目，未升级 SteamOS 或修改官方系统更新策略。
 
 发布前按 [README.md](README.md) 完成剩余验收与签名发行配置。
