@@ -286,7 +286,9 @@ class TouchWindow:
         self.selected = set(self.selections.get(route, {item['id'] for item in self.views.get(route, {}).get('items', []) if item.get('selected') and item.get('enabled')}))
         self._render()
         self.scroll.get_vadjustment().set_value(0)
-        if route == 'repairs' and self.service.has_source and not self.initial_imported:
+        if route == 'overview':
+            self.perform('overview')
+        elif route == 'repairs' and self.service.has_source and not self.initial_imported:
             self.initial_imported = True
             self.perform('import', path=str(self.service.source))
         elif route == 'settings' and route not in self.views:
@@ -582,6 +584,8 @@ class TouchWindow:
             return False
         if action == 'settings' and self.retry_task:
             view = dict(view, **{key: value for key, value in self.retry_task[1].items() if key in ('enabled', 'channel')})
+        if action in self.service.mutating_actions:
+            self.views.pop('overview', None)
         self.retry_task = None
         self.route = route
         self.views[route] = view

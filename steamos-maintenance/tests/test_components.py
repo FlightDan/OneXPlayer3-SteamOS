@@ -12,7 +12,7 @@ from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oxp3_maintenance.components import build_plan, KERNEL, VERSION, GUARD, OLD_GUARD, PLUGIN_ROOT
+from oxp3_maintenance.components import build_plan, KERNEL, VERSION, GUARD, OLD_GUARD, SANDBOXED_GUARD, PLUGIN_ROOT
 
 
 class PlannerTests(unittest.TestCase):
@@ -237,6 +237,64 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn(OLD_GUARD, data)
         self.assertEqual(plan['components']['legacy-runtime']['units'], ['oxp3.service'])
         self.assertFalse(any('oxp3-selected-components' in x or 'system-update' in x for x in plan['files']))
+
+    def test_private_device_service_guard_sees_host_without_relaxing_daemon(self):
+        service = 'etc/systemd/system/oxp3-rapl.service'
+        body = (b'[Unit]\nRequires=dbus.socket\n[Service]\n'
+                b'Type=dbus\nUser=root\nGroup=root\n'
+                b'ExecCondition=/usr/bin/test -d /sys/class/powercap\n'
+                b'ExecStart=/usr/bin/python3 -I -B /var/lib/oxp3-rapl/provider.py\n'
+                b'NoNewPrivileges=yes\nPrivateDevices=yes\nProtectHome=yes\n'
+                b'ProtectSystem=strict\nCapabilityBoundingSet=\n')
+        # New payloads, legacy installer units, already maintained units and
+        # already fixed units all converge to one host-view guard. No prefix
+        # may grant the daemon privileges or turn a failed guard into success.
+        for prior in (b'', OLD_GUARD + b'\n', SANDBOXED_GUARD + b'\n', GUARD + b'\n'):
+            with self.subTest(prior=prior):
+                self.catalog, self.manifest = {'schema': 1, 'repairs': [], 'plugins': []}, {}
+                original = body.replace(b'[Service]\n', b'[Service]\n' + prior, 1)
+                self.component('native-tdp', {service: original}, units=['oxp3-rapl.service'])
+                plan = self.plan(['native-tdp'])
+                self.assert_ready(plan, 'native-tdp')
+                data = plan['files'][service]['data']
+                self.assertEqual(data.splitlines().count(GUARD), 1)
+                self.assertEqual(data.replace(GUARD + b'\n', b''), body)
+                self.assertNotIn(b'ExecStart=+', data)
+                self.assertNotIn(b'ExecCondition=-', data)
+                self.assertNotIn(OLD_GUARD, data)
+                self.assertNotIn(SANDBOXED_GUARD, data)
+
+    def test_user_services_preserve_original_activation_conditions(self):
+        services = {
+            'overlay': ('home/deck/.config/systemd/user/oxp3-overlay-telemetry.service',
+                        b'ExecStart=/usr/bin/python3 -I -B /var/lib/oxp3-overlay-telemetry/telemetry.py collect\n'),
+            'desktop-hdr': ('opt/oxp3-desktop-gamma22/6.7.3-1.6/lib/systemd/user/plasma-kwin_wayland.service',
+                            b'ExecStart=/opt/oxp3-desktop-gamma22/6.7.3-1.6/bin/kwin_wayland_wrapper --xwayland\n'),
+        }
+        # These are the two user-unit destinations in the accepted payload.
+        # The old integration guard only checked trusted files/device identity;
+        # do not delete it, or other existing conditions, while repairing the
+        # later root-only maintenance guard injection.
+        conditions = (b'ExecCondition=/usr/bin/test -d /run/user/1000\n' + OLD_GUARD + b'\n'
+                      + SANDBOXED_GUARD + b' --custom-condition\n'
+                      + b'# ' + GUARD + b'\n')
+        for name, (service, start) in services.items():
+            for prior in (b'', SANDBOXED_GUARD + b'\n', GUARD + b'\n',
+                          SANDBOXED_GUARD + b'\r\n' + GUARD + b'\n'):
+                with self.subTest(service=service, prior=prior):
+                    self.catalog, self.manifest = {'schema': 1, 'repairs': [], 'plugins': []}, {}
+                    original = b'[Unit]\nDescription=User session\n[Service]\n' + conditions + start
+                    payload = original.replace(b'[Service]\n', b'[Service]\n' + prior, 1)
+                    self.component(name, {service: payload})
+                    plan = self.plan([name])
+                    self.assert_ready(plan, name)
+                    self.assertEqual(plan['files'][service]['data'], original)
+
+    def test_unrelated_service_payload_is_not_given_a_root_guard(self):
+        service = 'var/lib/example/example.service'
+        original = b'[Service]\nExecCondition=/usr/bin/false\nExecStart=/usr/bin/true\n'
+        self.component('overlay', {service: original})
+        self.assertEqual(self.plan(['overlay'])['files'][service]['data'], original)
 
     def test_traversal_and_special_target_are_blocked(self):
         for unsafe in ('../escape', '/etc/escape', 'C:/escape', 'etc\\escape'):

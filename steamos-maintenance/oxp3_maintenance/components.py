@@ -21,7 +21,12 @@ VERSION = compatibility.BASE
 KERNEL = compatibility.KERNEL
 PLUGIN_ROOT = 'var/lib/oxp3-installer/decky/runtime/plugins'
 OLD_GUARD = b'ExecCondition=/usr/bin/python3 -I -B /usr/local/lib/oxp3-integration/integration_runtime.py guard'
-GUARD = b'ExecCondition=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py guard'
+SANDBOXED_GUARD = b'ExecCondition=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py guard'
+# The read-only guard authenticates the host root device and /home recovery
+# state. systemd's per-command + prefix lets only this trusted root check see
+# the host; PrivateDevices/ProtectHome and other restrictions still apply to
+# ExecStart and all other service commands. Keep the guard's exit status gate.
+GUARD = b'ExecCondition=+/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py guard'
 PLUGIN_NAMES = {'steamgriddb': 'SteamGridDB', 'protondb': 'ProtonDB Badges',
                 'tabmaster': 'TabMaster', 'css-loader': 'CSS Loader',
                 'autoflatpaks': 'AutoFlatpaks', 'deck-settings': 'Deck Settings',
@@ -148,7 +153,14 @@ def _merge_group(data, group, values):
 
 def _guard(data, target):
     if target.endswith('.service') and b'[Service]' in data:
-        data = data.replace(OLD_GUARD, GUARD)
+        if not target.startswith('etc/systemd/system/'):
+            # Match the installer system-unit boundary. A user manager cannot
+            # run the root-only maintenance guard, even with the + prefix.
+            # Remove only our previously injected complete command lines;
+            # retain legacy device checks and third-party ExecCondition lines.
+            return b''.join(line for line in data.splitlines(keepends=True)
+                            if line.rstrip(b'\r\n') not in (SANDBOXED_GUARD, GUARD))
+        data = data.replace(OLD_GUARD, GUARD).replace(SANDBOXED_GUARD, GUARD)
         if b'oxp3-integration/integration_runtime.py' in data:
             raise ValueError('Legacy activation reference in service: ' + target)
         if GUARD not in data:

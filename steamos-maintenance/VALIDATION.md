@@ -142,6 +142,40 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 
 证据：`.release-work/windows-maintenance-revision2-final-tests.txt`、`.release-work/revision1-public-discovery-explicit-version/report.json`、`.release-work/revision1-package-recovery-evidence-readonly.txt`，以及 `research/evidence/maintenance-public-upgrade-20261016/31-independent-failed-apply-assessment.json` 至 `35-independent-initial-abort-fix-review.json`。
 
+## 2026-10-16：修订 2 公开下载验证
+
+[维护修订 2](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/maintenance-v0.1.4%2Bmaintenance.2) 已发布，源码为 `f99700c1b1bae99ef2b7ad983f0fd120581114da`。两个仓库共 22 个附件匿名重新下载，与正式产物逐字节一致；目录、核心包签名及全部 12 个组件分片验证通过。公开核心包 SHA-256 为 `da3bc632e2fed3f01424a4c9078740e1daf0b889028f26b64ec436ea81ac8562`，发行公钥保持不变。
+
+明确指定 `--version '0.1.4+maintenance.2'` 的入口在强制 API 403、真实 Atom 和签名目录请求下通过。无参数 Atom 仍选中首版，这项没有记为通过；README 的三处命令均明确指定修订 2。实机已下载并验证相同公开核心包，放入独立 root 私有恢复目录，尚未据此宣称升级完成。
+
+证据：`.release-work/revision2-public-download-report.json`、`.release-work/revision2-public-signature-report.json`、`.release-work/revision2-public-discovery/report.json` 和 `research/evidence/maintenance-public-upgrade-20261016/37-public-revision2-recovery-engine.txt`。
+
+## 2026-10-16：实机失败应用的受控恢复
+
+对修订 1 失败现场重新核对同一启动、槽位、索引与生命周期摘要、七包注册缺失、527 个归档成员、系统 hooks 和无 ALPM 提交日志。系统签名检查曾留下空公钥环头部；它不是包提交证据，恢复期间没有初始化、删除或更换系统密钥。保存 root 私有原始备份后，仅修正已证明没有包落盘的包日志状态，再由公开下载并验签的修订 2 引擎执行 `recover`。
+
+独立后验确认 1,616 个组件路径的内容、权限、所有者和存在性与恢复前记录的预期一致；202 项用户配置及保留项完全不变，13 个服务的原运行与启用状态一致，真正原件索引摘要不变。失败组件收据和激活记录清空，只保留维护引擎；pending/live 操作记录清除，只读保护恢复。Light 的两个新建空目录经核对后单独以非递归方式清除，未删除文件；此项单独处置不作为通用事务目录恢复能力。
+
+证据：`.release-work/independent-abort-audit-238/after-summary.json`，以及 `research/evidence/maintenance-public-upgrade-20261016/42-independent-keyring-no-commit-review.json`、`44-no-package-commit-guard-audit-v4.txt` 至 `48-light-empty-after-abort-cleanup.txt`。恢复成功不等同于升级成功，后续重新执行公开安装入口验证。
+
+## 2026-10-16：修订 2 实际升级与重启发现
+
+受控恢复后，再次通过公开 Bash 入口选择 26 项组件（未选 Waydroid、XMX、槽位切换及 rEFInd），完成真实 KDE 系统认证、审核和应用。generation 3 的收据、组件修订及激活元数据均为 `0.1.4+maintenance.2`；29 个维护程序文件匹配公开核心包，受管不可变文件无差异。202 项保留记录、158 个文件摘要不变，三处可变配置保留用户内容，pending/live 清除，只读保护 enabled。
+
+正常重启后，InputPlumber、陀螺仪、Decky、CPU 和风扇运行，split-lock 启动参数生效，串口服务未反复重启。但原生 TDP 被启动前检查跳过：`PrivateDevices` 使维护检查无法访问真实根分区设备。只读瞬时服务 A/B 确认，仅给可信检查添加 systemd 的逐命令 `+` 前缀可通过，后续服务命令仍保持设备隔离；原 TDP 服务未被诊断修改或启动。
+
+独立审查另外发现，维护规划误向用户服务注入 root 专用检查。实机 KDE Wayland 正常进入，但性能遥测用户服务被该检查跳过。界面还出现应用成功后概览缓存旧修订号的问题。这些失败保留记录，修订 2 不计为完整重启验收通过；修订 3 修复后重新验收。
+
+证据：`.release-work/independent-abort-audit-238/success-preboot-summary.json`、`success-postboot-summary.json`、`runtime-postboot.json`、`private-device-guard-diagnostic.json`，以及 `research/evidence/maintenance-public-upgrade-20261016/53-revision2-selected-awake.png` 至 `69-revision2-user-services.txt`。
+
+## 2026-10-16：修订 3 发布前检查
+
+系统服务的可信只读启动检查使用 systemd 逐命令 `+` 前缀，服务本身保留原有隔离。仅对安装器管理的系统服务路径注入检查；其他服务逐完整行移除此前误加的两种维护检查，保留旧设备检查、第三方条件、注释及附加参数。独立临时 Store 验证两个真实用户服务路径的升级、回退及恢复；实际用户 manager 需要重新登录或重启后重新加载。概览导航沿用异步线程重新读取已安装版本，成功修改后清除旧缓存，失败操作保留原状态。
+
+冻结源码最终全量各 529 项：Windows 原生 OpenSSL/DPAPI 环境 516 通过、13 项平台跳过；无网络本地隔离 QEMU Linux 514 通过、15 项条件跳过，无失败或错误。Linux 校验全部 278 个输入摘要；新增服务路径和概览刷新测试通过。独立审查未发现阻断。旧 snapshot1 在用户服务修复前通过的 527 项只保留为基线，不作为最终发布证据。
+
+证据：`.release-work/windows-maintenance-revision3-final-tests.txt`、`.release-work/maintenance-revision3-snapshot2-final-local-console.txt`。本修订公开下载及完整实机重启验收随后进行，Windows 发行继续等待最终验收。
+
 ## 尚未完成的验收与发行条件
 
 - 尚未在其他 SteamOS 版本逐项完成硬件验收；便携组件与原生内核相关组件按各自兼容条件处理，不能把可发现/下载等同于可安装全部组件。

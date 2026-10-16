@@ -158,8 +158,8 @@ Open a terminal in SteamOS KDE Desktop Mode, then download and launch the instal
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.2/install-oxp3-maintenance.sh \
-  && bash install-oxp3-maintenance.sh --version '0.1.4+maintenance.2'
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.3/install-oxp3-maintenance.sh \
+  && bash install-oxp3-maintenance.sh --version '0.1.4+maintenance.3'
 ```
 
 Select the repairs or plugins you need; components download on demand. Version 0.1.4 provides signed maintenance packages and a Bash installer. See the [maintenance instructions](steamos-maintenance/README.md) and [validation record](steamos-maintenance/VALIDATION.md) for tested coverage and remaining checks.
