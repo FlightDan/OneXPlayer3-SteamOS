@@ -1,7 +1,7 @@
 # 0.1.4 更新清单与验收
 
 本页记录 2026-10-16 新增集成及验收范围。完整 Windows x64 安装应用 ZIP 通过 Releases 提供，不包含 SteamOS 系统镜像。
-维护修订 `0.1.4+maintenance.3` 已先行发布，公开下载、签名验证及本机 0.1.3 → 0.1.4 的 26 项组件升级和正常重启验收完成；中间失败、修复和测试边界完整保留在[维护验证记录](../../steamos-maintenance/VALIDATION.md)。以下各专题的原有硬件验收范围继续适用，不等同于完整无人值守全新安装验收。
+维护修订 `0.1.4+maintenance.3` 已先行发布，公开下载、签名验证及本机 0.1.3 → 0.1.4 的 26 项组件升级和正常重启验收完成；中间失败、修复和测试边界完整保留在[维护验证记录](https://github.com/FlightDan/OneXPlayer3-SteamOS/blob/v0.1.4/steamos-maintenance/VALIDATION.md)。以下各专题的原有硬件验收范围继续适用，不等同于完整无人值守全新安装验收。
 
 ## Split-lock 报告修复
 
