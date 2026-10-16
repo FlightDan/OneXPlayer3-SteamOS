@@ -211,3 +211,16 @@ Atom 查询不再被前三个没有维护目录的 Windows 发行挡住：按版
 README 仅将三处脚本 URL 指向修订 4 并移除对应的 `--version` 参数，其余内容不变。旧脚本附件保留，使用旧下载副本的用户需要重新下载新入口。旧安装版可先通过该入口审核“仅更新维护工具”。本次没有重新执行实机组件安装；此前修订 3 的实机结果保持其原验收范围。
 
 证据：`.release-work/windows-maintenance-revision4-tests.txt`、`.release-work/maintenance-revision4-full-final-report.json`、`.release-work/revision4-final-source-match.json`、`.release-work/revision4-final-artifact-verification.json`、`.release-work/revision4-default-before-publication/report.json`；公开复验使用 `.release-work/revision4-default-public/report.json`。
+
+
+## 2026-10-16：README 无版本参数的实机更新
+
+在同一 OXP3 KDE 会话运行从 README 原样提取的 curl/Bash 命令，没有传入 `--version`。实际服务启动命令已留存；公开脚本 SHA-256 为 `996fb7760585c56e2de4be949769a48dd53a4ba21de20f1167f8f29a8afdee55`。实机自动选择并验签 `0.1.4+maintenance.4`，默认打开中文窗口。
+
+通过原生界面审核“仅更新维护工具”，完成计划和应用的真实系统认证，从维护修订 3 / generation 5 更新至修订 4 / generation 6。未重新应用硬件组件。关闭临时窗口后，从正式安装路径重新打开，概览显示修订 4；安装版正常“检查项目更新”仍选择修订 4。
+
+独立只读验收 31/31 项通过：29 份已安装程序与公开正式包一致，运行目录内容身份一致；原 26 项组件的收据语义、修订和激活版本保持修订 3 的已验收状态，没有误记为重新安装。202 项原配置和保留记录无差异，受管不可变文件一致，原三处自定义配置保留；无未完成事务或失败服务，只读保护 enabled。TDP、用户遥测、输入、陀螺仪、Decky、CPU 和风扇状态正常。此次未重启，boot ID 保持不变。
+
+首个审计器曾错误地以归档摘要代替运行目录内容身份，导致该项误报；按路径和文件内容独立重建身份后，使用全新证据名重跑通过。没有为通过检查修改设备。
+
+证据：`research/evidence/maintenance-public-upgrade-20261016/99-revision4-readme-launch.json`、`100-revision4-default-bootstrap.txt`、`113-revision4-tool-completed-ui.json`、`116-revision4-installed-ui-launch.txt`、`118-revision4-update-check-ui.json`、`120-revision4-installed-overview.png`，及 `.release-work/revision4-device-audit/r4-after-tool-update-final-summary.json`。
