@@ -298,6 +298,9 @@ class DesktopService:
                               self.t('GM7 休眠恢复、Split-lock 报告洪泛修复', 'GM7 suspend recovery, split-lock workaround')))
             pending = result.get('operations', {}).get('pending')
             message = self.t('存在未完成的操作，请到“恢复”继续处理。', 'An unfinished operation needs recovery.') if pending else self.t('系统状态读取完成。旧版文件只有通过接管预检后才会纳入管理。', 'Status loaded. Legacy files require adoption checks before becoming managed.')
+            if not pending and current.get('release', {}).get('apply_outcome') == 'aborted_engine_retained':
+                message = self.t('组件升级已中止；已恢复升级前的组件，仅保留维护恢复程序。上方版本为维护程序版本。',
+                                 'The component upgrade was aborted. Components returned to their prior state; the recovery engine was retained. The version above identifies the maintenance engine.')
             return self._view(self.t('当前状态', 'Current status'), message, facts=facts,
                               items=[dict(id=n, title=self._label(n), detail=self.t('由维护工具管理', 'Managed by this tool'), enabled=True, selected=False) for n in names])
         if action == 'discover':

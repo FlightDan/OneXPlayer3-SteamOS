@@ -239,6 +239,13 @@ class Store:
             for key in ('current', 'previous'):
                 generation = record.get(key)
                 if generation is not None:
+                    if 'aborted_apply' in generation:
+                        aborted = generation['aborted_apply']
+                        if (not isinstance(aborted, dict) or set(aborted) != {'generation', 'source_generation'}
+                                or type(aborted['generation']) is not int or aborted['generation'] < 1
+                                or aborted['source_generation'] is not None and (
+                                    type(aborted['source_generation']) is not int or aborted['source_generation'] < 1)):
+                            raise TransactionError('Invalid apply abort provenance')
                     for field in ('legacy_selected', 'legacy_adopted'):
                         if field in generation:
                             self._legacy_choices(generation[field])
@@ -766,7 +773,7 @@ class Store:
                 generation["id"] = old["id"]
             return self._commit(index, slot, generation, operations, preserved=preserved)
 
-    def rollback(self, slot: str):
+    def rollback(self, slot: str, *, _aborted_apply=None):
         with self.lock():
             slot = self._slot(slot)
             index = self._ready(slot)
@@ -841,7 +848,81 @@ class Store:
                     self._check_shared(index, slot, path, after)
                     operations.append({"path": path, "before": before, "after": after, "user": user})
             target["id"] = old["id"]
+            if _aborted_apply is not None:
+                target['aborted_apply'] = copy.deepcopy(_aborted_apply)
             return self._commit(index, slot, target, operations, preserved=edited, action="rollback")
+
+    def abort_apply(self, slot: str, *, generation: int, source_generation: int | None):
+        """Undo the journaled apply, retaining a first installed recovery engine.
+
+        A first adoption has no managed predecessor. Its legacy before-images
+        are distinct from the true originals used by an explicit uninstall.
+        Bind this operation to both generation IDs so stale lifecycle intent
+        cannot undo an unrelated apply or toggle an already completed abort.
+        """
+        with self.lock():
+            slot = self._slot(slot)
+            index = self._ready(slot)
+            record = index['slots'].get(slot) or {}
+            old, previous = record.get('current'), record.get('previous')
+            if (type(generation) is not int or generation < 1
+                    or source_generation is not None and (type(source_generation) is not int or source_generation < 1)
+                    or not old or old['id'] != generation
+                    or (previous['id'] if previous else None) != source_generation):
+                raise TransactionError('Apply abort does not match the recorded source generation')
+            if previous is not None:
+                return self.rollback(slot, _aborted_apply={'generation': generation, 'source_generation': source_generation})
+            actual, edited = self._live_checked(old)
+            engine = old['paths'].get('usr/local/lib/oxp3-maintenance/entry.py', {})
+            if (engine.get('component') != '_maintenance' or engine.get('mutable', True)
+                    or engine.get('user', True)):
+                raise TransactionError('Apply abort requires an immutable recovery engine')
+            before_images = self._adoption_snapshots(old.get('adoption_before', {}))
+            target = {'paths': {}, 'release': copy.deepcopy(old['release']),
+                      'selected': ['_maintenance'], 'id': old['id'],
+                      'legacy_selected': self._legacy_choices(list(set(old.get('legacy_selected', []))
+                                                                 | set(old.get('legacy_adopted', []))))}
+            target['release']['apply_outcome'] = 'aborted_engine_retained'
+            target['aborted_apply'] = {'generation': generation, 'source_generation': source_generation}
+            operations = []
+            from .decky_order import SETTINGS
+            order_edit = self._order_edit(old['decky_order_edit']) if 'decky_order_edit' in old else None
+            for path, entry in old['paths'].items():
+                if entry['component'] == '_maintenance':
+                    if entry['mutable']:
+                        raise TransactionError('Apply abort requires an immutable recovery engine')
+                    target['paths'][path] = copy.deepcopy(entry)
+                    if path in ('usr/local/lib/oxp3-maintenance/activation.json',
+                                'usr/local/lib/oxp3-maintenance/current-release.json'):
+                        if entry['user']:
+                            raise TransactionError('Apply abort requires protected recovery metadata')
+                        try:
+                            metadata = json.loads(base64.b64decode(entry['snapshot']['data']))
+                            if path.endswith('/activation.json'):
+                                metadata['components'] = {}
+                            else:
+                                metadata.setdefault('component_revisions_by_slot', {}).pop(slot, None)
+                            metadata['apply_outcome'] = 'aborted_engine_retained'
+                            after = dict(entry['snapshot'], data=base64.b64encode(
+                                (json.dumps(metadata) + '\n').encode()).decode('ascii'))
+                        except (ValueError, TypeError, KeyError, AttributeError) as error:
+                            raise TransactionError('Invalid retained recovery metadata: ' + path) from error
+                        target['paths'][path]['snapshot'] = after
+                        if actual[path] != after:
+                            operations.append({'path': path, 'before': actual[path], 'after': after, 'user': False})
+                    continue
+                before = actual[path]
+                after = before_images.get(path, index['originals'][self._scope(slot, path)])
+                if path == SETTINGS and order_edit:
+                    after = order_edit['before']
+                if path in edited or self._other_owners(index, slot, path):
+                    after = before
+                if before != after:
+                    self._check_shared(index, slot, path, after)
+                    operations.append({'path': path, 'before': before, 'after': after, 'user': entry['user']})
+            if not target['paths']:
+                raise TransactionError('Apply abort requires a retained recovery engine')
+            return self._commit(index, slot, target, operations, preserved=edited, action='abort')
 
     def restore(self, slot: str, components: list[str] | None = None):
         with self.lock():

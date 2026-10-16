@@ -132,6 +132,16 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 
 证据保存在 `research/evidence/maintenance-public-upgrade-20261016/`、`.release-work/windows-maintenance-revision1-final-tests.txt` 和 `.release-work/maintenance-old-installer-atom-counterexample.json`；公开 Release 说明已补充首版阻断情况。
 
+## 2026-10-16：修订 1 实际应用与修订 2 恢复修复
+
+公开修订 1 的全部 22 个附件匿名下载、摘要与签名验证通过。新 Bash 的显式 `--version '0.1.4+maintenance.1'` 在强制 API 403、实际 Atom 与签名目录请求下通过；无参数 Atom 发现仍可能因相同 SemVer 优先级选中首版，不将该场景记为通过。安装命令明确指定内部修订版。
+
+实机 27 项预检通过后，文件 generation 1 已提交，但可选 Waydroid 包安装失败，生命周期日志保留在 `writing`，没有作为升级成功处理。pacman 除固定五包还解析出未注册的 `lxc`、`dnsmasq`，缺少系统公钥环使下载校验阶段失败。七包共 527 个归档成员的非目录目标均不存在，父路径无链接或类型异常；无包内安装脚本或 hooks，原始三次安装日志无 ALPM transaction start，系统 PreTransaction hooks 不匹配此次安装。独立检查确认 202 条保留记录和 158 个文件摘要完全不变。
+
+修订 2 在写入前核对 pacman 完整事务的包名、版本和归档来源，拒绝未受日志追踪的隐式依赖；保留原始安装错误与恢复错误。首次接管失败改为恢复升级前的 `adoption_before`，保留真正原件供显式恢复使用，并保留维护引擎；清除失败组件的收据与激活声明。持久中止意图和来源标记覆盖中断重入，避免重复恢复反向切换。两部分已独立复核；Windows 全量 521 项：508 通过、13 项平台跳过；无网络的本地隔离 QEMU Linux 全量 521 项：506 通过、15 项条件跳过，无失败或错误。Linux 首次接管中止恢复 12 项、包事务保护 28 项全部通过。实际恢复和升级验收仍待完成。
+
+证据：`.release-work/windows-maintenance-revision2-final-tests.txt`、`.release-work/revision1-public-discovery-explicit-version/report.json`、`.release-work/revision1-package-recovery-evidence-readonly.txt`，以及 `research/evidence/maintenance-public-upgrade-20261016/31-independent-failed-apply-assessment.json` 至 `35-independent-initial-abort-fix-review.json`。
+
 ## 尚未完成的验收与发行条件
 
 - 尚未在其他 SteamOS 版本逐项完成硬件验收；便携组件与原生内核相关组件按各自兼容条件处理，不能把可发现/下载等同于可安装全部组件。

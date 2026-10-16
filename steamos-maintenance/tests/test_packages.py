@@ -1,9 +1,11 @@
 """Package recovery fixtures; no system package manager is invoked."""
 import json
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oxp3_maintenance.packages import PackageStore, PackageError, NAMES
@@ -19,6 +21,8 @@ class Pacman:
         self.fail_depmod = False
         self.before_install = None
         self.query_error = False
+        self.transaction_output = None
+        self.transaction_error = None
 
     def __call__(self, *args, check=True):
         self.calls.append(args)
@@ -29,6 +33,12 @@ class Pacman:
         if args[:2] == ('pacman', '-Qp'):
             name, version = self.sources[args[2]]
             return name + ' ' + version
+        if args[:3] == ('pacman', '-U', '--print'):
+            if self.transaction_error:
+                raise self.transaction_error
+            if self.transaction_output is not None:
+                return self.transaction_output
+            return '\n'.join('\t'.join((*self.sources[path], path)) for path in args[6:])
         if args[:3] == ('pacman', '-U', '--noconfirm'):
             if self.before_install:
                 self.before_install()
@@ -72,7 +82,138 @@ class PackageTests(unittest.TestCase):
         return json.loads(self.store.path.read_bytes())
 
     def mutating_calls(self):
-        return [call for call in self.fake.calls if call[:2] in (('pacman', '-U'), ('pacman', '-R'))]
+        return [call for call in self.fake.calls if call[:3] in
+                (('pacman', '-U', '--noconfirm'), ('pacman', '-R', '--noconfirm'))]
+
+    def printed_transaction(self):
+        return '\n'.join('\t'.join((*self.fake.sources[str(path)], str(path))) for path in self.paths)
+
+    def test_implicit_repository_dependencies_are_refused_before_journal_or_install(self):
+        for extra in ('lxc\t6.0-1\thttps://mirror/lxc.pkg.tar.zst',
+                      'unrelated-user-package\t10.0-1\thttps://mirror/unrelated.pkg.tar.zst'):
+            with self.subTest(extra=extra):
+                self.fake.transaction_output = self.printed_transaction() + '\n' + extra
+                with self.assertRaisesRegex(PackageError, 'exceeds the exact staged package set'):
+                    self.store.prepare(self.paths)
+                self.assertFalse(self.store.path.exists())
+                self.assertEqual(self.mutating_calls(), [])
+                self.assertEqual(self.fake.installed, {'unrelated-user-package': '9.0-1'})
+
+    def test_transaction_requires_complete_unique_archive_identities(self):
+        good = self.printed_transaction()
+        for malformed in ('', good + '\n' + good.splitlines()[0],
+                          'loading packages...', good.replace('\t1.0-1\t', '\t2.0-1\t', 1),
+                          good.replace(str(self.paths[0]), 'https://mirror/same-name.pkg.tar.zst', 1),
+                          good.replace('\t', ' ', 1)):
+            with self.subTest(output=malformed):
+                self.fake.transaction_output = malformed
+                with self.assertRaises(PackageError):
+                    self.store.prepare(self.paths)
+                self.assertFalse(self.store.path.exists())
+                self.assertEqual(self.mutating_calls(), [])
+
+    def test_print_preflight_failure_preserves_signing_error_without_install(self):
+        # Project bundle authentication does not disable pacman's independent
+        # signing checks, and a print failure must remain actionable.
+        self.fake.transaction_error = PackageError('required key missing; keyring is not initialized')
+        with self.assertRaisesRegex(PackageError, 'required key missing'):
+            self.store.prepare(self.paths)
+        self.assertFalse(self.store.path.exists())
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_exact_preinstalled_five_require_no_transaction_or_signature_override(self):
+        self.fake.installed.update({name: '1.0-1' for name in NAMES})
+        self.fake.transaction_error = AssertionError('No pending archive transaction')
+        self.assertEqual(self.store.prepare(self.paths)['phase'], 'prepared')
+        self.assertEqual(self.store.install()['phase'], 'installed')
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_transaction_is_rechecked_immediately_before_install(self):
+        self.store.prepare(self.paths)
+        self.fake.transaction_output = self.printed_transaction() + '\nlxc\t6.0-1\thttps://mirror/lxc.pkg.tar.zst'
+        with self.assertRaisesRegex(PackageError, 'exceeds the exact staged package set'):
+            self.store.install()
+        self.assertEqual(self.read_journal()['phase'], 'prepared')
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_recovery_completion_refuses_implicit_dependencies_and_keeps_intent(self):
+        self.store.prepare(self.paths)
+        journal = self.read_journal()
+        journal['phase'] = 'installing'
+        self.store.path.write_bytes(json.dumps(journal).encode())
+        self.fake.transaction_output = self.printed_transaction() + '\nlxc\t6.0-1\thttps://mirror/lxc.pkg.tar.zst'
+        with self.assertRaisesRegex(PackageError, 'Unregistered package files may remain.*lxc'):
+            self.store.recover()
+        self.assertEqual(self.read_journal()['phase'], 'rollback_failed')
+        self.assertEqual(self.read_journal()['rollback_stage'], 'complete-install')
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_install_and_completion_errors_remain_visible_and_durable(self):
+        self.store.prepare(self.paths)
+        original = self.fake.__call__
+        failures = iter(('initial pacman signing failure: required key missing',
+                         'recovery pacman signing failure: missing public key'))
+        def command(*args, check=True):
+            if args[:3] == ('pacman', '-U', '--noconfirm'):
+                raise PackageError(next(failures))
+            return original(*args, check=check)
+        self.store.command = command
+        with self.assertRaises(PackageError) as caught:
+            self.store.install()
+        message = str(caught.exception)
+        self.assertIn('initial pacman signing failure', message)
+        self.assertIn('recovery pacman signing failure', message)
+        self.assertIn('registration verification failed', message)
+        saved = self.read_journal()
+        self.assertIn('initial pacman signing failure', saved['install_error'])
+        self.assertIn('recovery pacman signing failure', saved['recovery_install_error'])
+        self.assertIn('missing or changed', saved['recovery_verification_error'])
+        self.assertEqual(saved['phase'], 'rollback_failed')
+
+    def test_apply_dependency_refusal_precedes_managed_files_and_service_mutation(self):
+        from oxp3_maintenance import cli, operations as op
+        directory = self.base / 'verified'
+        directory.mkdir()
+        relative = ['usr/local/lib/oxp3-waydroid/packages/' + path.name for path in self.paths]
+        plan = {'selected': ['waydroid'], 'components': {'waydroid': {
+            'status': 'ready', 'units': ['waydroid-container.service'],
+            'package_install_required': True, 'package_files': relative}},
+            'files': {name: {'data': path.read_bytes()} for name, path in zip(relative, self.paths)}}
+        system = {'slot': {'id': 'A'}, 'shared_os_compatible': True}
+        store = mock.Mock()
+        store.lock.return_value = nullcontext()
+        original = self.fake.__call__
+        def command(*args, check=True):
+            if args[:2] == ('pacman', '-Qp') and args[2] not in self.fake.sources:
+                name = Path(args[2]).read_bytes().decode().split(': ', 1)[1]
+                self.fake.sources[args[2]] = (name, '1.0-1')
+            output = original(*args, check=check)
+            if args[:3] == ('pacman', '-U', '--print'):
+                return output + '\nlxc\t6.0-1\thttps://mirror/lxc.pkg.tar.zst'
+            return output
+        with ExitStack() as stack:
+            for name, replacement in {
+                'STATE': self.base / 'apply-state', 'RUNTIME': self.base / 'not-installed',
+                'require_root': mock.Mock(), 'trusted_code': mock.Mock(),
+                'device_supported': mock.Mock(return_value=True),
+                'store_for': mock.Mock(return_value=store),
+                'authenticated': mock.Mock(return_value=nullcontext((directory, {'release': {'version': '0.2.0'}}))),
+                'prepare': mock.Mock(return_value=(plan, {})), 'runtime_files': mock.Mock(return_value={}),
+                'check_space': mock.Mock(), 'current_selection': mock.Mock(return_value=[]),
+                '_service_history': mock.Mock(), 'command': command,
+                'PackageStore': lambda state, slot, command: PackageStore(state, slot, command, enforce_owner=False),
+            }.items():
+                stack.enter_context(mock.patch.object(op, name, replacement))
+            stack.enter_context(mock.patch.object(op.probe, 'live', return_value=system))
+            stack.enter_context(mock.patch.object(cli, 'installed_release', return_value={'version': '0.1.0'}))
+            live = stack.enter_context(mock.patch.object(op, 'live_write'))
+            with self.assertRaisesRegex(PackageError, 'exceeds the exact staged package set.*lxc'):
+                op.apply(cli.parser().parse_args(['apply', '--select', 'waydroid']))
+            live.assert_not_called()
+        store.apply.assert_not_called()
+        self.assertEqual(self.mutating_calls(), [])
+        self.assertFalse(any(call[0] in ('systemctl', 'steamos-readonly', 'depmod') for call in self.fake.calls))
+        self.assertFalse((self.base / 'apply-state/packages-A.json').exists())
 
     def test_prepare_records_original_ownership_and_durable_install_intent(self):
         self.fake.installed['libgbinder'] = '1.0-1'
@@ -167,7 +308,7 @@ class PackageTests(unittest.TestCase):
         partial.write_bytes(b'partially unpacked file')
         original = self.fake.__call__
         def command(*args, check=True):
-            if args[:2] == ('pacman', '-U'):
+            if args[:3] == ('pacman', '-U', '--noconfirm'):
                 raise RuntimeError('partial unregistered file causes filesystem conflict')
             return original(*args, check=check)
         self.store.command = command

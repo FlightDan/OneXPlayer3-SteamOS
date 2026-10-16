@@ -29,8 +29,8 @@
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4/install-oxp3-maintenance.sh \
-  && bash install-oxp3-maintenance.sh
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.2/install-oxp3-maintenance.sh \
+  && bash install-oxp3-maintenance.sh --version '0.1.4+maintenance.2'
 ```
 
 脚本内嵌验证代码和发行公钥，默认选择稳定版，先验证完整签名目录及小型核心包，再打开原生安装窗口。它以普通桌面用户运行，**不要加 sudo**；进入“修复与插件”选择项目后，按需获取缺少的组件和依赖，检查更改，确认后由系统认证执行安装。下载及已验证的组件缓存在 `~/Downloads/OXP3`，退出窗口后清理临时运行副本。已有旧维护后端时，先审核“仅更新维护工具”，再继续组件选择；工具升级不会把旧修复误记为已更新。安装后的更新核对原有公钥并拒绝降级；签名错误、缺包或网络失败会停止。

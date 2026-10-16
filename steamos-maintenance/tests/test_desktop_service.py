@@ -209,6 +209,20 @@ class DesktopServiceTests(unittest.TestCase):
         self.assertNotEqual(view['tone'], 'success')
         self.assertNotIn('Files and recovery records were saved', view['message'])
 
+    def test_aborted_first_upgrade_status_identifies_retained_engine(self):
+        status = {'release': {'version': '0.1.4'},
+                  'system': {'os': {'VERSION_ID': '3.10'}, 'slot': {'id': 'A', 'label': 'A'}},
+                  'operations': {'slots': {'A': {'current': {'selected': ['_maintenance'],
+                      'legacy_selected': ['input'], 'release': {'apply_outcome': 'aborted_engine_retained'}}}},
+                      'pending': None}}
+        with mock.patch.object(self.service, '_backend', return_value=status):
+            view = self.service.perform('status')
+        self.assertIn('component upgrade was aborted', view['message'])
+        self.assertIn('recovery engine was retained', view['message'])
+        self.assertEqual(view['items'], [])
+        self.assertIn(('Managed components', '0'), view['facts'])
+        self.assertIn(('Retained legacy choices', '1'), view['facts'])
+
     def test_status_and_logs_return_human_views_without_private_json(self):
         status = {'release': {'version': '1.1.0'},
                   'system': {'os': {'VERSION_ID': '3.10'}, 'slot': {'id': 'A', 'label': 'A'}},

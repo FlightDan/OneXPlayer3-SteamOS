@@ -376,11 +376,22 @@ def _generation(store, system):
     return current['id'] if current else None
 
 
-def _abort_apply(store, system, components):
-    current = store.status()['slots'][system['slot']['id']]
-    if current['previous'] is None:
-        return store.restore(system['slot']['id'], components)
-    return store.rollback(system['slot']['id'])
+def _abort_apply(store, system, live):
+    # Persist the inverse operation before any target write. Recovery must not
+    # mistake a completed inverse for a fresh apply and toggle it back again.
+    if live.get('file_action') != 'abort':
+        if _generation(store, system) != live['file_generation']:
+            raise RuntimeError('Apply abort does not match the committed file generation')
+        live.update(apply_source_generation=live['source_generation'],
+                    source_generation=live['file_generation'], file_action='abort',
+                    file_generation=store._index()['next_generation'],
+                    after_services=live['services'])
+        _save_private(STATE / 'live-operation.json', live)
+    result = store.abort_apply(system['slot']['id'], generation=live['source_generation'],
+                               source_generation=live['apply_source_generation'])
+    live['file_generation'] = result['generation']
+    _save_private(STATE / 'live-operation.json', live)
+    return result
 
 
 def _managed_gyro_binding(store, slot):
@@ -713,9 +724,10 @@ def apply(args, *, bootstrap=False):
                 if package_new:
                     packages.rollback()
                 if operation['changed']:
-                    _abort_apply(store, system, plan['selected'])
+                    _abort_apply(store, system, live)
                 live['after_services'] = live['services']
-                live['file_action'] = 'aborted'
+                if live.get('file_action') != 'abort':
+                    live['file_action'] = 'aborted'
                 live['file_generation'] = _generation(store, system)
                 _save_private(STATE / 'live-operation.json', live)
                 raise
@@ -797,6 +809,18 @@ def restore(args, *, previous=False, recovery=False):
                 result = store.recover(slot=system['slot']['id'])
                 committed = (saved is not None and isinstance(saved.get('file_generation'), int)
                              and _generation(store, system) == saved['file_generation'])
+                if saved and saved.get('file_action') == 'abort':
+                    if committed:
+                        generation = store._index()['slots'][system['slot']['id']]['current']
+                        expected = {'generation': saved['source_generation'],
+                                    'source_generation': saved['apply_source_generation']}
+                        if generation.get('aborted_apply') != expected:
+                            raise RuntimeError('Apply abort recovery found an unrelated file generation')
+                    else:
+                        if _generation(store, system) != saved.get('source_generation'):
+                            raise RuntimeError('Apply abort recovery found an unrelated file generation')
+                        result = _abort_apply(store, system, saved)
+                        committed = True
                 if saved and not committed and _generation(store, system) == saved.get('source_generation'):
                     if saved.get('file_action') == 'restore':
                         result = store.restore(system['slot']['id'], saved['file_components'])
@@ -818,10 +842,10 @@ def restore(args, *, previous=False, recovery=False):
                     else:
                         packages.rollback()
                         if committed:
-                            result = _abort_apply(store, system, saved['file_components'])
+                            result = _abort_apply(store, system, saved)
                             committed = False
                 elif apply_packages and package_state['phase'] == 'restored' and committed:
-                    result = _abort_apply(store, system, saved['file_components'])
+                    result = _abort_apply(store, system, saved)
                     committed = False
                 current = store.status()['slots'].get(system['slot']['id'], {}).get('current')
                 modules = set(saved.get('file_components', []) if saved else [])

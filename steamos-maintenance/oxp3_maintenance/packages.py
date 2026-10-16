@@ -181,6 +181,43 @@ class PackageStore:
             raise PackageError('Managed host package is missing or changed: ' + ', '.join(conflicts))
         return value
 
+    def _preflight_transaction(self, entries):
+        """Resolve the actual archive transaction without changing the host.
+
+        ``pacman -U`` can add or upgrade repository dependencies implicitly.
+        They are outside this journal's ownership and must never be installed.
+        Print mode resolves dependencies, but does not prove signature validity:
+        the authenticated project bundle and pacman's normal signature policy
+        remain separate checks. In particular, Optional local signatures do not
+        require us to initialize or change the system keyring.
+        """
+        if not entries:
+            return
+        output = self.command('pacman', '-U', '--print', '--print-format',
+                              '%n\t%v\t%l', '--noconfirm',
+                              *(entry['path'] for entry in entries))
+        if not isinstance(output, str):
+            raise PackageError('Unexpected package transaction output')
+        expected = {entry['name']: (entry['version'], entry['path']) for entry in entries}
+        resolved = {}
+        for line in output.splitlines():
+            words = line.split('\t')
+            if len(words) != 3 or any(not word or '\x00' in word for word in words) or words[0] in resolved:
+                raise PackageError('Malformed or duplicate package transaction entry')
+            name, version, location = words
+            resolved[name] = (version, location)
+        if resolved != expected:
+            unexpected = sorted(name for name, identity in resolved.items()
+                                if expected.get(name) != identity)
+            missing = sorted(set(expected) - set(resolved))
+            details = []
+            if unexpected:
+                details.append('unexpected packages or archive sources: ' + ', '.join(unexpected))
+            if missing:
+                details.append('missing packages: ' + ', '.join(missing))
+            raise PackageError('Host package transaction exceeds the exact staged package set; '
+                               + '; '.join(details))
+
     def prepare(self, package_paths: list[Path]) -> dict:
         if not isinstance(package_paths, list) or len(package_paths) != 5:
             raise PackageError('Exactly five staged Waydroid package files are required')
@@ -203,6 +240,7 @@ class PackageStore:
                             'original_installed': name in installed})
         value = {'schema': 1, 'slot': self.slot, 'phase': 'prepared', 'packages': sorted(entries, key=lambda x: x['name'])}
         self._validate(value)
+        self._preflight_transaction([entry for entry in value['packages'] if not entry['original_installed']])
         previous = self._read()
         if previous is not None and previous['phase'] != 'restored':
             before = [(x['name'], x['version'], x['sha256']) for x in previous['packages']]
@@ -238,10 +276,12 @@ class PackageStore:
             path, digest = self._package_file(entry['path'])
             if digest != entry['sha256'] or self._parse(self.command('pacman', '-Qp', str(path))) != {entry['name']: entry['version']}:
                 raise PackageError('Staged package changed after preparation: ' + entry['name'])
+        pending = [entry for entry in value['packages'] if not entry['original_installed']]
+        self._preflight_transaction(pending)
         value['phase'] = 'installing'
         self._save(value)  # Intent must be durable before pacman can mutate.
         try:
-            paths = [entry['path'] for entry in value['packages'] if not entry['original_installed']]
+            paths = [entry['path'] for entry in pending]
             if paths:
                 self.command('pacman', '-U', '--noconfirm', *paths)
             self._verify_installed(value)
@@ -250,10 +290,13 @@ class PackageStore:
             self._save(value)
             return value
         except Exception as error:
+            value['install_error'] = str(error)[:4000]
+            self._save(value)
             try:
                 self._rollback(value)
             except Exception as rollback_error:
-                raise PackageError('Host package installation failed; recovery requires attention: ' + str(rollback_error)) from error
+                raise PackageError('Host package installation failed: ' + str(error)
+                                   + '; recovery requires attention: ' + str(rollback_error)) from error
             raise PackageError('Host package installation failed; added packages were rolled back: ' + str(error)) from error
 
     def _rollback(self, value):
@@ -291,12 +334,21 @@ class PackageStore:
                         if digest != entry['sha256'] or self._parse(self.command('pacman', '-Qp', str(path))) != {entry['name']: entry['version']}:
                             raise PackageError('Recovery archive changed: ' + entry['name'])
                         paths.append(str(path))
+                    self._preflight_transaction(missing)
                     try:
                         self.command('pacman', '-U', '--noconfirm', *paths)
-                    except Exception:
+                    except Exception as install_error:
+                        value['recovery_install_error'] = str(install_error)[:4000]
+                        self._save(value)
                         # Hooks may fail after registration. Complete verified
                         # registration is enough to remove this exact file set.
-                        self._verify_installed(value)
+                        try:
+                            self._verify_installed(value)
+                        except Exception as verification_error:
+                            value['recovery_verification_error'] = str(verification_error)[:4000]
+                            self._save(value)
+                            raise PackageError(str(install_error) + '; registration verification failed: '
+                                               + str(verification_error)) from install_error
                     self._verify_installed(value)
                     remove = [entry['name'] for entry in value['packages'] if not entry['original_installed']]
                 except Exception as error:

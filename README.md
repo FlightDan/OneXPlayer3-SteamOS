@@ -161,8 +161,8 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4/install-oxp3-maintenance.sh \
-  && bash install-oxp3-maintenance.sh
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.2/install-oxp3-maintenance.sh \
+  && bash install-oxp3-maintenance.sh --version '0.1.4+maintenance.2'
 ```
 
 按窗口提示选择需要的修复或插件，所需组件会按选择下载。0.1.4 提供正式签名维护包与 Bash 安装入口；使用说明见[维护工具文档](steamos-maintenance/README.md)，已测范围与待测项见[验证记录](steamos-maintenance/VALIDATION.md)。
