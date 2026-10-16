@@ -624,8 +624,8 @@ def runtime_files(app, release, plan, *, installed_runtime=None):
 
 def check_release_version(release, installed, *, updating=False):
     """A normal application may add same-version options, never downgrade code."""
-    from .releases import _Version
-    candidate, current = _Version(release['version']), _Version(installed['version'])
+    from .releases import _release_order
+    candidate, current = _release_order(release['version']), _release_order(installed['version'])
     if candidate < current or updating and candidate == current:
         raise RuntimeError('Use explicit rollback for a downgrade; project updates must be newer than the installed version')
 

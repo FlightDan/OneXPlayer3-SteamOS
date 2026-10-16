@@ -16,6 +16,36 @@ def system_facts():
 
 
 class EngineFlowTests(unittest.TestCase):
+    def test_background_pending_revision_notifies_once(self):
+        from oxp3_maintenance import releases, compatibility
+        report = {'status': 'maintenance_package_pending', 'candidates': [],
+                  'latest_project': {'version': '0.1.4+maintenance.10', 'display_version': '0.1.4'}}
+        with tempfile.TemporaryDirectory() as temporary, \
+             mock.patch.object(Path, 'home', return_value=Path(temporary)), \
+             mock.patch.object(cli, 'installed_release', return_value={'version': '0.1.4+maintenance.9'}), \
+             mock.patch.object(releases, 'check_releases', return_value=report), \
+             mock.patch.object(op.probe, 'live', return_value=system_facts()), \
+             mock.patch.object(compatibility, 'device_supported', return_value=True), \
+             mock.patch.object(cli.subprocess, 'run') as run:
+            cli.check_updates(background=True)
+            cli.check_updates(background=True)
+            run.assert_called_once()
+            self.assertEqual((Path(temporary) / '.local/state/oxp3-maintenance/notified-version').read_text(),
+                             '0.1.4+maintenance.10')
+
+    def test_online_revision_uses_update_with_exact_selected_version(self):
+        from oxp3_maintenance import downloads
+        candidate = {'version': '0.1.4+maintenance.10', 'display_version': '0.1.4', 'size': 1024}
+        report = {'status': 'update_available', 'candidates': [candidate], 'latest_maintenance': candidate}
+        with mock.patch.object(cli, 'check_updates', return_value=report), \
+             mock.patch.object(cli, 'installed_release', return_value={'version': '0.1.4+maintenance.9'}), \
+             mock.patch.object(downloads, 'save', return_value={'path': '/test/bundle'}), \
+             mock.patch.object(gui, '_progress', return_value=nullcontext()), \
+             mock.patch.object(gui, '_dialog'), mock.patch.object(gui, '_apply') as apply:
+            gui._online(gui.EN, 'update')
+            apply.assert_called_once_with('/test/bundle', gui.EN, updating=True,
+                                          expected_version=candidate['version'], tool_only=False)
+
     def test_tool_only_apply_preserves_unreadable_legacy_selection(self):
         """Exercise the real apply/prepare path, including the second legacy read."""
         with tempfile.TemporaryDirectory() as temporary:

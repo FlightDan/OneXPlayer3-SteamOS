@@ -206,6 +206,13 @@ class RetentionTests(unittest.TestCase):
             with self.subTest(candidate=candidate), self.assertRaises(RuntimeError):
                 op.check_release_version({'version': candidate}, {'version': current}, updating=updating)
 
+    def test_maintenance_revision_update_and_downgrade_use_numeric_order(self):
+        op.check_release_version({'version': '0.1.4+maintenance.10'}, {'version': '0.1.4+maintenance.9'}, updating=True)
+        op.check_release_version({'version': '0.1.4+maintenance.10'}, {'version': '0.1.4+maintenance.10'})
+        for candidate in ('0.1.4', '0.1.4+maintenance.9', '0.1.4+maintenance.10'):
+            with self.subTest(candidate=candidate), self.assertRaises(RuntimeError):
+                op.check_release_version({'version': candidate}, {'version': '0.1.4+maintenance.10'}, updating=True)
+
 
 if __name__ == '__main__':
     unittest.main()

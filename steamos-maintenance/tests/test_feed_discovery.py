@@ -95,15 +95,52 @@ class FeedDiscoveryTests(unittest.TestCase):
                 self.assertTrue(candidate['release_url'].endswith('/' + tag))
                 self.assertEqual(set(candidate['catalog_urls'].values()), set(self.assets))
 
-    def test_build_revision_keeps_equal_semver_manual_apply_contract(self):
+    def test_maintenance_revision_is_offered_as_a_project_update(self):
         version = '0.1.4+maintenance.1'
         self.signed(version)
         self.feed = feed(['v' + version.replace('+', '%2B')])
         report = self.check(installed='0.1.4')
-        self.assertEqual(report['candidates'], [])
-        self.assertEqual(report['status'], 'up_to_date')
+        self.assertEqual([item['version'] for item in report['candidates']], [version])
+        self.assertEqual(report['status'], 'update_available')
         self.assertEqual(report['latest_maintenance']['version'], version)
         self.assertTrue(report['latest_maintenance']['catalog_verified'])
+
+    def test_default_feed_selects_highest_signed_revision_despite_old_release_first(self):
+        versions = ['0.1.4', '0.1.4+maintenance.1', '0.1.4+maintenance.9', '0.1.4+maintenance.10']
+        for version in versions:
+            self.signed(version)
+        for tags in (versions, list(reversed(versions))):
+            self.feed = feed(['v' + v.replace('+', '%2B') for v in tags])
+            report = self.check(installed='0.1.4+maintenance.9')
+            self.assertEqual(report['latest_maintenance']['version'], versions[-1])
+            self.assertTrue(report['latest_maintenance']['catalog_verified'])
+            self.assertEqual([item['version'] for item in report['candidates']], [versions[-1]])
+            self.assertEqual(report['status'], 'update_available')
+        self.assertEqual(self.check(installed=versions[-1])['status'], 'up_to_date')
+
+    def test_bad_signature_of_highest_revision_is_never_offered(self):
+        self.signed('0.1.4+maintenance.10', signature=b'invalid')
+        self.signed('0.1.4+maintenance.9')
+        self.feed = feed(['v0.1.4+maintenance.9', 'v0.1.4+maintenance.10'])
+        report = self.check(installed='0.1.4+maintenance.9')
+        self.assertEqual(report['status'], 'maintenance_availability_unknown')
+        self.assertEqual(report['candidates'], [])
+        self.assertEqual(report['latest_maintenance']['version'], '0.1.4+maintenance.9')
+
+    def test_windows_only_releases_do_not_consume_signed_catalog_slots(self):
+        self.signed('0.1.4+maintenance.4')
+        self.feed = feed(['v0.1.7', 'v0.1.6', 'v0.1.5', 'v0.1.4+maintenance.4'])
+        report = self.check(installed='0.1.4+maintenance.3')
+        self.assertEqual(report['latest_maintenance']['version'], '0.1.4+maintenance.4')
+        self.assertTrue(report['latest_maintenance']['catalog_verified'])
+        self.assertEqual(report['status'], 'maintenance_package_pending')
+
+    def test_catalog_probe_safety_limit_reports_unknown(self):
+        self.feed = feed(['v0.1.' + str(n) for n in range(r.MAX_CATALOG_PROBES + 1)])
+        report = self.check(installed='0.0.0')
+        self.assertEqual(len([url for url in self.requests if url.endswith('-catalog.json')]), r.MAX_CATALOG_PROBES)
+        self.assertEqual(report['status'], 'maintenance_availability_unknown')
+        self.assertIn('safety limit', report['warning'])
 
     def test_build_separator_decoding_rejects_other_aliases_and_deduplicates(self):
         version = '0.1.4+maintenance.1'

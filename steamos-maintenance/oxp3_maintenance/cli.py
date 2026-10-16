@@ -106,8 +106,8 @@ def check_updates(background=False, channel=None):
     latest_project = result.get('latest_project')
     project_newer = False
     if latest_project:
-        from .releases import _Version
-        project_newer = _Version(latest_project['version']) > _Version(release['version'])
+        from .releases import _release_order
+        project_newer = _release_order(latest_project['version']) > _release_order(release['version'])
     if background and (result['candidates'] or project_newer):
         # Discovery works on every OXP3 SteamOS; compatibility is per component.
         from .probe import live

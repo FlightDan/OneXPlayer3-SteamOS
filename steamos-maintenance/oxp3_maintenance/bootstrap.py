@@ -19,7 +19,7 @@ import tempfile
 
 from .bundle import BundleError, MAX_ARCHIVE_BYTES, _regular_input, verify_bundle
 from .downloads import save
-from .releases import ReleaseError, _Version, check_releases, fetch_catalog
+from .releases import ReleaseError, _Version, _release_order, check_releases, fetch_catalog
 
 RUNTIME = Path('/usr/local/lib/oxp3-maintenance')
 PYTHON = '/usr/bin/python3'
@@ -130,7 +130,7 @@ def _release_guard(release, args, installed):
         raise BundleError('Package does not match the selected stable/beta channel')
     if args.version and version.text != _Version(args.version).text:
         raise BundleError('Package does not match the requested version')
-    if version < _Version(installed):
+    if _release_order(version.text) < _release_order(installed):
         raise BundleError('Refusing to downgrade the installed project; use its explicit rollback action')
 
 
@@ -178,7 +178,7 @@ def run(args, public_key, *, opener=None):
         if not candidate.get('catalog_urls'):
             raise ReleaseError('该版本缺少签名功能目录，无法在线安装。 This release has no signed capability catalog.')
         latest = report.get('latest_project')
-        if latest and _Version(latest['version']) > _Version(candidate['version']):
+        if latest and _release_order(latest['version']) > _release_order(candidate['version']):
             message('最新项目尚无对应维护包；将使用已发布的维护包 ' + candidate['version'] + '。',
                     'The newest project has no maintenance package; using published maintenance ' + candidate['version'] + '.')
         message('正在下载并验证维护包 ' + candidate['version'] + '，请稍候。',

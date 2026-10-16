@@ -147,7 +147,7 @@ def catalog_text(report, text):
 
 def _online(text, action):
     from .cli import check_updates, installed_release
-    from .releases import fetch_catalog, _Version
+    from .releases import fetch_catalog, _release_order
     from .downloads import save, trusted_key
     from .catalog import describe
     report = check_updates()
@@ -183,7 +183,7 @@ def _online(text, action):
         _dialog('--msgbox', text['downloaded'] + '\n\n' + saved['path'])
     else:
         _apply(saved['path'], text,
-               updating=_Version(candidate['version']) > _Version(installed_release()['version']),
+               updating=_release_order(candidate['version']) > _release_order(installed_release()['version']),
                expected_version=candidate['version'], tool_only=action == 'tool')
 
 

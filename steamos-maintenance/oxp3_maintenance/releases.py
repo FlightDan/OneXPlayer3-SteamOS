@@ -26,6 +26,7 @@ API_URL = "https://api.github.com/repos/" + REPOSITORY + "/releases"
 MAX_API_BYTES = 8 * 1024 * 1024
 ATOM_URL = 'https://github.com/' + REPOSITORY + '/releases.atom'
 MAX_FEED_BYTES = 2 * 1024 * 1024
+MAX_CATALOG_PROBES = 20
 REQUEST_ATTEMPTS = 2
 REQUEST_TIMEOUT = 30
 RETRY_DELAY = 0.5
@@ -80,6 +81,18 @@ def _tag_version(value):
     if isinstance(value, str) and value.startswith('maintenance-v'):
         value = value[len('maintenance-'):]
     return _Version(value)
+
+
+def _release_order(value):
+    """Project policy: SemVer first, then an exact maintenance.N revision.
+
+    Generic build metadata retains SemVer's equal precedence. Only this
+    project's canonical positive numeric revision orders same-version builds;
+    publication timestamps and API/feed ordering never override that order.
+    """
+    version = _Version(value)
+    revision = re.fullmatch(r'maintenance\.([1-9][0-9]*)', version.text.partition('+')[2])
+    return version, int(revision.group(1)) if revision else 0
 
 
 def _asset_url(url, *, catalog=False):
@@ -185,12 +198,12 @@ def release_candidates(releases: list, installed_version: str, channel: str, *, 
     """Select newer releases with this project's exact maintenance asset.
 
     Stable accepts stable versions. Beta accepts stable and ``-beta`` versions.
-    SemVer build metadata never makes an otherwise equal release newer.
+    Canonical maintenance revisions order otherwise equal SemVer releases.
     """
     if channel not in ("stable", "beta"):
         raise ReleaseError("Update channel must be stable or beta.")
     try:
-        installed = _Version(installed_version)
+        installed = _release_order(installed_version)
     except ValueError as exc:
         raise ReleaseError("Installed version is not valid semantic version metadata.") from exc
     if not isinstance(releases, list):
@@ -203,7 +216,8 @@ def release_candidates(releases: list, installed_version: str, channel: str, *, 
             version = _tag_version(release.get("tag_name"))
         except ValueError:
             continue
-        if version < installed or version == installed and not include_current:
+        order = _release_order(version.text)
+        if order < installed or order == installed and not include_current:
             continue
         is_beta = bool(version.pre)
         if is_beta and (channel != "beta" or version.pre[0] != "beta"):
@@ -242,7 +256,7 @@ def release_candidates(releases: list, installed_version: str, channel: str, *, 
                 "asset_name": expected, "download_url": url, "size": size,
                 "catalog_urls": catalog_assets if set(catalog_assets) == {'json', 'sig'} else {}}))
             break
-    result.sort(key=lambda item: item[0], reverse=True)
+    result.sort(key=lambda item: _release_order(item[0].text), reverse=True)
     return [item[1] for item in result]
 
 
@@ -289,7 +303,7 @@ def _feed_projects(raw, channel):
                 'notes': (entry.findtext(ns + 'content') or '')[:256 * 1024],
                 'published_at': (entry.findtext(ns + 'updated') or '')[:64],
                 'release_url': links[0], 'advisory': True}))
-        projects.sort(key=lambda item: (item[0], item[1]['tag_name'].startswith('maintenance-v')), reverse=True)
+        projects.sort(key=lambda item: (_release_order(item[0].text), item[1]['tag_name'].startswith('maintenance-v')), reverse=True)
         return [item[1] for item in projects]
     except (ValueError, UnicodeError, ET.ParseError, RecursionError) as error:
         raise ReleaseError('GitHub returned an unreadable release feed.') from error
@@ -312,7 +326,9 @@ def _check_feed(installed_version, channel, *, opener=None, public_key=None, pro
         unknown = True
         warnings.append('Installed signing key is unavailable; maintenance package availability could not be authenticated.')
     else:
-        for project in projects[:3]:
+        # Missing catalogs (e.g. Windows-only releases) must not consume the
+        # three available-package slots. Keep network work separately bounded.
+        for project in projects[:MAX_CATALOG_PROBES]:
             version, tag = project['version'], project['tag_name']
             base = 'https://github.com/' + REPOSITORY + '/releases/download/' + tag + '/'
             urls = {suffix: base + 'oxp3-maintenance-' + version + '-catalog.' + suffix for suffix in ('json', 'sig')}
@@ -327,6 +343,8 @@ def _check_feed(installed_version, channel, *, opener=None, public_key=None, pro
                 available.append(dict(project, display_version=release.get('display_version', version),
                     asset_name=bundle['name'], download_url=url, size=bundle['size'],
                     catalog_urls=urls, catalog_verified=True))
+                if len(available) == 3:
+                    break
             except ReleaseError as error:
                 if error.http_status == 404:
                     warnings.append('No signed maintenance catalog is published for ' + version + '.')
@@ -336,11 +354,14 @@ def _check_feed(installed_version, channel, *, opener=None, public_key=None, pro
             except BundleError as error:
                 unknown = True
                 warnings.append('Signed maintenance catalog verification failed for ' + version + ': ' + str(error))
-    installed = _Version(installed_version)
-    candidates = [item for item in available if _Version(item['version']) > installed]
+        if not available and len(projects) > MAX_CATALOG_PROBES:
+            unknown = True
+            warnings.append('Maintenance catalog search reached its safety limit; availability remains unknown.')
+    installed = _release_order(installed_version)
+    candidates = [item for item in available if _release_order(item['version']) > installed]
     latest_bundle = available[0] if available else None
     status = ('maintenance_availability_unknown' if unknown else
-              'maintenance_package_pending' if latest and (not latest_bundle or _Version(latest['version']) > _Version(latest_bundle['version'])) else
+              'maintenance_package_pending' if latest and (not latest_bundle or _release_order(latest['version']) > _release_order(latest_bundle['version'])) else
               'update_available' if candidates else 'up_to_date' if latest_bundle else 'no_releases')
     return {'repository': REPOSITORY, 'installed_version': installed_version, 'channel': channel,
             'candidates': candidates, 'latest_project': latest, 'maintenance_releases': available,
@@ -381,7 +402,7 @@ def check_releases(installed_version: str, channel: str, *, opener=None, public_
                 continue
             project.append((version, {'version': version.text, 'display_version': str(item.get('name') or version.text)[:512],
                                       'notes': str(item.get('body') or '')[:256 * 1024]}))
-        project.sort(key=lambda item: item[0], reverse=True)
+        project.sort(key=lambda item: _release_order(item[0].text), reverse=True)
         latest = project[0][1] if project else None
         available = release_candidates(releases, '0.0.0', channel, include_current=True)
         candidates = release_candidates(releases, installed_version, channel)
@@ -389,7 +410,7 @@ def check_releases(installed_version: str, channel: str, *, opener=None, public_
         return {"repository": REPOSITORY, "installed_version": installed_version, "channel": channel,
                 "candidates": candidates, 'latest_project': latest, 'maintenance_releases': available,
                 'latest_maintenance': latest_bundle,
-                'status': ('maintenance_package_pending' if latest and (not latest_bundle or _Version(latest['version']) > _Version(latest_bundle['version']))
+                'status': ('maintenance_package_pending' if latest and (not latest_bundle or _release_order(latest['version']) > _release_order(latest_bundle['version']))
                            else 'update_available' if candidates else 'up_to_date' if latest_bundle else 'no_releases')}
     except ReleaseError as error:
         if (error.http_status in (403, 429)

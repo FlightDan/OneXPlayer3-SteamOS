@@ -1,4 +1,5 @@
 import io
+import itertools
 import http.client
 import json
 from pathlib import Path
@@ -42,6 +43,36 @@ class ReleaseTests(unittest.TestCase):
 
     def test_no_equal_build_metadata_upgrade(self):
         self.assertEqual(r.release_candidates([release("1.2.3+new")], "1.2.3+old", "stable"), [])
+
+    def test_maintenance_revision_numeric_order_ignores_input_and_publication_order(self):
+        versions = ['0.1.4', '0.1.4+maintenance.1', '0.1.4+maintenance.9', '0.1.4+maintenance.10']
+        for order in itertools.permutations(versions):
+            values = [release(v, published_at='2099-01-01' if v == '0.1.4' else '2000-01-01') for v in order]
+            report = r.check_releases('0.1.4+maintenance.1', 'stable',
+                                      opener=lambda *a, **kw: Response(json.dumps(values).encode()))
+            self.assertEqual([v['version'] for v in report['maintenance_releases']], list(reversed(versions)))
+            self.assertEqual([v['version'] for v in report['candidates']], list(reversed(versions[2:])))
+            self.assertEqual(report['latest_project']['version'], versions[-1])
+            self.assertEqual(report['status'], 'update_available')
+
+    def test_revision_policy_preserves_semver_and_only_recognizes_canonical_suffix(self):
+        self.assertEqual(r._Version('0.1.4+maintenance.10'), r._Version('0.1.4'))
+        for suffix in ['other.99', 'maintenance.01', 'maintenance.0', 'maintenance.10.extra', 'Maintenance.10']:
+            self.assertEqual(r._release_order('0.1.4+' + suffix), r._release_order('0.1.4'))
+        self.assertLess(r._release_order('0.1.4+maintenance.999'), r._release_order('0.1.5'))
+        self.assertLess(r._release_order('0.1.4-beta.10+maintenance.999'), r._release_order('0.1.4'))
+        self.assertLess(r._release_order('0.1.4-beta.9+maintenance.999'), r._release_order('0.1.4-beta.10'))
+        values = [release('0.1.4+maintenance.10'), release('0.1.4+maintenance.9'), release('0.1.4')]
+        self.assertEqual(r.release_candidates(values, '0.1.4+maintenance.10', 'stable'), [])
+        self.assertEqual(len(r.release_candidates(values, '0.1.4+maintenance.10', 'stable', include_current=True)), 1)
+
+    def test_newer_windows_only_project_does_not_hide_latest_maintenance(self):
+        values = [release('0.1.5', assets=[]), release('0.1.4'), release('0.1.4+maintenance.4')]
+        report = r.check_releases('0.1.4+maintenance.3', 'stable',
+                                  opener=lambda *a, **kw: Response(json.dumps(values).encode()))
+        self.assertEqual(report['latest_project']['version'], '0.1.5')
+        self.assertEqual(report['latest_maintenance']['version'], '0.1.4+maintenance.4')
+        self.assertEqual(report['status'], 'maintenance_package_pending')
 
     def test_drafts_missing_bundle_and_invalid_tags_excluded(self):
         values = [release("2.0.0", draft=True), release("3.0.0", assets=[]), release("01.2.3"),

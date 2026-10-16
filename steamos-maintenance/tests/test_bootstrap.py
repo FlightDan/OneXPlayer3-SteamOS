@@ -112,6 +112,14 @@ class BootstrapTests(unittest.TestCase):
         with self.assertRaises(BundleError):
             boot._release_guard({'version': '1.2.3', 'channel': 'beta'}, self.args('--channel', 'beta'), '0.0.0')
 
+    def test_maintenance_revision_downgrade_rejected_including_explicit_request(self):
+        for candidate in ('0.1.4', '0.1.4+maintenance.9'):
+            with self.subTest(candidate=candidate), self.assertRaisesRegex(BundleError, 'downgrade'):
+                boot._release_guard({'version': candidate, 'channel': 'stable'},
+                                    self.args('--version', candidate), '0.1.4+maintenance.10')
+        boot._release_guard({'version': '0.1.4+maintenance.10', 'channel': 'stable'}, self.args(), '0.1.4+maintenance.9')
+        boot._release_guard({'version': '0.1.4+maintenance.10', 'channel': 'stable'}, self.args(), '0.1.4+maintenance.10')
+
     def test_online_version_and_catalog_are_bound_to_snapshot(self):
         report, discovery, catalog, download = self.online()
         args = boot.parser().parse_args(['--version', 'v1.2.3', '--download-only'])
