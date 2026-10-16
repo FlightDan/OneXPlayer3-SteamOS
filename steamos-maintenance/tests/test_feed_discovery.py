@@ -76,6 +76,52 @@ class FeedDiscoveryTests(unittest.TestCase):
         self.assertEqual(candidate['display_version'], 'Signed 1.2.3')
         self.assertFalse(any(url.endswith('.tar.gz') for url in self.requests))
 
+    def test_encoded_build_separator_discovers_only_the_matching_signed_catalog(self):
+        version = '0.1.4+maintenance.1'
+        self.signed(version)
+        self.assets = {url.replace('/v' + version + '/', '/maintenance-v' + version + '/'): data
+                       for url, data in self.assets.items()}
+        for separator in ('%2B', '%2b', '+'):
+            with self.subTest(separator=separator):
+                tag = 'maintenance-v' + version.replace('+', separator)
+                self.feed = feed([tag])
+                self.requests.clear()
+                report = self.check(installed='0.1.3')
+                candidate = report['candidates'][0]
+                self.assertEqual(report['status'], 'update_available')
+                self.assertEqual(candidate['version'], version)
+                self.assertEqual(candidate['tag_name'], 'maintenance-v' + version)
+                self.assertTrue(candidate['catalog_verified'])
+                self.assertTrue(candidate['release_url'].endswith('/' + tag))
+                self.assertEqual(set(candidate['catalog_urls'].values()), set(self.assets))
+
+    def test_build_revision_keeps_equal_semver_manual_apply_contract(self):
+        version = '0.1.4+maintenance.1'
+        self.signed(version)
+        self.feed = feed(['v' + version.replace('+', '%2B')])
+        report = self.check(installed='0.1.4')
+        self.assertEqual(report['candidates'], [])
+        self.assertEqual(report['status'], 'up_to_date')
+        self.assertEqual(report['latest_maintenance']['version'], version)
+        self.assertTrue(report['latest_maintenance']['catalog_verified'])
+
+    def test_build_separator_decoding_rejects_other_aliases_and_deduplicates(self):
+        version = '0.1.4+maintenance.1'
+        canonical = 'maintenance-v' + version
+        projects = r._feed_projects(feed([canonical.replace('+', '%2B'), canonical,
+                                         canonical.replace('+', '%2b')]), 'stable')
+        self.assertEqual([item['tag_name'] for item in projects], [canonical])
+        for tag in ('%76' + '0.1.4%2Bmaintenance.1',
+                    'maintenance-v%30.1.4%2Bmaintenance.1',
+                    'maintenance-v0.1.4%252Bmaintenance.1',
+                    'maintenance-v0.1.4%2Bmaintenance%2F1',
+                    'maintenance-v0.1.4%2Bmaintenance%23fragment',
+                    'maintenance-v0.1.4%2Bmaintenance.1?x=1',
+                    'maintenance-v0.1.4+maintenance%2B1',
+                    'https://github.com/evil/repo/releases/tag/' + canonical.replace('+', '%2B')):
+            with self.subTest(tag=tag):
+                self.assertEqual(r._feed_projects(feed([tag]), 'stable'), [])
+
     def test_missing_key_reports_latest_project_with_unknown_package_availability(self):
         report = self.check(public_key=self.root / 'missing.pem')
         self.assertEqual(report['latest_project']['version'], '1.2.3')

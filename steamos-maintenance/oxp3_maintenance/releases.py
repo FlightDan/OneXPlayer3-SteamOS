@@ -268,13 +268,15 @@ def _feed_projects(raw, channel):
                      if item.get('rel', 'alternate') == 'alternate']
             if len(links) != 1 or not links[0].startswith(prefix):
                 continue
-            tag = links[0][len(prefix):]
+            # GitHub Atom links encode SemVer's build separator as %2B. Decode
+            # only that character; all other encoded aliases remain invalid.
+            tag = re.sub(r'%2[bB]', '+', links[0][len(prefix):])
             try:
                 version = _tag_version(tag)
             except ValueError:
                 continue
             # The literal repository prefix and SemVer tag reject other origins,
-            # path separators, URL suffixes and percent-encoded aliases.
+            # path separators, URL suffixes and other percent-encoded aliases.
             if tag in seen:
                 continue
             if version.pre and (channel != 'beta' or version.pre[0] != 'beta'):

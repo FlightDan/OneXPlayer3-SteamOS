@@ -124,7 +124,13 @@ QA 测得轻量 Bash 入口 125,446 字节，维护入口与常用修复 891,862
 
 另一个 Light 目录冲突来自 QA 回滚后留下的两个空目录；独立检查确认无文件，保存私有恢复凭据后移除空目录，未修改插件代码或用户配置。权限认证首次因测试自动化未识别 KDE 弹窗而超时；重试并通过真实密码认证后得到上述预检结果，不把首次超时计为安装成功。
 
-生产兼容性修复与后续完整升级、重启验收仍在进行。证据保存在 `research/evidence/maintenance-public-upgrade-20261016/`；公开 Release 说明已补充阻断情况。
+两项接管修复已通过独立安全审查：只允许已证明的 root 所有权、文件权限映射及公开风扇程序摘要，不放宽通用校验。6 项原生 Linux 专项覆盖接管、回退和恢复；在内存中使用冻结补丁只读验证实机 12 个受影响目标通过，旧日志和配置没有修改。Light 的两个空目录已单独处理，不将其当作生产接管缺陷。
+
+公开 GitHub Atom 链接将修订标签中的 `+` 编码为 `%2B`。旧 Bash 在 API 限流时会忽略修订标签并选回首版；新代码仅在可信仓库标签中规范化 `%2B/%2b`，保留其他 URL 与 SemVer 边界以及签名验证。15 项发现回归与独立复核通过。修订使用 build metadata，保留手动同版应用能力，不宣称后台会将其识别成更高版本。
+
+最终 Windows 原生 OpenSSL/DPAPI 全量 500 项：487 通过、13 项平台跳过。Linux 首轮完整测试快照漏带 `prepare-integration.py`，497 项中 480 通过、16 跳过、1 项因缺失该测试依赖报错；记录保留。补齐依赖并加入 Atom 修复后，本地隔离 QEMU 原生 Linux 全量 500 项：485 通过、15 项条件跳过，无失败或错误；6 项新增接管测试与 15 项发现测试全部通过。完整实机安装、重启验收仍待完成。
+
+证据保存在 `research/evidence/maintenance-public-upgrade-20261016/`、`.release-work/windows-maintenance-revision1-final-tests.txt` 和 `.release-work/maintenance-old-installer-atom-counterexample.json`；公开 Release 说明已补充首版阻断情况。
 
 ## 尚未完成的验收与发行条件
 
