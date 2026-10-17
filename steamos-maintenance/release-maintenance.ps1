@@ -5,6 +5,8 @@ param(
     [string]$OptiRuntime,
     [string]$OpenSsl,
     [string]$OutputDirectory,
+    [string]$PreviousCatalog,
+    [string]$PreviousSignature,
     [string]$Python
 )
 $ErrorActionPreference = 'Stop'
@@ -18,5 +20,7 @@ if ($OptiPlugin) { $publisherArguments += @('--opti-plugin', $OptiPlugin) }
 if ($OptiRuntime) { $publisherArguments += @('--opti-runtime', $OptiRuntime) }
 if ($OpenSsl) { $publisherArguments += @('--openssl', $OpenSsl) }
 if ($OutputDirectory) { $publisherArguments += @('--output', $OutputDirectory) }
+if ($PreviousCatalog) { $publisherArguments += @('--previous-catalog', $PreviousCatalog) }
+if ($PreviousSignature) { $publisherArguments += @('--previous-signature', $PreviousSignature) }
 & $Python @publisherArguments
 exit $LASTEXITCODE

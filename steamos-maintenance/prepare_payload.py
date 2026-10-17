@@ -90,6 +90,10 @@ def _allowed(relative):
 
 def _current_source(component, target):
     """Only public component source mappings; never infer research locations."""
+    if component == 'overlay' and target in (
+            'var/lib/oxp3-overlay-telemetry/telemetry.py',
+            'var/lib/oxp3-overlay-telemetry/allow-read.py'):
+        return 'components/controls/overlay/' + target.rsplit('/', 1)[1]
     prefix = 'home/deck/homebrew/plugins/opti2xmx/'
     if component == 'opti2xmx' and target.startswith(prefix):
         return 'components/opti2xmx/' + target[len(prefix):]

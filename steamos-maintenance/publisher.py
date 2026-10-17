@@ -140,7 +140,10 @@ def validate_runtime(payload, opti_plugin):
         raise ValueError('Prepared XMX runtime differs from the published plugin descriptor; refresh its cache.')
 
 
-def prepare(version, store, *, openssl=None, opti_plugin=None, opti_runtime=None, output=None):
+def prepare(version, store, *, openssl=None, opti_plugin=None, opti_runtime=None, output=None,
+            previous_catalog=None, previous_signature=None):
+    if (previous_catalog is None) != (previous_signature is None):
+        raise ValueError('Previous catalog and signature must be supplied together.')
     # Fail before creating output when dependencies or final plugin inputs are missing.
     report = preflight(version, store, openssl=openssl, opti_plugin=opti_plugin)
     if not report['ready']:
@@ -182,7 +185,8 @@ def prepare(version, store, *, openssl=None, opti_plugin=None, opti_runtime=None
             package_release(overlay, Path(report['signing']['public_key']), private,
                             output / 'artifacts', source=SOURCE, openssl=report['openssl'],
                             modular=True, tag='maintenance-v' + version,
-                            opti_tag='maintenance-assets-v' + version)
+                            opti_tag='maintenance-assets-v' + version,
+                            previous_catalog=previous_catalog, previous_signature=previous_signature)
         result.update(complete=True, artifacts=str(output / 'artifacts'),
                       fingerprint_sha256=report['signing']['fingerprint_sha256'])
     finally:
@@ -201,6 +205,8 @@ def main(argv=None):
     parser.add_argument('--opti-plugin', type=Path)
     parser.add_argument('--opti-runtime', type=Path)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--previous-catalog', type=Path)
+    parser.add_argument('--previous-signature', type=Path)
     args = parser.parse_args(argv)
     try:
         if args.action == 'init-key':
@@ -214,7 +220,8 @@ def main(argv=None):
             result = preflight(args.version, args.store, openssl=args.openssl, opti_plugin=args.opti_plugin)
         else:
             result = prepare(args.version, args.store, openssl=args.openssl,
-                             opti_plugin=args.opti_plugin, opti_runtime=args.opti_runtime, output=args.output)
+                             opti_plugin=args.opti_plugin, opti_runtime=args.opti_runtime, output=args.output,
+                             previous_catalog=args.previous_catalog, previous_signature=args.previous_signature)
     except (OSError, ValueError, RuntimeError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         parser.exit(1, 'Publisher preparation failed: %s\n' % error)
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -60,6 +60,23 @@ class PreparePayloadTests(unittest.TestCase):
         self.assertIn('shared-storage', report['separate_operations'])
         self.assertTrue(report['resource_complete'])
 
+    def test_overlay_runtime_uses_canonical_sources_instead_of_stale_cache(self):
+        self.options(['overlay'])
+        entries=[]
+        for index,name in enumerate(('telemetry.py','allow-read.py')):
+            source='overlay/%03d.bin' % index
+            entries.append({'source':source,'target':'var/lib/oxp3-overlay-telemetry/'+name})
+            self.put('cache/integration/'+source,b'old '+name.encode())
+            self.put('components/controls/overlay/'+name,b'current '+name.encode())
+        self.put('cache/integration/manifest.json',{'overlay':{'files':entries}})
+        report=prepare_payload(self.workspace,self.output)
+        self.assertTrue(report['resource_complete'])
+        self.assertEqual(len(report['refreshed_integration']),2)
+        for index,name in enumerate(('telemetry.py','allow-read.py')):
+            source='overlay/%03d.bin' % index
+            self.assertEqual((self.output/'integration'/source).read_bytes(),b'current '+name.encode())
+            self.assertEqual((self.installer/'cache/integration'/source).read_bytes(),b'old '+name.encode())
+
     def test_only_explicit_roots_and_own_plugin_platform_are_collected(self):
         self.options(['opti2xmx', 'decky', 'hltb'])
         self.put('cache/plugins/third-party.json', [{'id': 'hltb', 'version': '2.0.12', 'archive': 'selected.zip'}])

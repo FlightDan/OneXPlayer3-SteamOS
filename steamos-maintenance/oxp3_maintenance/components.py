@@ -32,7 +32,7 @@ PLUGIN_NAMES = {'steamgriddb': 'SteamGridDB', 'protondb': 'ProtonDB Badges',
                 'autoflatpaks': 'AutoFlatpaks', 'deck-settings': 'Deck Settings',
                 'hltb': 'HLTB for Deck', 'animation-changer': 'Animation Changer'}
 RESTART = {'hdr', 'desktop-hdr', 'keyboard', 'input', 'multifunction', 'gyro',
-           'gamescope-env', 'wifi', 'xe-dsb', 'gm7-resume', 'split-lock', 'serial-console-policy', 'autoflatpaks-compat', 'waydroid'}
+           'gamescope-env', 'wifi', 'xe-dsb', 'gm7-resume', 'split-lock', 'serial-console-policy', 'autoflatpaks-compat', 'waydroid', 'overlay'}
 MAX_FILE = 256 * 1024 * 1024
 MAX_ARCHIVE = 1024 * 1024 * 1024
 

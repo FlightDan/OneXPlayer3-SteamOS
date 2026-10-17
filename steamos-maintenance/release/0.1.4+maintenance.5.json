@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "0.1.4+maintenance.5",
+  "display_version": "0.1.4",
+  "channel": "stable",
+  "notes": "修复性能叠加层 FAN 在未开启 OXP3 Fan 时显示 N/A，以及 RAPL 未注册 GPU 域时功耗显示 N/A：直接读取真实风扇转速，使用 Intel PMT GPU 能量计数器作为回退来源。沿用正式签名与未变化的组件载荷，应用后按提示重启以加载新版采集进程。包含前四次维护修订。"
+}

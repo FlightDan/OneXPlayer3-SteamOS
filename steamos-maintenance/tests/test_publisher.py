@@ -77,6 +77,14 @@ class PublisherTests(unittest.TestCase):
             stage.assert_not_called()
         self.assertFalse(output.exists())
 
+    def test_reference_reuse_requires_catalog_and_signature_before_preflight(self):
+        with mock.patch.object(publisher,'preflight') as check:
+            for arguments in ({'previous_catalog':self.root/'catalog.json'},
+                              {'previous_signature':self.root/'catalog.sig'}):
+                with self.assertRaisesRegex(ValueError,'supplied together'):
+                    publisher.prepare('0.1.4+maintenance.5',self.root/'store',**arguments)
+            check.assert_not_called()
+
     def test_version_rejects_path_traversal_before_file_access(self):
         for value in ('../0.1.4', 'v0.1.4', '0.1.4/../../secrets'):
             with self.subTest(value=value), self.assertRaises(ValueError):

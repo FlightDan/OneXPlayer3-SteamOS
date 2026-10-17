@@ -53,6 +53,19 @@ class PlannerTests(unittest.TestCase):
     def assert_ready(self, plan, name):
         self.assertEqual(plan['components'][name]['status'], 'ready', plan['components'][name])
 
+    def test_overlay_update_preserves_user_layout_and_requires_collector_restart(self):
+        preset='home/deck/.config/MangoHud/presets.conf'
+        telemetry='var/lib/oxp3-overlay-telemetry/telemetry.py'
+        helper='var/lib/oxp3-overlay-telemetry/allow-read.py'
+        self.component('overlay',{preset:b'default layout',telemetry:b'new telemetry',helper:b'new reader'})
+        self.write(self.root,preset,b'user custom layout')
+        plan=self.plan(['overlay'])
+        self.assert_ready(plan,'overlay')
+        self.assertTrue(plan['components']['overlay']['restart_required'])
+        self.assertEqual(plan['files'][preset]['data'],b'user custom layout')
+        self.assertEqual(plan['files'][telemetry]['data'],b'new telemetry')
+        self.assertEqual(plan['files'][helper]['data'],b'new reader')
+
     def test_dependency_expansion_and_no_system_mutation(self):
         self.component('manager', {'usr/bin/steamos-manager': b'new'})
         self.component('native-tdp', {'etc/steamos-manager/remotes.d/oxp3.toml': b'tdp'}, ['manager'])
