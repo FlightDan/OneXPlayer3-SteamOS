@@ -18,9 +18,11 @@ internal static class ComponentOutcomeChecks
         var options = new SelectedOptions(1, ["keyboard"], ["decky"], "zh-CN", "system");
         JsonElement Row(string slot, string id, string status, bool safe = false) => JsonSerializer.SerializeToElement(new { slot, id, status, safe_to_skip = safe, reason = "Resource unavailable",
             os_image_updates = id == "system-update-hold" ? "held" : null, steam_client_updates = id == "system-update-hold" ? "unchanged" : null });
-        var hold = new[] { Row("A", "system-update-hold", "files_installed"), Row("B", "system-update-hold", "files_installed") };
-        var rows = new[] { Row("A", "keyboard", "files_installed"), Row("A", "decky", "not_installed", true),
-            Row("B", "keyboard", "files_installed"), Row("B", "decky", "not_installed", true), hold[0], hold[1] };
+        var maintenance = new[] { Row("A", "maintenance-tool", "files_installed"), Row("B", "maintenance-tool", "files_installed") };
+        var console = new[] { Row("A", "serial-console-policy", "files_installed"), Row("B", "serial-console-policy", "files_installed") };
+        JsonElement[] hold = [Row("A", "system-update-hold", "files_installed"), Row("B", "system-update-hold", "files_installed"), ..console, ..maintenance];
+        JsonElement[] rows = [Row("A", "keyboard", "files_installed"), Row("A", "decky", "not_installed", true),
+            Row("B", "keyboard", "files_installed"), Row("B", "decky", "not_installed", true), ..hold];
         ComponentOutcome.Validate(rows, options);
         ComponentOutcome.Validate(hold, new SelectedOptions(1, [], [], "zh-CN", "system"));
         var accessOptions = new SelectedOptions(1, [], [], "zh-CN", "system", SetDeckPassword: true);
@@ -56,11 +58,15 @@ internal static class ComponentOutcomeChecks
         Reject(rows[..4]);
         Reject(rows[..5]);
         Reject([..rows, hold[0]]);
-        Reject([..rows[..4], Row("A", "system-update-hold", "not_installed", true), hold[1]]);
-        Reject([..rows[..4], JsonSerializer.SerializeToElement(new { slot = "A", id = "system-update-hold", status = "files_installed", os_image_updates = "allowed", steam_client_updates = "unchanged" }), hold[1]]);
-        Reject([..rows[..4], JsonSerializer.SerializeToElement(new { slot = "A", id = "system-update-hold", status = "files_installed" }), hold[1]]);
+        Reject([..rows[..4], Row("A", "system-update-hold", "not_installed", true), hold[1], ..console, ..maintenance]);
+        Reject([..rows[..4], JsonSerializer.SerializeToElement(new { slot = "A", id = "system-update-hold", status = "files_installed", os_image_updates = "allowed", steam_client_updates = "unchanged" }), hold[1], ..console, ..maintenance]);
+        Reject([..rows[..4], JsonSerializer.SerializeToElement(new { slot = "A", id = "system-update-hold", status = "files_installed" }), hold[1], ..console, ..maintenance]);
+        Reject(rows.Where(x => x.GetProperty("id").GetString() != "serial-console-policy").ToArray());
+        Reject([..rows.Where(x => x.GetProperty("id").GetString() != "serial-console-policy"), Row("A", "serial-console-policy", "not_installed", true), console[1]]);
         Reject([..rows, Row("A", "system-update-policy", "files_installed"), Row("B", "system-update-policy", "files_installed")]);
         Reject([..rows, Row("A", "system-update-policy", "not_installed", true), Row("B", "system-update-policy", "not_installed", true)]);
+        Reject(rows.Where(x => x.GetProperty("id").GetString() != "maintenance-tool").ToArray());
+        Reject([..rows.Where(x => x.GetProperty("id").GetString() != "maintenance-tool"), Row("A", "maintenance-tool", "not_installed", true), maintenance[1]]);
         Reject([rows[0], rows[1], rows[2], Row("C", "decky", "not_installed", true), ..hold]);
         return "Both slots require a successful OS update hold while Steam client updates remain unchanged; missing, duplicate, skipped or invalid hold reports are rejected. Existing optional component and shared-storage skip checks also pass.";
     }

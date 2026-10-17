@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "repairs": [
+    {
+      "id": "serial-console-policy",
+      "zh": "串口登录重复报错修复",
+      "en": "Serial login restart-loop repair",
+      "default": true,
+      "dependencies": []
+    }
+  ],
+  "plugins": [
+    {
+      "id": "autoflatpaks-compat",
+      "zh": "AutoFlatpaks · 已安装版本电池状态兼容修复",
+      "en": "AutoFlatpaks · battery-state repair for an installed version",
+      "default": false,
+      "dependencies": []
+    }
+  ]
+}

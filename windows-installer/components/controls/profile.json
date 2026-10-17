@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "oxp3-controls",
-  "version": "20261013-r5",
-  "archive": "oxp3-controls-20261013-r5.zip",
+  "version": "20261016-r6",
+  "archive": "oxp3-controls-20261016-r6.zip",
   "source_files": [
     "rapl/provider.py",
     "rapl/test_provider.py",
@@ -31,7 +31,10 @@
     "charging/update-battery-ui.py",
     "charging/check-battery-ui.mjs",
     "PLUGIN_LANGUAGES.md",
-    "check-plugin-i18n.mjs"
+    "check-plugin-i18n.mjs",
+    "overlay/power_control.py",
+    "overlay/test_power_control.py",
+    "overlay/test_cpu_power_ui.mjs"
   ],
   "deployment": "resources_only",
   "default": false,
@@ -65,6 +68,9 @@
   "tdp": {
     "min_watts": 10,
     "max_watts": 40,
+    "pl2_max_watts": 80,
+    "independent_pl2": true,
+    "steam_pl1_sync": true,
     "default_power_change": false,
     "long_40w_thermal_acceptance": false
   },

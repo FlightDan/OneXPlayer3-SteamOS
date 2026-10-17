@@ -6,13 +6,14 @@ import { useEffect, useRef, useState } from 'react';
 type Reply<T> = { ok: boolean; data?: T; error?: string };
 type Setup = { status: string; launch?: string; old_launch: string; imported?: boolean };
 type Game = { appid: number; name: string };
-type Settings = { sr: string; fg: string; fg_input: string; spoof: string };
+type Settings = { sr: string; fg: string; fg_input: string; spoof: string; fg_multiplier?: string };
 type Pending = { expected: string; target: string; kind: string };
 type Info = Game & { executables: string[]; libraries: { path: string; version: number[] | null }[];
   optis: string[]; runtime_ready: boolean; prefix_ready: boolean; external_managed: boolean;
   automatic: { executable: string; route: string; reason: string; candidates: string[] }; state: Setup | null;
-  opti?: { managed: boolean; installed: boolean; injection_enabled: boolean; version: string; status: string; rollback: boolean; pending?: Pending; settings: Settings } };
+  opti?: { managed: boolean; installed: boolean; injection_enabled: boolean; version: string; status: string; rollback: boolean; pending?: Pending; settings_rollback?: boolean; settings_recovery?: boolean; settings: Settings } };
 type Registration = { unregister(): void };
+type RuntimeStatus = {ready:boolean;available:boolean;version:string;size_bytes:number;host_issue:string;error:string;availability_message:string};
 type Operation = {schema:number;instance_id:string;operation_id:string|null;appid:number|null;kind:string;version:string;phase:string;running:boolean;downloaded_bytes:number;total_bytes:number|null;error:string|null;revision:number};
 declare const SteamClient: { Apps: {
   RegisterForAppDetails(id: number, callback: (...args: unknown[]) => void): Registration;
@@ -30,8 +31,11 @@ const optiUninstall = callable<[number, string], Reply<Pending>>('opti_uninstall
 const optiConfirm = callable<[number, string], Reply<boolean>>('opti_confirm');
 const optiToggle = callable<[number, boolean, string], Reply<Pending>>('opti_toggle');
 const optiSettings = callable<[number, Settings, boolean], Reply<boolean>>('opti_settings');
+const optiRestoreSettings = callable<[number], Reply<boolean>>('opti_restore_settings');
 const optiPanel = callable<[number], Reply<boolean>>('opti_panel');
 const operationProgress = callable<[], Reply<Operation>>('operation_progress');
+const runtimeStatus = callable<[], Reply<RuntimeStatus>>('runtime_status');
+const runtimeInstall = callable<[], Reply<RuntimeStatus>>('runtime_install');
 function unwrap<T>(r: Reply<T>): T {
   if (!r.ok || r.data === undefined) throw new Error(t(r.error || '操作失败'));
   return r.data;
@@ -73,7 +77,7 @@ function Content() {
   const [advanced, setAdvanced] = useState(false);
   const [version, setVersion] = useState('0.9.4');
   const [source, setSource] = useState('github');
-  const [settings, setSettings] = useState<Settings>({sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real'});
+  const [settings, setSettings] = useState<Settings>({sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'2'});
   const [removeConfirm, setRemoveConfirm] = useState(false);
   const [operation, setOperation] = useState<Operation | null>(null);
   const [progressDisconnected, setProgressDisconnected] = useState(false);
@@ -84,6 +88,7 @@ function Content() {
   const progressRequest = useRef(0);
   const acceptedRequest = useRef(0);
   const refreshNeeded = useRef<{appid:number;instance:string;operation:string|null} | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const busy = localBusy || operation?.running === true;
   function acceptOperation(value: Operation) {
     if (!mounted.current || value.schema !== 1 || !Number.isSafeInteger(value.revision)
@@ -148,15 +153,17 @@ function Content() {
         if (!alive || !next) return;
         const restarted = before && before.instance_id !== next.instance_id;
         const confirmed = before?.operation_id === next.operation_id && before?.phase === 'awaiting-launch' && next.phase === 'completed';
+        if (before?.running && !next.running && next.kind === 'runtime_install')
+          setRuntime(unwrap(await runtimeStatus()));
         if ((restarted || (before?.running && !next.running) || confirmed) && selected.current > 0
-          && (restarted || next.appid === selected.current))
+          && (restarted || next.appid === selected.current || next.kind === 'runtime_install'))
           refreshNeeded.current = {appid:selected.current,instance:next.instance_id,operation:next.operation_id};
         const refresh = refreshNeeded.current;
         if (refresh && (refresh.appid !== selected.current || refresh.instance !== next.instance_id || refresh.operation !== next.operation_id))
           refreshNeeded.current = null;
         else if (refresh && !lock.current) {
-          refreshNeeded.current = null;
           await load(refresh.appid);
+          if (refreshNeeded.current === refresh) refreshNeeded.current = null;
         }
       } catch { /* Keep the last running snapshot; a failed poll must not unlock it. */ }
       finally { polling = false; }
@@ -168,6 +175,7 @@ function Content() {
   useEffect(() => {
     void task(t('正在读取游戏列表…'), async () => {
       try { await readOperation(); } catch { /* Inventory remains usable while snapshot polling reconnects. */ }
+      setRuntime(unwrap(await runtimeStatus()));
       const list = unwrap(await inventory()); if (!mounted.current) return; setGames(list);
       const previous = Number(localStorage.getItem('opti2xmx-selected'));
       const attached = latestOperation.current;
@@ -214,6 +222,7 @@ function Content() {
   }
   const opti = info?.opti;
   const optiPending = !!opti?.pending;
+  const configBlocked = optiPending || !!opti?.settings_recovery;
   async function toggleOpti(want: boolean) {
     await task(want ? t('正在开启 Opti 注入…') : t('正在关闭 Opti 注入，保留 XMX…'), async () => {
       try {
@@ -246,7 +255,7 @@ function Content() {
   }
   async function saveSettings(reset = false) {
     await task(reset ? t('正在恢复推荐默认设置…') : t('正在保存设置…'), async () => {
-      const desired = reset ? {sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real'} : settings;
+      const desired = reset ? {sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'2'} : settings;
       unwrap(await optiSettings(appid, desired, reset)); await load(appid);
       setMessage(t('设置已保存，下次启动游戏生效。'));
     });
@@ -254,15 +263,27 @@ function Content() {
   const options = (items: [string,string][]) => items.map(([data,label])=>({data,label}));
   return <PanelSection>
     {progressDisconnected && <PanelSectionRow><div role="status">{t('进度连接暂不可用，正在重试。')}</div></PanelSectionRow>}
+    <ButtonItem layout="below" disabled={busy || !runtime || runtime.ready || !runtime.available || !!runtime.host_issue}
+      description={runtime ? <>{t('独立的 XMX 组件，不含 OptiScaler。')} {runtime.version} · {(runtime.size_bytes / 1000000).toFixed(1)} MB<br />
+        {runtime.ready ? t('XMX 运行环境已就绪。') : t(runtime.error || runtime.availability_message || runtime.host_issue || '下载后校验并配置到当前用户目录。')}</> : t('正在检查 XMX 运行环境…')}
+      onClick={() => task(t('正在下载并配置 XMX 运行环境…'), async () => {
+        try {
+          setRuntime(unwrap(await runtimeInstall()));
+          setMessage(t('XMX 运行环境已配置。选择游戏后开启 XMX。'));
+        } finally {
+          setRuntime(unwrap(await runtimeStatus()));
+          if (appid) await load(appid);
+        }
+      })}>{runtime?.ready ? t('XMX 运行环境已就绪') : t('下载并配置 XMX 运行环境')}</ButtonItem>
     <DropdownItem label={t('游戏')} layout="below" disabled={busy} selectedOption={appid} strDefaultLabel={t('选择游戏')}
       rgOptions={games.map(g => ({ data: g.appid, label: g.name }))} onChange={v => void select(Number(v.data))} />
     {info ? <>
-      <ToggleField label={t('XMX 加速')} checked={active} disabled={busy || blocked || pending || optiPending}
-        description={<><strong>{t('仅支持 Intel 设备。')}</strong><br />{t('为游戏启用 XMX 加速，使兼容的游戏中的 XeSS 帧生成可以正常使用。')}<br />{t('更改状态前请先关闭游戏！')}</>} onChange={want => void toggle(want)} />
-      {opti?.managed && <ToggleField label={t('Opti 注入')} checked={opti.injection_enabled} disabled={busy || pending || optiPending}
+      <ToggleField label={t('XMX 加速')} checked={active} disabled={busy || blocked || pending || configBlocked}
+        description={<><strong>{t('仅支持 Intel 设备。')}</strong><br />{t('启用 Intel XMX 执行路径；帧生成仍需游戏、运行时和 Proton 支持。')}<br />{t('更改状态前请先关闭游戏！')}</>} onChange={want => void toggle(want)} />
+      {opti?.managed && <ToggleField label={t('Opti 注入')} checked={opti.injection_enabled} disabled={busy || pending || configBlocked}
         description={<>{t('游戏原生支持 XeSS 帧生成时，请关闭此选项。')}<br />{t('使用 ')}<em>OptiScaler</em>{t(' 修改游戏内的超分辨率/帧生成设置')}</>}
         onChange={want => void toggleOpti(want)} />}
-      {opti?.installed && opti.injection_enabled !== false && <ButtonItem layout="below" disabled={busy || optiPending} onClick={() => task(t('正在打开 Opti 面板…'), async () => {
+      {opti?.installed && opti.injection_enabled !== false && <ButtonItem layout="below" disabled={busy || configBlocked} onClick={() => task(t('正在打开 Opti 面板…'), async () => {
         Navigation.CloseSideMenus(); unwrap(await optiPanel(appid)); setMessage(t('已发送面板快捷键。'));
       })}>{t('打开 Opti 面板')}</ButtonItem>}
       {opti && !opti.managed && !optiPending && <>
@@ -284,40 +305,49 @@ function Content() {
         <ButtonItem layout="below" disabled={busy} description={'Opti '+opti.version} onClick={()=>setAdvanced(!advanced)}>{advanced?t('收起高级设置'):t('高级设置')}</ButtonItem>
         {advanced && <>
           {opti.managed && opti.version.startsWith('0.9') && <>
-            <DropdownItem layout="below" label={t('超分输出')} disabled={busy || active || optiPending} selectedOption={settings.sr}
+            <DropdownItem layout="below" label={t('超分输出')} disabled={busy || active || configBlocked} selectedOption={settings.sr}
               description={active?t('XMX 开启时使用 XeSS。'):undefined}
               rgOptions={options([['xess','XeSS'],['fsr31','FSR 3.1'],['fsr22','FSR 2.2'],['dlss',t('DLSS（需要支持的显卡）')]])}
               onChange={v=>setSettings({...settings,sr:String(v.data)})} />
-            <DropdownItem layout="below" label={t('帧生成输出')} disabled={busy || optiPending} selectedOption={settings.fg}
+            <DropdownItem layout="below" label={t('帧生成输出')} disabled={busy || configBlocked} selectedOption={settings.fg}
               description={opti.injection_enabled ? t('这是 Opti 的输出；XeFG 输入尚未实现。原生 XeSS FG 可关闭 Opti 注入测试。') : t('Opti 注入已关闭；这里的设置将在重新开启后生效。')}
               rgOptions={options([['native',t('游戏原生（不接管）')],['fsrfg',t('FSR 帧生成')],['xefg',t('XeSS 帧生成（实验）')]])}
               onChange={v=>setSettings({...settings,fg:String(v.data)})} />
-            {settings.fg!=='native' && <DropdownItem layout="below" label={t('游戏 FG 类型')} disabled={busy || optiPending} selectedOption={settings.fg_input}
+            {settings.fg==='xefg' && <DropdownItem layout="below" label={t('XeSS FG 倍率（实验）')}
+              disabled={busy || optiPending || !!opti.settings_recovery} selectedOption={settings.fg_multiplier || '2'}
+              description={t('仅用于 Opti XeSS FG 输出。实际倍率取决于运行时支持；原生 XeSS FG 请在游戏内设置。')}
+              rgOptions={options([['2',t('2x（生成 1 帧）')],['3',t('3x（生成 2 帧）')],['4',t('4x（生成 3 帧）')]])}
+              onChange={v=>setSettings({...settings,fg_multiplier:String(v.data)})} />}
+            {settings.fg!=='native' && <DropdownItem layout="below" label={t('游戏 FG 类型')} disabled={busy || configBlocked} selectedOption={settings.fg_input}
               description={t('选择游戏实际支持的类型，并在游戏里开启对应帧生成。无原生 FG 才选超分输入。')}
               rgOptions={options([['fsrfg30','FSR 3.0 FG'],['fsrfg','FSR 3.1 FG'],['dlssg','DLSS FG'],['upscaler',t('无原生 FG：使用超分输入')]])}
               onChange={v=>setSettings({...settings,fg_input:String(v.data)})} />}
-            <DropdownItem layout="below" label={t('显卡伪装')} disabled={busy || active || optiPending} selectedOption={settings.spoof}
+            <DropdownItem layout="below" label={t('显卡伪装')} disabled={busy || active || configBlocked} selectedOption={settings.spoof}
               description={active?t('XMX 开启时保留真实 Intel 身份。'):t('实验兼容选项；改身份不保证解锁功能。')}
               rgOptions={options([['real',t('真实显卡（推荐）')],['nvidia','NVIDIA'],['amd','AMD'],['intel','Intel Arc']])}
               onChange={v=>setSettings({...settings,spoof:String(v.data)})} />
-            <ButtonItem layout="below" disabled={busy || optiPending} onClick={()=>saveSettings()}>{t('保存设置')}</ButtonItem>
-            <ButtonItem layout="below" disabled={busy || optiPending} description={t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。')} onClick={()=>saveSettings(true)}>{t('恢复默认')}</ButtonItem>
+            <ButtonItem layout="below" disabled={busy || optiPending || !!opti.settings_recovery} onClick={()=>saveSettings()}>{t('保存设置')}</ButtonItem>
+            <ButtonItem layout="below" disabled={busy || optiPending || !!opti.settings_recovery} description={t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。')} onClick={()=>saveSettings(true)}>{t('恢复默认')}</ButtonItem>
+            {(opti.settings_rollback || opti.settings_recovery) && <ButtonItem layout="below" disabled={busy || optiPending}
+              description={t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。')}
+              onClick={()=>task(t('正在撤销上次设置…'),async()=>{unwrap(await optiRestoreSettings(appid));await load(appid);setMessage(t('已恢复上次保存前的设置，下次启动生效。'));})}>
+              {opti.settings_recovery?t('恢复中断的设置'):t('撤销上次设置')}</ButtonItem>}
           </>}
-          <DropdownItem layout="below" label={t('Opti 版本')} disabled={busy || optiPending} selectedOption={version}
+          <DropdownItem layout="below" label={t('Opti 版本')} disabled={busy || configBlocked} selectedOption={version}
             rgOptions={options([['0.9.4',t('0.9.4（当前稳定版）')],['0.7.9',t('0.7.9（兼容旧版）')]])} onChange={v=>setVersion(String(v.data))} />
-          <DropdownItem layout="below" label={t('下载源')} disabled={busy || optiPending} selectedOption={source}
+          <DropdownItem layout="below" label={t('下载源')} disabled={busy || configBlocked} selectedOption={source}
             description={t('默认使用官方；备用镜像由第三方提供。已有缓存时直接复用。')}
             rgOptions={options([['github',t('GitHub 官方')],['ghfast',t('ghfast.top（第三方备用）')],['ghproxy',t('gh-proxy.com（第三方备用）')]])} onChange={v=>setSource(String(v.data))} />
-          <ButtonItem layout="below" disabled={busy || managed || optiPending || !opti.injection_enabled} description={managed?t('先关闭 XMX，再更换 Opti 版本。'):t('开启 Opti 注入后可更换版本；保留回退备份。')} onClick={()=>optiAction('install')}>{t('安装所选版本')}</ButtonItem>
-          <ButtonItem layout="below" disabled={busy || managed || !opti.rollback} description={t('撤销上次安装、迁移或卸载；需先关闭 XMX。')} onClick={()=>optiAction('rollback')}>{t('回退上次操作')}</ButtonItem>
-          <ButtonItem layout="below" disabled={busy || managed || optiPending || !opti.managed} description={t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。')} onClick={()=>removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true)}>{removeConfirm?t('确认卸载 Opti'):t('卸载 Opti')}</ButtonItem>
+          <ButtonItem layout="below" disabled={busy || managed || configBlocked || !opti.injection_enabled} description={managed?t('先关闭 XMX，再更换 Opti 版本。'):t('开启 Opti 注入后可更换版本；保留回退备份。')} onClick={()=>optiAction('install')}>{t('安装所选版本')}</ButtonItem>
+          <ButtonItem layout="below" disabled={busy || managed || configBlocked || !opti.rollback} description={t('撤销上次安装、迁移或卸载；需先关闭 XMX。')} onClick={()=>optiAction('rollback')}>{t('回退上次操作')}</ButtonItem>
+          <ButtonItem layout="below" disabled={busy || managed || configBlocked || !opti.managed} description={t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。')} onClick={()=>removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true)}>{removeConfirm?t('确认卸载 Opti'):t('卸载 Opti')}</ButtonItem>
         </>}
       </>}
       {message && <PanelSectionRow><div role={error ? 'alert' : 'status'} style={{fontSize:13,lineHeight:1.5}}>{t(message)}</div></PanelSectionRow>}
     </> : <PanelSectionRow><div role="status" style={{fontSize:13,lineHeight:1.5}}>{t(message)}</div></PanelSectionRow>}
-    {operation?.operation_id && (operation.appid === appid || operation.running) && <PanelSectionRow>
+    {operation?.operation_id && (operation.appid === appid || operation.running || operation.kind === 'runtime_install') && <PanelSectionRow>
       <div role={operation.phase === 'failed' ? 'alert' : 'status'} style={{fontSize:13,lineHeight:1.5}}>
-        {t(({started:'正在准备 Opti…',downloading:'正在下载 Opti…','cache-hit':'正在复用 Opti 缓存…',extracting:'正在解压 Opti…',installing:'正在安装 Opti…','awaiting-launch':'Opti 已准备，等待确认启动设置。',completed:'Opti 操作已完成。',failed:'Opti 操作未完成。'} as Record<string,string>)[operation.phase] || '正在处理 Opti 配置…')}
+        {t(((operation.kind === 'runtime_install' ? {started:'正在准备 XMX 运行环境…',downloading:'正在下载 XMX 运行环境…',extracting:'正在解压 XMX 运行环境…',installing:'正在验证并配置 XMX 运行环境…',completed:'XMX 运行环境配置完成。',failed:'XMX 运行环境配置未完成。'} : {started:'正在准备 Opti…',downloading:'正在下载 Opti…','cache-hit':'正在复用 Opti 缓存…',extracting:'正在解压 Opti…',installing:'正在安装 Opti…','awaiting-launch':'Opti 已准备，等待确认启动设置。',completed:'Opti 操作已完成。',failed:'Opti 操作未完成。'}) as Record<string,string>)[operation.phase] || '正在处理 Opti 配置…')}
         {operation.downloaded_bytes > 0 && <> · {(operation.downloaded_bytes / 1048576).toFixed(1)} MiB
           {operation.total_bytes !== null && operation.total_bytes > 0 && operation.downloaded_bytes <= operation.total_bytes
             && <> / {(operation.total_bytes / 1048576).toFixed(1)} MiB · {(operation.downloaded_bytes * 100 / operation.total_bytes).toFixed(0)}%</>}</>}
@@ -325,7 +355,7 @@ function Content() {
       </div>
     </PanelSectionRow>}
     <ButtonItem layout="below" disabled={busy} onClick={() => task(t('正在刷新…'), async () => {
-      setGames(unwrap(await inventory())); if (appid) await load(appid); setMessage('');
+      setRuntime(unwrap(await runtimeStatus())); setGames(unwrap(await inventory())); if (appid) await load(appid); setMessage('');
     })}>{t('刷新')}</ButtonItem>
   </PanelSection>;
 }

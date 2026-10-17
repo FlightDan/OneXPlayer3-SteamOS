@@ -1,6 +1,6 @@
 # OneXPlayer3-SteamOS
 
-[简体中文](README.md) | [English](README.en.md)
+[简体中文](README.md) | [English](README.en.md) | [Installation](#3-installation)
 
 ## 1. Introduction
 
@@ -134,7 +134,39 @@ Windows / SteamOS boot menu screenshot. D-pad and A/B are now working during boo
 
 </details>
 
-## 3. Featured Plugin · Opti2XMX
+## 3. Installation
+
+### Install a dual-boot system from Windows
+
+Download the complete Windows x64 installer ZIP from [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases). The current main-branch integration release is **0.1.3 stable**; read the [0.1.3 release notes](windows-installer/docs/RELEASE_0.1.3.md) before use.
+
+1. Download the Windows installer ZIP from Releases, extract it completely and keep the accompanying files together.
+2. Back up your data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Restore protection after confirming Windows starts normally.
+3. Prepare at least **64 GiB of contiguous unallocated space** on the target GPT disk, plus at least **45 GiB** of free Windows workspace; **64 GiB** is recommended.
+4. Run **`SteamOSInstaller.exe`** and choose the installation location, official system image and desired components. Continue directly to Review plan. Shared-partition mounting remains hidden for new installations. Internal dual-boot installation is supported; see the implementation status for external SD / SSD validation.
+5. Review the target disk, partition plan and selected components. Enable the optional rEFInd boot menu if desired, then start installation.
+6. Follow the installer instructions to boot SteamOS, then check Game Mode, the desktop, controls and plugins.
+
+System images are not included. Preparing SteamOS 3.10 and initializing some components requires an internet connection. See the [installation guide](windows-installer/docs/INSTALLATION_GUIDE.md) for full instructions.
+
+### Update this project or install repairs from SteamOS
+
+[OXP3 Repairs and Project Updates](steamos-maintenance/README.md) lets existing SteamOS users select project repairs, plugins and subsequent project updates. Its native GTK touch interface maintains the current slot and supports signature verification, rollback and interrupted-operation recovery.
+
+Open a terminal in SteamOS KDE Desktop Mode, then download and launch the installer:
+
+```bash
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  --output install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.4/install-oxp3-maintenance.sh \
+  && bash install-oxp3-maintenance.sh
+```
+
+Select the repairs or plugins you need; components download on demand. Version 0.1.4 provides signed maintenance packages and a Bash installer. See the [maintenance instructions](steamos-maintenance/README.md) and [validation record](steamos-maintenance/VALIDATION.md) for tested coverage and remaining checks.
+
+This updates the OXP3 project only; it does not upgrade SteamOS or change the official OS update settings.
+
+## 4. Featured Plugin · Opti2XMX
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** is a Decky plugin developed for this adaptation. It provides native **XeSS XMX acceleration and XeSS frame generation** directly for compatible games, and **OptiScaler with XeSS frame-generation support** for other compatible games.
 
@@ -160,21 +192,6 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 ![Black Myth: Wukong gameplay with the related configuration enabled](windows-installer/docs/screenshots/xess-gameplay.png)
 
 </details>
-
-## 4. Installation
-
-The complete Windows x64 installer ZIP is provided through **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)**. The main-branch integration version is **0.1.3 stable**; the channel label does not mean every hardware feature has been validated. Shared-partition mounting is hidden in new installations. The Steam client update screen fix passed user testing; client updates may download hundreds of megabytes, so let progress finish and do not force power off while it is advancing. Read the [0.1.3 release notes](windows-installer/docs/RELEASE_0.1.3.md) before use.
-
-1. Download the Windows installer ZIP from Releases, extract it completely and keep its companion files together.
-2. Back up existing data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Resume protection after installation once Windows boots normally.
-3. Prepare at least **64 GiB of contiguous unallocated space** on the target GPT disk, plus at least **45 GiB of free space** for the preparation workspace in Windows; **64 GiB** is recommended for the workspace.
-4. Run **`SteamOSInstaller.exe`** and follow the wizard to select the installation location, official system image and desired adaptation components. After choosing installation components, proceed directly to **Review plan**; shared-partition mounting is temporarily hidden and is not offered for new installations. Internal dual-boot installation is supported; the validation scope for external SD / SSD installation is documented in the implementation status.
-5. Review the target disk, partition plan and selected options, optionally enable the rEFInd boot menu, then confirm installation.
-6. Follow the application's instructions to boot SteamOS and check Game Mode, the desktop, buttons and plugins.
-
-System images are obtained from Valve's official sources. Calibrate the gyroscope before first use; Waydroid's Android image requires separate initialization. The current adaptation targets SteamOS 3.10, with the gyroscope implementation targeting BIOS 5.09.
-
-System images are not bundled with the installer. Preparing SteamOS 3.10 and initializing some components require an internet connection. See the [installation guide (Chinese)](windows-installer/docs/INSTALLATION_GUIDE.md) for the full steps.
 
 ## 5. Roadmap
 

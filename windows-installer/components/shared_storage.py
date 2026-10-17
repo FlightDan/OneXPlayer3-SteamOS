@@ -16,10 +16,14 @@ def validate_mounts(mounts):
         raise ValueError('Invalid shared storage selection')
     identities = set(); names = set()
     for item in mounts:
-        if type(item) is not dict or set(item) != {'partuuid', 'filesystem', 'mount_name'}:
+        if (type(item) is not dict or not {'partuuid', 'filesystem', 'mount_name'}.issubset(item)
+                or set(item) - {'partuuid', 'filesystem', 'mount_name', 'steam_library'}):
             raise ValueError('Invalid shared storage fields')
-        if any(type(item[key]) is not str for key in item):
+        if any(type(item[key]) is not str for key in ('partuuid', 'filesystem', 'mount_name')):
             raise ValueError('Invalid shared storage field type')
+        if ('steam_library' in item and type(item['steam_library']) is not bool or
+                item.get('steam_library', False) and item['filesystem'] != 'ntfs'):
+            raise ValueError('Steam directory libraries require an explicit NTFS selection')
         guid, name = item['partuuid'], item['mount_name']
         if not PARTUUID.fullmatch(guid) or guid == '00000000-0000-0000-0000-000000000000':
             raise ValueError('A canonical GPT partition identifier is required')
@@ -35,6 +39,17 @@ def validate_mounts(mounts):
 
 def mount_path(item):
     return '/mnt/shared/' + item['mount_name']
+
+
+def steam_library_path(item):
+    return '/var/mnt/steam-libraries/' + item['mount_name']
+
+
+def steam_bind_row(item):
+    parent = _mount_alias(mount_path(item))
+    return (f'{parent}/SteamLibrary {steam_library_path(item)} none '
+            f'bind,exec,nosuid,nodev,nofail,x-systemd.automount,'
+            f'x-systemd.requires-mounts-for={parent},x-systemd.mount-timeout=30s 0 0\n')
 
 
 def _mount_alias(path):
@@ -70,6 +85,7 @@ def render_fstab(original, mounts, owner, managed=False):
     else:
         start = len(lines); outside = lines
     requested = {_mount_alias(mount_path(item)) for item in mounts}
+    requested.update(steam_library_path(item) for item in mounts if item.get('steam_library', False))
     identities = {item['partuuid'] for item in mounts}
     for line in outside:
         fields = line.strip().split()
@@ -89,15 +105,19 @@ def render_fstab(original, mounts, owner, managed=False):
     block = BEGIN
     for item in mounts:
         filesystem = 'ntfs3' if item['filesystem'] == 'ntfs' else item['filesystem']
-        # noexec is intentional: this feature shares documents/media, not games.
+        # Native Linux volumes may contain Steam libraries. Keep their existing
+        # ownership/modes and permit execution; shared Windows formats remain noexec.
         # Never force NTFS dirty/hibernated volumes or delete their hibernation file.
-        options = ('rw,nosuid,nodev,noexec,nofail,x-systemd.automount,'
+        execution = 'exec' if item['filesystem'] in ('ext4', 'btrfs') else 'noexec'
+        options = (f'rw,nosuid,nodev,{execution},nofail,x-systemd.automount,'
                    'x-systemd.device-timeout=5s,x-systemd.mount-timeout=30s')
         # Linux filesystems retain their on-disk ownership and permissions.
         if item['filesystem'] not in ('ext4', 'btrfs'):
             options += f',uid={owner[0]},gid={owner[1]},fmask=0133,dmask=0022'
         if item['filesystem'] == 'ntfs': options += ',windows_names'
         block += f'PARTUUID={item["partuuid"]} {mount_path(item)} {filesystem} {options} 0 0\n'
+        if item.get('steam_library', False):
+            block += steam_bind_row(item)
     block += END
     if markers:
         output = ''.join(lines[:start]) + block + ''.join(lines[end + 1:])
@@ -131,11 +151,19 @@ def _check_mount_paths(root, mounts):
         if os.readlink(entry) != 'var/mnt' or (os.name == 'posix' and info.st_uid != 0):
             raise RuntimeError('Unsafe shared storage path: ' + str(entry))
         relative = 'var/mnt'
+    if any(item.get('steam_library', False) for item in mounts) and relative != 'var/mnt':
+        raise RuntimeError('NTFS Steam libraries require the verified SteamOS /mnt -> var/mnt layout')
     for item in mounts:
         path, exists = _safe_existing(root, relative + '/shared/' + item['mount_name'])
         if exists and (not path.is_dir() or any(path.iterdir())):
             raise RuntimeError('Shared storage mount point must be an empty ordinary directory')
         aliases = [mount_path(item), _mount_alias(mount_path(item))]
+        if item.get('steam_library', False):
+            library = steam_library_path(item)
+            path, exists = _safe_existing(root, library.lstrip('/'))
+            if exists and (not path.is_dir() or any(path.iterdir())):
+                raise RuntimeError('Steam library alias must be an empty ordinary directory')
+            aliases.append(library)
         directories = ['etc/systemd/system', 'usr/local/lib/systemd/system', 'usr/lib/systemd/system']
         # /lib is commonly an image-owned symlink to /usr/lib; inspect the latter.
         if (root / 'lib').exists() and not (root / 'lib').is_symlink():
@@ -179,6 +207,22 @@ def require_ntfs3(root):
     return kernels
 
 
+def require_steam_interface(root, owner):
+    """Do not silently enable Steam debugging or take ownership of Decky's marker."""
+    path = Path(root)
+    relative = 'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
+    for component in Path(relative).parts:
+        path = path / component
+        try: info = path.lstat()
+        except FileNotFoundError:
+            raise RuntimeError('NTFS Steam library registration requires the local Steam interface; '
+                               'select Decky or provision Steam local debugging before selecting this option')
+        leaf = component == '.cef-enable-remote-debugging'
+        if (not (stat.S_ISREG(info.st_mode) if leaf else stat.S_ISDIR(info.st_mode))
+                or os.name == 'posix' and (info.st_uid not in (0, owner[0]) or info.st_mode & 0o022)):
+            raise RuntimeError('Untrusted local Steam interface marker path: ' + str(path))
+
+
 def files(root, mounts, owner, managed=False):
     validate_mounts(mounts)
     if not mounts: return {}
@@ -190,7 +234,16 @@ def files(root, mounts, owner, managed=False):
     if saved['exists'] and (saved['uid'] != 0 or saved['mode'] & 0o022):
         raise RuntimeError('A trusted root-owned fstab is required')
     original = base64.b64decode(saved['data']) if saved['exists'] else b''
-    return {'etc/fstab': {'data': render_fstab(original, mounts, owner, managed)}}
+    output = {'etc/fstab': {'data': render_fstab(original, mounts, owner, managed)}}
+    if any(item.get('steam_library', False) for item in mounts):
+        require_steam_interface(root, owner)
+        from ntfs_steam import runtime_files
+        for relative, entry in runtime_files(mounts, owner).items():
+            path, exists = _safe_existing(root, relative)
+            if exists and (not path.is_file() or stat.S_IMODE(path.stat().st_mode) != entry.get('mode', 0o644)):
+                raise RuntimeError('Unexpected NTFS Steam runtime target metadata: ' + str(path))
+            output[relative] = entry
+    return output
 
 
 def verify_fstab(data, mounts, owner):
@@ -203,13 +256,19 @@ def verify_fstab(data, mounts, owner):
     if len(begin) != 1 or len(end) != 1 or begin[0] >= end[0]:
         raise RuntimeError('Missing or ambiguous installed shared storage fstab block')
     rows = lines[begin[0]+1:end[0]]
-    if len(rows) != len(mounts): raise RuntimeError('Installed shared storage count differs from selection')
+    libraries = [item for item in mounts if item.get('steam_library', False)]
+    if len(rows) != len(mounts) + len(libraries):
+        raise RuntimeError('Installed shared storage count differs from selection')
     expected = {item['partuuid']: item for item in mounts}
     seen = set()
+    bind_rows = []
     for line in rows:
         fields = line.split()
-        if len(fields) != 6 or not fields[0].startswith('PARTUUID='):
+        if len(fields) != 6:
             raise RuntimeError('Malformed installed shared storage row')
+        if not fields[0].startswith('PARTUUID='):
+            bind_rows.append(fields)
+            continue
         identity = fields[0][9:]
         if identity not in expected or identity in seen:
             raise RuntimeError('Installed shared storage partition differs from selection')
@@ -219,16 +278,39 @@ def verify_fstab(data, mounts, owner):
         filesystem = {'ntfs':'ntfs3', 'exfat':'exfat', 'vfat':'vfat', 'ext4':'ext4', 'btrfs':'btrfs'}[selected['filesystem']]
         if fields[2] != filesystem:
             raise RuntimeError('Installed shared storage filesystem differs from selection')
-        required = {'rw', 'nosuid', 'nodev', 'noexec', 'nofail', 'x-systemd.automount',
+        required = {'rw', 'nosuid', 'nodev', 'nofail', 'x-systemd.automount',
                     'x-systemd.device-timeout=5s', 'x-systemd.mount-timeout=30s'}
-        if filesystem not in ('ext4', 'btrfs'):
+        if filesystem in ('ext4', 'btrfs'):
+            required.add('exec')
+        else:
+            required.add('noexec')
             required.update({'uid=' + str(owner[0]), 'gid=' + str(owner[1]), 'fmask=0133', 'dmask=0022'})
         if filesystem == 'ntfs3': required.add('windows_names')
         actual = fields[3].split(',')
         if len(actual) != len(set(actual)) or set(actual) != required:
             raise RuntimeError('Installed shared storage permission/safety options differ from selection')
+    if seen != set(expected):
+        raise RuntimeError('Missing installed shared storage partition')
+    binds = {_mount_alias(mount_path(item)) + '/SteamLibrary': item for item in libraries}
+    seen_binds = set()
+    for fields in bind_rows:
+        source = fields[0]
+        item = binds.get(source)
+        if item is None or source in seen_binds:
+            raise RuntimeError('Unexpected or duplicate Steam library directory bind')
+        seen_binds.add(source)
+        parent = _mount_alias(mount_path(item))
+        required = {'bind', 'exec', 'nosuid', 'nodev', 'nofail', 'x-systemd.automount',
+                    'x-systemd.requires-mounts-for=' + parent, 'x-systemd.mount-timeout=30s'}
+        flags = fields[3].split(',')
+        if (fields[1] != steam_library_path(item) or fields[2] != 'none' or fields[4:] != ['0', '0']
+                or len(flags) != len(set(flags)) or set(flags) != required):
+            raise RuntimeError('Steam library bind scope or safety policy differs from selection')
+    if seen_binds != set(binds):
+        raise RuntimeError('Missing Steam library directory bind')
     # A duplicate unmanaged reference outside the block can supersede the intent.
     destinations = {_mount_alias(mount_path(item)) for item in mounts}
+    destinations.update(steam_library_path(item) for item in libraries)
     for line in lines[:begin[0]] + lines[end[0]+1:]:
         fields = line.split()
         if not fields or fields[0].startswith('#') or len(fields) < 2: continue
@@ -237,3 +319,18 @@ def verify_fstab(data, mounts, owner):
                 source.removeprefix('/dev/disk/by-partuuid/') in expected or
                 _mount_alias(_unescape_fstab(fields[1])) in destinations):
             raise RuntimeError('Duplicate unmanaged installed shared storage reference')
+
+
+def verify_steam_runtime(root, mounts, owner):
+    """Verify the staged immutable runtime without mounting or registering anything."""
+    validate_mounts(mounts)
+    if not any(item.get('steam_library', False) for item in mounts):
+        return
+    from ntfs_steam import runtime_files
+    from file_transaction import snapshot
+    for relative, expected in runtime_files(mounts, owner).items():
+        saved = snapshot(Path(root) / relative)
+        if (not saved['exists'] or saved['uid'] != 0 or saved['gid'] != 0
+                or saved['mode'] != expected.get('mode', 0o644)
+                or base64.b64decode(saved['data']) != expected['data']):
+            raise RuntimeError('Missing or changed NTFS Steam runtime file: ' + relative)

@@ -50,10 +50,156 @@ def tree_snapshot(root):
         output[path.relative_to(root).as_posix()]=(data,info.st_mode,info.st_uid,info.st_gid)
     return output
 
+
+def copy_maintenance_fixture(payload):
+    source=Path(__file__).resolve().parent.parent
+    source=(source/'maintenance') if (source/'maintenance').is_dir() else source/'cache/maintenance'
+    shutil.copytree(source,Path(payload)/'maintenance')
+
 PAYLOAD=Path('/mnt/payload')
 CATALOG=json.loads((PAYLOAD/'components/options.json').read_text())
 
 class IntegrationChecks(unittest.TestCase):
+    def legacy_payload(self, plugin_ids, repairs=()):
+        """Private catalog for retained compatibility paths, never product options."""
+        pinned={'protondb':'protondb-1.3.4.zip','hltb':'hltb-2.0.12.zip',
+                'tabmaster':'tabmaster-2.15.1+oxp3.1.zip',
+                'autoflatpaks':'autoflatpaks-1.6.8+oxp3.1.zip'}
+        for name in plugin_ids:
+            directory=PAYLOAD/'plugins'/name
+            archives=([directory/pinned[name]] if name in pinned else list(directory.glob('*.zip')))
+            if not any(path.is_file() for path in archives):
+                self.skipTest('Legacy compatibility archive intentionally absent from public payload: '+name)
+        temporary=tempfile.TemporaryDirectory(prefix='oxp3-legacy-plugin-payload-')
+        self.addCleanup(temporary.cleanup)
+        payload=Path(temporary.name)
+        # The production trust check rejects linked components/integration trees.
+        shutil.copytree(PAYLOAD/'components',payload/'components')
+        copy_maintenance_fixture(payload)
+        (payload/'integration').mkdir()
+        (payload/'plugins').symlink_to(PAYLOAD/'plugins',target_is_directory=True)
+        catalog=json.loads((payload/'components/options.json').read_text())
+        existing={item['id'] for item in catalog['plugins']}
+        catalog['plugins'].extend({'id':name,'default':False,'dependencies':['decky']}
+                                 for name in plugin_ids if name not in existing)
+        (payload/'components/options.json').write_text(json.dumps(catalog))
+        manifest=json.loads((PAYLOAD/'integration/manifest.json').read_text())
+        selected={name:manifest[name] for name in repairs}
+        for metadata in selected.values():
+            for entry in metadata.get('files',[]):
+                source=Path(entry['source'])
+                target=payload/'integration'/source
+                target.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(PAYLOAD/'integration'/source,target)
+        (payload/'integration/manifest.json').write_text(json.dumps(selected))
+        return payload
+
+    def test_serial_console_policy_repeat_and_restore_both_slots(self):
+        from serial_console import DROPIN, DATA
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        original=self.root/'etc/systemd/system/getty@tty1.service.d/keep.conf'
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b'[Service]\nTTYVTDisallocate=no\n')
+        for slot in ('A','B'):
+            with self.subTest(slot=slot):
+                result=stage(self.root,PAYLOAD,self.options,slot)
+                self.assertEqual(stage(self.root,PAYLOAD,self.options,slot),result)
+                report=result['components']['serial-console-policy']
+                self.assertEqual(report['activation'],'next-boot')
+                self.assertEqual((self.root/DROPIN).read_bytes(),DATA)
+                self.assertEqual((self.root/DROPIN).stat().st_uid,0)
+                runtime=self.root/'usr/local/lib/oxp3-integration'
+                self.assertEqual((runtime/'serial_console.py').read_bytes(),(PAYLOAD/'components/serial_console.py').read_bytes())
+                restored=subprocess.run([sys.executable,'-I','-B',str(runtime/'integration.py'),'restore',
+                    '--root',str(self.root),'--slot',slot,'--component','serial-console-policy'],
+                    capture_output=True,text=True,timeout=30)
+                self.assertEqual(restored.returncode,0,restored.stderr)
+                self.assertEqual(json.loads(restored.stdout),[])
+                self.assertFalse((self.root/DROPIN).exists())
+        self.assertEqual(original.read_bytes(),b'[Service]\nTTYVTDisallocate=no\n')
+
+    def test_serial_console_policy_preserves_later_admin_edit(self):
+        from serial_console import DROPIN
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        stage(self.root,PAYLOAD,self.options,'A')
+        changed=b'[Unit]\nConditionKernelCommandLine=custom-serial\n'
+        (self.root/DROPIN).write_bytes(changed)
+        errors=restore(self.root,'A','serial-console-policy')
+        self.assertTrue(errors)
+        self.assertEqual((self.root/DROPIN).read_bytes(),changed)
+
+    def test_autoflatpaks_pinned_patch_stages_and_restores(self):
+        # 0.1.4 intentionally omits third-party plugins from its default catalog.
+        # Exercise the retained compatibility deployment with an explicit private
+        # catalog, without reintroducing that option into the product UI.
+        payload=self.legacy_payload(['autoflatpaks'])
+        self.options.update(repairs=[],plugins=['decky','autoflatpaks'],kde_language='system')
+        result=stage(self.root,payload,self.options,'A')
+        self.assertEqual(result['components']['autoflatpaks']['status'],'files_installed')
+        directory=self.root/'var/lib/oxp3-installer/decky/runtime/plugins/decky-autoflatpaks'
+        package=json.loads((directory/'package.json').read_text())
+        self.assertEqual(package['version'],'1.6.8+oxp3.1')
+        self.assertEqual(package['oxp3_compatibility_patch'],'Defer battery polling until Steam power state is available')
+        self.assertIn('window.SystemPowerStore?.batteryState',(directory/'dist/index.js').read_text())
+        self.assertNotIn('window.SystemPowerStore.batteryState',(directory/'dist/index.js').read_text())
+        self.assertEqual((directory/'dist/index.js').stat().st_uid,0)
+        self.assertEqual(stage(self.root,payload,self.options,'A'),result)
+        self.assertEqual(restore(self.root,'A','autoflatpaks'),[])
+        self.assertFalse((directory/'dist/index.js').exists())
+
+    def test_maintenance_tool_repeat_launch_and_restore(self):
+        self.options.update(repairs=[],plugins=[],kde_language='system')
+        for slot in ('A','A'):
+            result=stage(self.root,PAYLOAD,self.options,slot)
+            report=result['components']['maintenance-tool']
+            self.assertEqual(report['status'],'files_installed')
+            runtime=self.root/'usr/local/lib/oxp3-maintenance'
+            release=json.loads((runtime/'current-release.json').read_text())
+            self.assertEqual(release['version'],result['release']['version'])
+            generation=runtime/'releases'/release['maintenance_runtime']
+            self.assertIn('/usr/local/lib/oxp3-maintenance/releases/'+release['maintenance_runtime']+'/entry.py',
+                          (runtime/'entry.py').read_text())
+            launch=subprocess.run([sys.executable,'-I','-B',str(generation/'entry.py'),'--help'],capture_output=True,text=True)
+            self.assertEqual(launch.returncode,0,launch.stderr)
+            self.assertIn('gui',launch.stdout)
+            desktop=self.root/'home/deck/Desktop/OXP3-Maintenance.desktop'
+            menu=self.root/'home/deck/.local/share/applications/OXP3-Maintenance.desktop'
+            self.assertEqual(desktop.read_bytes(),menu.read_bytes())
+            self.assertIn('Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py gui',desktop.read_text())
+            self.assertEqual(desktop.stat().st_uid,1000)
+            self.assertEqual(desktop.stat().st_mode&0o777,0o755)
+            for relative in report['files']:
+                if relative.startswith('usr/'):
+                    path=self.root/relative
+                    self.assertEqual(path.stat().st_uid,0)
+                    self.assertFalse(path.stat().st_mode&0o022)
+            self.assertEqual(json.loads((runtime/'activation.json').read_text())['components'],{})
+            self.assertFalse((self.root/'home/.oxp3-maintenance').exists())
+            self.assertFalse((self.root/'etc/systemd/system/multi-user.target.wants/oxp3-maintenance-activate.service').exists())
+            self.assertFalse((self.root/'home/deck/.config/systemd/user/timers.target.wants/oxp3-maintenance-check.timer').exists())
+            self.assertNotIn('oxp3-maintenance-activate.service',result['services'])
+        self.assertEqual(restore(self.root,'A','maintenance-tool'),[])
+        self.assertFalse((self.root/'home/deck/Desktop/OXP3-Maintenance.desktop').exists())
+        self.assertFalse((self.root/'usr/local/lib/oxp3-maintenance/entry.py').exists())
+
+    def test_maintenance_missing_payload_refuses_before_image_writes(self):
+        from unittest.mock import patch
+        before=tree_snapshot(self.root)
+        with patch('maintenance_tool.files',side_effect=FileNotFoundError('Maintenance application missing')):
+            with self.assertRaises(FileNotFoundError):
+                stage(self.root,PAYLOAD,self.options,'A')
+        self.assertEqual(tree_snapshot(self.root),before)
+
+    def test_maintenance_manifest_tampering_is_refused(self):
+        from maintenance_tool import files
+        with tempfile.TemporaryDirectory() as temporary:
+            payload=Path(temporary)
+            shutil.copytree(PAYLOAD/'maintenance',payload/'maintenance')
+            app=payload/'maintenance/app'
+            (app/'entry.py').write_bytes(b'raise SystemExit("tampered")\n')
+            with self.assertRaisesRegex(RuntimeError,'differs'):
+                files(self.root,payload,{'version':'0.1.4'})
+
     def assert_hold(self,root,result,slot='A'):
         report=result['components']['system-update-hold']
         self.assertEqual(report['status'],'files_installed')
@@ -167,6 +313,7 @@ class IntegrationChecks(unittest.TestCase):
 
     def test_decky_order_is_per_slot_with_shared_home(self):
         from decky_order import SETTINGS
+        payload=self.legacy_payload(['steamgriddb'], repairs=['oxp3-cpu'])
         self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
         temporary=tempfile.TemporaryDirectory(prefix='oxp3-decky-order-B-')
         self.addCleanup(temporary.cleanup); other=Path(temporary.name)
@@ -175,9 +322,9 @@ class IntegrationChecks(unittest.TestCase):
         (other/'home').mkdir()
         subprocess.run(['mount','--bind',str(self.root/'home'),str(other/'home')],check=True)
         self.addCleanup(lambda: subprocess.run(['umount',str(other/'home')],check=True))
-        stage(self.root,PAYLOAD,self.options,'A')
+        stage(self.root,payload,self.options,'A')
         (self.root/SETTINGS).write_text('{"pluginOrder":["SteamGridDB","OXP3 CPU"]}')
-        stage(other,PAYLOAD,self.options,'B')
+        stage(other,payload,self.options,'B')
         self.assertEqual(json.loads((other/SETTINGS).read_text())['pluginOrder'],['OXP3 CPU','SteamGridDB'])
         self.assertEqual(json.loads((self.root/SETTINGS).read_text())['pluginOrder'],['SteamGridDB','OXP3 CPU'])
         self.assertEqual(restore(other,'B','oxp3-cpu'),[])
@@ -188,15 +335,16 @@ class IntegrationChecks(unittest.TestCase):
 
     def test_decky_default_order_is_once_only_and_restore_preserves_manual_changes(self):
         from decky_order import SETTINGS
+        payload=self.legacy_payload(['steamgriddb'], repairs=['oxp3-cpu'])
         self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
-        first=stage(self.root,PAYLOAD,self.options,'A')
+        first=stage(self.root,payload,self.options,'A')
         path=self.root/SETTINGS
         self.assertEqual(json.loads(path.read_text())['pluginOrder'],['OXP3 CPU','SteamGridDB'])
         self.assertIn(SETTINGS,first['components']['decky']['files'])
-        self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
+        self.assertEqual(stage(self.root,payload,self.options,'A'),first)
         path.write_text('{"pluginOrder":["SteamGridDB","OXP3 CPU"],"sortPlugins":false}')
         manual=path.read_bytes()
-        stage(self.root,PAYLOAD,self.options,'A')
+        stage(self.root,payload,self.options,'A')
         self.assertEqual(path.read_bytes(),manual)
         self.assertEqual(restore(self.root,'A','oxp3-cpu'),[])
         self.assertEqual(restore(self.root,'A','steamgriddb'),[])
@@ -213,6 +361,7 @@ class IntegrationChecks(unittest.TestCase):
 
     def test_css_theme_directory_is_writable_without_chowning_code(self):
         from runtime_access import require_access
+        payload=self.legacy_payload(['css-loader','protondb','hltb','tabmaster'])
         self.options.update(repairs=[],plugins=['decky','css-loader','protondb','hltb','tabmaster'],kde_language='system')
         parent=self.root/'home/deck/homebrew'
         parent.mkdir(parents=True); parent.chmod(0o755)
@@ -220,9 +369,9 @@ class IntegrationChecks(unittest.TestCase):
         original=(sentinel.stat().st_uid,sentinel.stat().st_gid)
         old_mask=os.umask(0o077)
         try:
-            first=stage(self.root,PAYLOAD,self.options,'A')
-            self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
-            stage(self.root,PAYLOAD,self.options,'B')
+            first=stage(self.root,payload,self.options,'A')
+            self.assertEqual(stage(self.root,payload,self.options,'A'),first)
+            stage(self.root,payload,self.options,'B')
         finally: os.umask(old_mask)
         themes=parent/'themes'
         self.assertEqual((themes.stat().st_uid,themes.stat().st_gid),(1000,1000))
@@ -277,12 +426,13 @@ class IntegrationChecks(unittest.TestCase):
         self.assertTrue(launcher.exists())
     def test_decky_startup_paths_and_deck_read_access(self):
         from runtime_access import require_access
+        payload=self.legacy_payload(['steamgriddb'], repairs=['oxp3-cpu'])
         self.options.update(repairs=['oxp3-cpu'],plugins=['decky','steamgriddb'],kde_language='system')
         old_mask=os.umask(0o077)
         try:
-            first=stage(self.root,PAYLOAD,self.options,'A')
-            self.assertEqual(stage(self.root,PAYLOAD,self.options,'A'),first)
-            stage(self.root,PAYLOAD,self.options,'B')
+            first=stage(self.root,payload,self.options,'A')
+            self.assertEqual(stage(self.root,payload,self.options,'A'),first)
+            stage(self.root,payload,self.options,'B')
         finally: os.umask(old_mask)
         privileged=self.root/'var/lib/oxp3-installer/decky/runtime'
         unit=(self.root/'etc/systemd/system/plugin_loader.service').read_text()
@@ -378,16 +528,17 @@ class IntegrationChecks(unittest.TestCase):
     def test_invalid_plugin_archive_is_skipped(self):
         from unittest.mock import patch
         import zipfile
+        payload=self.legacy_payload(['steamgriddb'])
         self.options.update(repairs=['keyboard'],plugins=['decky','steamgriddb'],kde_language='system')
         with patch('integration.zip_files',side_effect=zipfile.BadZipFile('File is not a zip file')):
-            result=stage(self.root,PAYLOAD,self.options,'A')
+            result=stage(self.root,payload,self.options,'A')
         self.assertEqual(result['components']['decky']['status'],'files_installed')
         self.assertTrue(result['components']['steamgriddb']['safe_to_skip'])
         self.assertEqual(result['components']['keyboard']['status'],'files_installed')
 
     def test_missing_decky_skips_dependents_and_keeps_independent_repair(self):
         from unittest.mock import patch
-        self.options.update(repairs=['keyboard'],plugins=['decky','steamgriddb'],kde_language='system')
+        self.options.update(repairs=['keyboard'],plugins=['decky','windows-reboot'],kde_language='system')
         read_bytes=Path.read_bytes
         def missing(path):
             if path==PAYLOAD/'plugins/decky/PluginLoader': raise FileNotFoundError('Plugin download unavailable')
@@ -395,10 +546,10 @@ class IntegrationChecks(unittest.TestCase):
         with patch.object(Path,'read_bytes',missing):
             for slot in ('A','B'):
                 result=stage(self.root,PAYLOAD,self.options,slot)
-                for name in ('decky','steamgriddb'):
+                for name in ('decky','windows-reboot'):
                     self.assertEqual(result['components'][name]['status'],'not_installed')
                     self.assertTrue(result['components'][name]['safe_to_skip'])
-                self.assertIn('Dependency not installed',result['components']['steamgriddb']['reason'])
+                self.assertIn('Dependency not installed',result['components']['windows-reboot']['reason'])
                 self.assertEqual(result['components']['keyboard']['status'],'files_installed')
                 self.assertNotIn('plugin_loader.service',result['services'])
         self.assertFalse((self.root/'etc/systemd/system/plugin_loader.service').exists())
@@ -610,6 +761,12 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         self.assertIn('LeftPaddle2',stock.read_text())
         self.assertEqual(restore(self.root,'A','multifunction'),[]); self.assertFalse(override.exists())
     def test_all_default_payloads(self):
+        # A prepared image has the mounted slot EFI boot file required by the
+        # newly default-selected split-lock repair. Other fixtures intentionally
+        # retain missing-EFI behavior for independent component skip checks.
+        grub=self.root/'efi/EFI/steamos/grub.cfg'
+        grub.parent.mkdir(parents=True)
+        grub.write_text('steamenv_boot linux /boot/vmlinuz-linux-neptune-72 root=PARTUUID=fixture quiet\n')
         result=stage(self.root,PAYLOAD,self.options,'A')
         refused={k:v for k,v in result['components'].items() if v['status']!='files_installed'}
         self.assertEqual(refused,{})
@@ -620,8 +777,12 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         self.assertEqual((self.root/'usr/bin/steamos-manager').read_bytes(),(PAYLOAD/'integration/manager/steamos-manager').read_bytes())
         self.assertTrue((self.root/'opt/oxp3-desktop-gamma22/6.7.3-1.6/bin/kwin_wayland').is_file())
         opti=self.root/'var/lib/oxp3-installer/decky/runtime/plugins/opti2xmx'
-        self.assertEqual(json.loads((opti/'package.json').read_text())['version'],'0.2.1')
+        self.assertEqual(json.loads((opti/'package.json').read_text())['version'],'0.2.4')
         self.assertTrue((opti/'opti.py').is_file())
+        for relative in ('main.py','opti.py','plugin.json','dist/index.js'):
+            info=(opti/relative).stat()
+            self.assertEqual(info.st_uid,0)
+            self.assertEqual(info.st_mode&0o022,0)
         self.assertEqual(json.loads((opti/'plugin.json').read_text())['flags'],[])
         self.assertTrue((self.root/'opt/oxp3-opti2xmx/20261005/runtime/igc/neo/bin').is_dir())
         self.assertTrue(os.access(self.root/'opt/oxp3-opti2xmx/20261005/runtime/tools/cm-compile.sh',os.X_OK))
@@ -683,7 +844,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
     def test_disabled_items_do_not_install(self):
         self.options.update(repairs=[],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')
-        self.assertEqual(set(result['components']),{'system-update-hold'})
+        self.assertEqual(set(result['components']),{'system-update-hold','serial-console-policy','maintenance-tool'})
         self.assert_hold(self.root,result)
         self.assertFalse((self.root/'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode').exists())
         self.assertFalse((self.root/'home/deck/.config/plasma-localerc').exists())
@@ -768,6 +929,13 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         try:
             stage(other,PAYLOAD,self.options,'B')
             self.assertEqual((other/'usr/local/lib/oxp3-integration/slot').read_text().strip(),'B')
+            for target in (self.root,other):
+                runtime=target/'usr/local/lib/oxp3-maintenance'
+                current=json.loads((runtime/'current-release.json').read_text())
+                self.assertTrue((runtime/'releases'/current['maintenance_runtime']/'oxp3_maintenance/touch_ui.py').is_file())
+                self.assertTrue((target/'home/deck/Desktop/OXP3-Maintenance.desktop').is_file())
+            # Reprepare A after B using separate roots and the real shared home.
+            stage(self.root,PAYLOAD,self.options,'A')
             self.assertEqual(restore(other,'B','keyboard'),[])
             self.assertFalse((self.root/'home/deck/.config/kwinrc').exists())
         finally: subprocess.run(['umount',str(other/'home')],check=True)
@@ -813,7 +981,7 @@ for relative in ('.local/share/Steam/config/deck-write-check',
                 if component:
                     self.assertEqual(result['components'][component]['status'],
                                      'not_installed' if name=='skipped' else 'files_installed')
-                else: self.assertEqual(set(result['components']),{'system-update-hold'})
+                else: self.assertEqual(set(result['components']),{'system-update-hold','serial-console-policy','maintenance-tool'})
                 if name=='repair':
                     self.assertIn('InputMethod=/usr/share/applications/org.kde.plasma.keyboard.desktop',
                                   (root/'home/deck/.config/kwinrc').read_text())

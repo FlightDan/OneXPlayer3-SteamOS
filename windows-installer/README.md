@@ -2,6 +2,8 @@
 
 在 Windows 中准备 SteamOS，安装到选定的 GPT 未分配空间。支持内置盘与 Windows 共存、外部 SD / SSD 完整系统、OXP3 设备适配与插件预装，以及可选的 rEFInd 双系统启动菜单。
 
+0.1.4 开发分支的镜像准备已集成 GTK 修复与项目更新工具本体，并创建 KDE 桌面及应用菜单快捷方式；资源按需下载。构建与公钥要求见[维护工具集成](docs/MAINTENANCE_TOOL.md)。
+
 当前整合版为 **OXP3 SteamOS 0.1.3 stable**（`0.1.3`，渠道 `stable`），目标系统为 **SteamOS 3.10 / build 20260924.1000**；可用安装包见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)，具体构建编号以包内 `build-info.json` 为准。stable 是本项目的整合版渠道标签，不代表所有设备流程或硬件均已验收。挂载选择已隐藏；新安装选择组件后直接进入“确认方案”。Animation Changer 插件的路径冲突曾导致 Steam 客户端更新界面黑屏；0.1.3 已整合修复，用户测试确认界面现可正常显示。Steam 客户端更新可能下载数百 MB，请等待进度完成，进度仍在变化时不要强制关机。完整无人值守全新安装尚未验收。详见[0.1.3 发布说明](docs/RELEASE_0.1.3.md)。
 
 Valve 官方 SteamOS 3.10 镜像的更新分支仍为 `stable`；这与本项目整合版的 `stable` 渠道相互独立。0.1.3 新装镜像让 `atomupd` 更新器保持运行并指向必需的私有本地空更新源；正常运行时没有 SteamOS 更新候选，安装器不提供暂停／恢复此策略的 UI。此行为只影响新准备的镜像，不会修改已安装的 SteamOS。若恢复更新或执行官方 SteamOS 系统更新，系统可能从 3.10 回滚到 3.8，并可能覆盖全部 OXP3 适配，包括 Wi-Fi 与手柄支持。旧暂停记录及恢复入口保留为历史／救援资料，见 [首次启动与更新保护](docs/FIRSTBOOT_INPUT_DECKY.md)。

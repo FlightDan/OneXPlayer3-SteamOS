@@ -63,11 +63,11 @@ class BackupTests(unittest.TestCase):
         self.restore()  # Recovery is idempotent; backups remain available.
 
     def test_existing_wine_directory_case_is_reused_and_absence_restored(self):
-        actual = self.prefix / "drive_c/windows/system32/DriverStore/FileRepository/igd_faux.inf_1/igdext64.dll"
+        actual = self.prefix / "drive_c/Opti2XMX-Driver/igdext64.dll"
         actual.parent.mkdir(parents=True)
         self.install()
         self.assertTrue(actual.is_file())
-        self.assertFalse((self.prefix / "drive_c/windows/system32/driverstore").exists())
+        self.assertFalse((self.prefix / "drive_c/opti2xmx-driver").exists())
         self.assertEqual(tool.recorded_dll_path(tool.load(self.state)), actual)
         self.restore()
         self.assertFalse(actual.exists())
@@ -79,7 +79,7 @@ class BackupTests(unittest.TestCase):
         system32 = self.prefix / "drive_c/Windows/system32"
         system32.rename(system32.with_name("System32"))
         self.install()
-        actual = self.prefix / "drive_c/Windows/System32/driverstore/filerepository/igd_faux.inf_1/igdext64.dll"
+        actual = self.prefix / "drive_c/opti2xmx-driver/igdext64.dll"
         self.assertTrue(actual.is_file())
         self.assertFalse((self.prefix / "drive_c/windows").exists())
         self.restore()
@@ -90,7 +90,7 @@ class BackupTests(unittest.TestCase):
             tool.recorded_dll_path(dict(prefix=str(self.prefix), files=[dict(label="igdext64.dll",path=str(self.prefix / ".." / "elsewhere.dll"))]))
 
     def test_existing_cased_dll_content_and_metadata_are_restored(self):
-        actual = self.prefix / "drive_c/windows/system32/DriverStore/FileRepository/igd_faux.inf_1/IGDEXT64.DLL"
+        actual = self.prefix / "drive_c/Opti2XMX-Driver/IGDEXT64.DLL"
         actual.parent.mkdir(parents=True)
         actual.write_bytes(b"original cased DLL")
         actual.chmod(0o640)
@@ -104,9 +104,9 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(actual.stat().st_mtime_ns, original_mtime)
 
     def test_ambiguous_case_directories_refuse_before_backups_or_writes(self):
-        parent = self.prefix / "drive_c/windows/system32"
-        (parent / "DriverStore").mkdir()
-        (parent / "driverstore").mkdir()
+        parent = self.prefix / "drive_c"
+        (parent / "Opti2XMX-Driver").mkdir()
+        (parent / "opti2xmx-driver").mkdir()
         with self.assertRaisesRegex(RuntimeError, "Ambiguous Windows path"):
             self.install()
         self.assertFalse(self.state.exists())
@@ -204,7 +204,7 @@ class BackupTests(unittest.TestCase):
     def test_symlink_parent_rejected_before_mutation(self):
         external = self.root / "external"
         external.mkdir()
-        (self.prefix / "drive_c/windows/system32/driverstore").symlink_to(external)
+        (self.prefix / "drive_c/opti2xmx-driver").symlink_to(external)
         with self.assertRaisesRegex(RuntimeError, "Symlink parent"):
             self.install()
         self.assertFalse(self.state.exists())
@@ -236,6 +236,32 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(args, ["argument with spaces", "$(touch BAD2)"])
         self.assertFalse((self.root / "BAD").exists())
         self.assertFalse((self.root / "BAD2").exists())
+
+    def test_alt_directory_and_overrides_are_preserved_across_stock_driverstore_refresh(self):
+        stock=self.prefix/'drive_c/windows/system32/DriverStore/FileRepository/igd_faux.inf_1/igdext64.dll'
+        stock.parent.mkdir(parents=True);stock.write_bytes(b'stock before')
+        self.install()
+        stock.write_bytes(b'stock refreshed by Proton')
+        script='. "$1"; python3 -c '+__import__('shlex').quote(
+            'import json,os; print(json.dumps([os.environ["INTC_ALT_DRIVER_EXTENSIONS_PATH"],os.environ["WINEDLLOVERRIDES"]]))')
+        result=subprocess.run(['bash','-c',script,'test',str(self.state/'game.conf')],text=True,capture_output=True,
+                              env=dict(os.environ,WINEDLLOVERRIDES='foo,igdext64=b;dxgi=n;IGDEXT64=;bar=b'))
+        self.assertEqual(result.returncode,0,result.stderr)
+        path,overrides=json.loads(result.stdout)
+        self.assertEqual(path,'C:\\opti2xmx-driver')
+        self.assertEqual(overrides,'foo=b;dxgi=n;bar=b;igdext64=n,b')
+        self.assertEqual(self.dll.read_bytes(),(self.package/'igdext64.dll').read_bytes())
+        self.restore()
+        self.assertEqual(stock.read_bytes(),b'stock refreshed by Proton')
+
+    def test_legacy_driverstore_journal_restores_its_recorded_path(self):
+        legacy=Path('drive_c/windows/system32/driverstore/filerepository/igd_faux.inf_1/igdext64.dll')
+        old=self.prefix/legacy;old.parent.mkdir(parents=True);old.write_bytes(b'old original')
+        with patch.object(tool,'DLL_REL',legacy):self.install()
+        self.assertEqual(tool.recorded_dll_path(tool.load(self.state)),old)
+        self.restore()
+        self.assertEqual(old.read_bytes(),b'old original')
+        self.assertFalse(self.dll.exists())
 
     def test_real_launcher_missing_compiler_falls_back_before_game_command(self):
         self.install()
@@ -393,6 +419,26 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(ok, report)
         self.assertIn(["ldd", str(igc / "libigc.so.2")], commands)
         self.assertIn(["ldd", str(igc / "libigdfcl.so.2")], commands)
+
+    def test_frozen_decky_preflight_uses_host_python_and_clean_environment(self):
+        (self.package / 'igc/igc/local/lib/libigdfcl.so.2').write_text('fixture')
+        calls = []
+        def successful(command, **kwargs):
+            calls.append((command, kwargs['env']))
+            return subprocess.CompletedProcess(command, 0, 'deviceName = Intel fixture', '')
+        with patch.object(tool.sys, 'executable', '/decky/PluginLoader'), \
+             patch.object(tool.shutil, 'which', return_value='/usr/bin/python3'), \
+             patch.dict(tool.os.environ, {'LD_LIBRARY_PATH': '/decky/lib', 'LD_LIBRARY_PATH_ORIG': '/host/lib',
+                                          'PYTHONHOME': '/decky', 'PYTHONPATH': '/decky'}, clear=False), \
+             patch.object(tool.subprocess, 'run', side_effect=successful):
+            self.assertTrue(tool.driver_check(self.package, self.root / 'fixture.json')[0])
+            self.assertTrue(tool.compiler_check(self.package)[0])
+        python_calls = [(command, env) for command, env in calls if '-c' in command]
+        self.assertEqual(len(python_calls), 3)
+        for command, env in python_calls:
+            self.assertEqual(command[0], '/usr/bin/python3')
+            self.assertNotIn('/decky', env.get('LD_LIBRARY_PATH', ''))
+            self.assertNotIn('PYTHONHOME', env); self.assertNotIn('PYTHONPATH', env)
 
     def test_missing_compiler_never_selects_usable_driver_xmx_path(self):
         self.install()

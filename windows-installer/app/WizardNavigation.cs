@@ -143,9 +143,6 @@ public partial class MainWindow
         RestartPanel.Visibility = written ? Visibility.Visible : Visibility.Collapsed;
         RestartButton.IsEnabled = written && idle && !DownloadsBusy;
         RestartButton.Content = PartitionInventory.L("重启到 SteamOS", "Restart to SteamOS");
-        DebugMode.Content = PartitionInventory.L("调试模式", "Debug mode");
-        DebugMode.ToolTip = PartitionInventory.L("显示高级工具和示例 / 开发选项", "Show advanced tools, examples and developer options");
-        DebugMode.IsEnabled = idle && !DownloadsBusy && !PartitionSelector.IsBusy;
         BrowseWorkspaceButton.IsEnabled = idle && !DownloadsBusy && !PartitionSelector.IsBusy;
         WorkspaceCard.Visibility = step <= 4 ? Visibility.Visible : Visibility.Collapsed;
         RefreshWorkspace();
@@ -155,7 +152,7 @@ public partial class MainWindow
         StoragePage.IsEnabled = false;
         BootPage.IsEnabled = idle;
         PhysicalConsent.IsEnabled = idle;
-        NextButton.IsEnabled = BackButton.IsEnabled = AdvancedButton.IsEnabled = InstallerLanguage.IsEnabled = idle && !DownloadsBusy;
+        NextButton.IsEnabled = BackButton.IsEnabled = InstallerLanguage.IsEnabled = idle && !DownloadsBusy;
         UsePrepared.IsEnabled = optionsPanel.IsEnabled = !DownloadsBusy;
         Upgrade310.IsEnabled = idle && !DownloadsBusy && UsePrepared.IsChecked != true;
         downloadPanel.IsEnabled = !officialDownloadPanel.IsBusy;

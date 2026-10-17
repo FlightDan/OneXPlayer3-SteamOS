@@ -62,3 +62,11 @@ Decky 设置、日志和插件数据继续使用 `/home/deck/homebrew`。Loader 
 回归覆盖输入服务的已选/未选/缺失/不兼容/启动失败，真实 Linux `/opt` bind mount 与只读复核，严格 umask、插件读取和 Steam 用户目录写权限，以及重复 A/B 准备和既有标记保留。入口为 `--cli runtime-permission-checks`；日志位于 `logs/`，不随源码发布。
 
 上述实机结果来自修复已安装系统；新包整套重新安装、重启和休眠仍需另行验收。Waydroid 首次启动还缺少 `lxc` / `dnsmasq` 依赖，Android 初始化也仍是独立步骤，本轮不将其列为完成。
+
+## 0.1.4 分支：串口与 AutoFlatpaks 重复报错
+
+新准备的 A/B 两槽通过必需的 `serial-console-policy` 文件事务写入 `serial-getty@ttyS0.service.d/90-oxp3-console.conf`。默认跳过 OXP3 不可用的 ttyS0 登录终端；保留现有内核 `console=` 参数及其他 getty。需要真实串口登录时，可显式添加内核参数 `oxp3.serial-console=1`。持久 `/etc`、原件备份、重复准备及冲突保护沿用现有事务。恢复该组件后下次启动恢复原行为。
+
+AutoFlatpaks 修复版为 `1.6.8+oxp3.1`：每秒重新检查 `SystemPowerStore?.batteryState`，状态缺失或 AC 状态尚未初始化时等待后续轮询。有效状态继续走原有事件和更新逻辑，保留卸载时的定时器清理。修复包由 `scripts/patch-autoflatpaks.py` 从固定上游 1.6.8 包重建，包含补丁源码、差异和上游 BSD 许可；保留的部署路径只选修复包，打包排除旧包。0.1.4 现有的第三方插件由用户自装策略保持，未恢复 AutoFlatpaks 默认预装选项。
+
+专项验证入口为 `--cli log-spam-checks`，覆盖串口两槽重复准备、独立运行时恢复、后续管理员修改保护，以及 AutoFlatpaks 部署/恢复。`scripts/test_autoflatpaks_compat.py` 执行实际前端 bundle，验证状态缺失、延迟就绪、AC 切换及卸载。2026-10-16 已对当前运行的 SteamOS 应用同样修复并单独重载 AutoFlatpaks；原件及显式恢复入口保存在 `/var/lib/oxp3-log-spam-repair-20261016-a1/`。未通过重启验证实机持久性，也未生成新的安装器发行包。

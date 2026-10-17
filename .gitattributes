@@ -13,3 +13,4 @@ windows-installer/components/slot-switch/oxp3-switch-slot text eol=lf
 *.jpg binary
 *.exe binary
 *.dll binary
+windows-installer/components/opti2xmx/** -text

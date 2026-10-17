@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "0.1.4+maintenance.3",
+  "display_version": "0.1.4",
+  "channel": "stable",
+  "notes": "修复设备隔离服务的启动前检查及用户服务被误加 root 检查的问题；修复更新完成后概览仍显示旧版本的缓存。包含前两次维护修订。"
+}

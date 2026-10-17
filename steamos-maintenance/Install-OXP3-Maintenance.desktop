@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Set up OXP3 Repairs and Project Updates
+Name[zh_CN]=安装 OXP3 修复与项目更新工具
+Comment=Review and install this signed OXP3 project release
+Comment[zh_CN]=检测设备并选择本项目的修复组件
+Exec=/usr/bin/python3 -I -B -c "import pathlib,runpy,sys,urllib.parse,urllib.request; p=pathlib.Path(urllib.request.url2pathname(urllib.parse.urlparse(sys.argv[1]).path) if sys.argv[1].startswith('file:') else sys.argv[1]).parent; sys.argv=[str(p/'entry.py'),'gui']; runpy.run_path(str(p/'entry.py'),run_name='__main__')" %k
+Icon=system-software-update
+Terminal=false
+Categories=System;Settings;

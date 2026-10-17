@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import copy
 import unittest
 from test_manager import Tests
 
@@ -39,6 +40,17 @@ class Lifecycle(Tests):
         self.assertTrue(self.m.inspect_game(42)['opti']['rollback'])
         back=self.m.opti_rollback(42,r['target']);self.m.opti_confirm(42,back['target'])
         self.assertTrue((self.game/'dxgi.dll').exists())
+
+    def test_opti_install_works_without_xmx_runtime(self):
+        self.fresh()
+        with patch.object(self.m, 'dependencies', return_value=(self.package, self.sr, False)):
+            info = self.m.inspect_game(42)
+            self.assertFalse(info['runtime_ready'])
+            self.assertEqual(info['automatic']['reason'], 'XMX 运行组件未就绪。')
+            with self.assertRaisesRegex(RuntimeError, '运行组件'):
+                self.m.enable(42, 'game.exe', 'native', '')
+            self.install_opti()
+            self.assertTrue(self.m.inspect_game(42)['opti']['managed'])
 
     def test_upgrade_rollback_keeps_old_version(self):
         launch=self.migrate();old=(self.game/'dxgi.dll').read_bytes()
@@ -178,6 +190,199 @@ class Lifecycle(Tests):
         self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg'],'xefg')
         with patch.dict('os.environ',{'LD_LIBRARY_PATH':'/tmp/decky-bundle'},clear=True):
             self.assertNotIn('LD_LIBRARY_PATH',system_env())
+
+    def fg_settings(self, multiplier=None):
+        result=dict(sr='xess',fg='xefg',fg_input='upscaler',spoof='real')
+        if multiplier is not None:result['fg_multiplier']=multiplier
+        return result
+
+    def test_multiplier_requests_are_written_read_and_old_rpc_defaults_to_two(self):
+        self.fresh();self.install_opti()
+        for multiplier,interpolations in [('2','1'),('3','2'),('4','3')]:
+            self.m.opti_settings(42,self.fg_settings(multiplier))
+            self.assertIn('InterpolationCount='+interpolations,(self.game/'OptiScaler.ini').read_text())
+            self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],multiplier)
+        self.m.opti_settings(42,self.fg_settings())
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        ini=self.game/'OptiScaler.ini';before=ini.read_bytes()
+        for value in ['1','5','auto',4,None]:
+            with self.assertRaises(ValueError):self.m.opti_settings(42,self.fg_settings(value) if value is not None else dict(self.fg_settings(),fg_multiplier=None))
+            self.assertEqual(ini.read_bytes(),before)
+        ini.write_text('[XeFG]\nInterpolationCount=auto\n')
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+
+    def test_settings_undo_is_independent_and_latest_only(self):
+        self.fresh();self.install_opti()
+        install_undo=copy.deepcopy(self.m.opti_record(42)['undo'])
+        self.m.opti_settings(42,self.fg_settings('3'))
+        prior=(self.game/'OptiScaler.ini').read_bytes()
+        self.m.opti_settings(42,self.fg_settings('4'))
+        self.assertTrue(self.m.inspect_game(42)['opti']['settings_rollback'])
+        self.m.opti_restore_settings(42)
+        self.assertEqual((self.game/'OptiScaler.ini').read_bytes(),prior)
+        self.assertEqual(self.m.opti_record(42)['undo'],install_undo)
+        self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
+        with self.assertRaisesRegex(RuntimeError,'没有可恢复'):self.m.opti_restore_settings(42)
+
+    def test_active_xmx_settings_undo_restores_each_mirror_and_original_preferences(self):
+        self.fresh();launch=self.install_opti()
+        self.m.opti_settings(42,dict(sr='fsr31',fg='native',fg_input='upscaler',spoof='nvidia'))
+        ini=self.game/'OptiScaler.ini';preferences=ini.read_bytes()
+        x=self.m.enable(42,'game.exe','opti',launch);self.m.confirm_launch(42,x['launch'])
+        _,_,_,targets=self.m._settings_context(42)
+        originals={path:path.read_bytes() for path in targets}
+        self.assertGreater(len(set(originals.values())),1)
+        self.m.opti_settings(42,self.fg_settings('4'))
+        r,info,_,targets=self.m._settings_context(42)
+        self.assertEqual(len(targets),4)
+        self.assertTrue(all(p.read_bytes()==ini.read_bytes() for p in targets))
+        self.m.opti_restore_settings(42)
+        self.assertEqual({p:p.read_bytes() for p in targets},originals)
+        self.m.restore(42,x['launch']);self.m.confirm_launch(42,launch)
+        self.assertEqual(ini.read_bytes(),preferences)
+
+    def test_settings_first_write_failure_preserves_four_distinct_originals(self):
+        self.fresh();launch=self.install_opti()
+        x=self.m.enable(42,'game.exe','opti',launch);self.m.confirm_launch(42,x['launch'])
+        ini=self.game/'OptiScaler.ini'
+        _,_,_,targets=self.m._settings_context(42)
+        for n,path in enumerate(targets):path.write_bytes(path.read_bytes()+f'\n; distinct mirror {n}\n'.encode())
+        originals={path:path.read_bytes() for path in targets}
+        self.assertEqual(len(set(originals.values())),4)
+        atomic=self.m.runtime().atomic_copy
+        def fail_before_first_write(src,dst):
+            if Path(dst)==ini:raise OSError('failure before first write')
+            return atomic(src,dst)
+        with patch.object(self.m.runtime(),'atomic_copy',side_effect=fail_before_first_write):
+            with self.assertRaisesRegex(RuntimeError,'设置保存未完成'):self.m.opti_settings(42,self.fg_settings('4'))
+        self.assertEqual({path:path.read_bytes() for path in targets},originals)
+        self.m.opti_restore_settings(42)
+        self.assertEqual({path:path.read_bytes() for path in targets},originals)
+
+    def test_saved_settings_undo_accepts_current_target_subset_after_xmx_off(self):
+        self.fresh();launch=self.install_opti()
+        x=self.m.enable(42,'game.exe','opti',launch);self.m.confirm_launch(42,x['launch'])
+        self.m.opti_settings(42,self.fg_settings('4'))
+        journal=copy.deepcopy(self.m.opti_record(42)['settings_undo'])
+        originals={f['path']:Path(f['observed']).read_bytes() for f in journal['files']}
+        self.m.restore(42,x['launch']);self.m.confirm_launch(42,launch)
+        _,_,_,targets=self.m._settings_context(42)
+        self.assertEqual(len(targets),2)
+        inactive={Path(name):Path(name).read_bytes() for name in originals if name not in set(map(str,targets))}
+        self.m.opti_restore_settings(42)
+        self.assertTrue(all(path.read_bytes()==originals[str(path)] for path in targets))
+        self.assertEqual({path:path.read_bytes() for path in inactive},inactive)
+        self.assertEqual(set(f['path'] for f in self.m.opti_record(42)['settings_undo']['files']),set(map(str,targets)))
+
+    def test_saved_settings_undo_refuses_new_mirror_targets_without_writing(self):
+        self.fresh();launch=self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
+        x=self.m.enable(42,'game.exe','opti',launch);self.m.confirm_launch(42,x['launch'])
+        _,_,_,targets=self.m._settings_context(42)
+        before={path:path.read_bytes() for path in targets}
+        with self.assertRaisesRegex(RuntimeError,'恢复目标已变化'):self.m.opti_restore_settings(42)
+        self.assertEqual({path:path.read_bytes() for path in targets},before)
+
+    def test_settings_undo_refuses_external_changes_live_games_and_symlinks(self):
+        self.fresh();self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
+        ini=self.game/'OptiScaler.ini';saved=ini.read_bytes()
+        with patch.object(self.m.runtime(),'game_idle',side_effect=RuntimeError('Game is running')):
+            with self.assertRaisesRegex(RuntimeError,'running'):self.m.opti_restore_settings(42)
+            with self.assertRaisesRegex(RuntimeError,'running'):self.m.opti_settings(42,self.fg_settings())
+        ini.write_bytes(saved+b'\n[External]\nKeep=external edit\n')
+        with self.assertRaisesRegex(RuntimeError,'外部修改'):self.m.opti_restore_settings(42)
+        self.assertTrue(ini.read_bytes().endswith(b'Keep=external edit\n'))
+        ini.unlink();external=self.home/'external.ini';external.write_bytes(saved);ini.symlink_to(external)
+        with self.assertRaisesRegex(RuntimeError,'普通文件'):self.m.opti_restore_settings(42)
+        with self.assertRaisesRegex(RuntimeError,'普通文件'):self.m.opti_settings(42,self.fg_settings())
+        self.assertEqual(external.read_bytes(),saved)
+
+    def test_pending_lifecycle_and_xmx_operations_block_settings(self):
+        self.fresh();p=self.m.opti_install(42,'game.exe','','0.9.4','github')
+        with self.assertRaisesRegex(RuntimeError,'待完成'):self.m.opti_settings(42,self.fg_settings())
+        with self.assertRaisesRegex(RuntimeError,'待完成'):self.m.opti_restore_settings(42)
+        self.m.opti_confirm(42,p['target'])
+        x=self.m.enable(42,'game.exe','opti',p['target'])
+        with self.assertRaisesRegex(RuntimeError,'XMX 操作待完成'):self.m.opti_settings(42,self.fg_settings())
+
+    def test_each_partial_settings_write_has_retryable_recovery_and_blocks_other_changes(self):
+        self.fresh();launch=self.install_opti()
+        x=self.m.enable(42,'game.exe','opti',launch);self.m.confirm_launch(42,x['launch'])
+        _,_,_,targets=self.m._settings_context(42)
+        originals={path:path.read_bytes() for path in targets}
+        atomic=self.m.runtime().atomic_copy
+        for target in targets:
+            with self.subTest(target=str(target)):
+                def fail(src,dst):
+                    if Path(dst)==target:raise OSError('injected synchronization failure')
+                    return atomic(src,dst)
+                with patch.object(self.m.runtime(),'atomic_copy',side_effect=fail):
+                    with self.assertRaisesRegex(RuntimeError,'设置保存未完成'):self.m.opti_settings(42,self.fg_settings('4'))
+                self.assertTrue(self.m.inspect_game(42)['opti']['settings_recovery'])
+                for operation in [lambda:self.m.opti_settings(42,self.fg_settings()),
+                                  lambda:self.m.opti_toggle(42,False,x['launch']),
+                                  lambda:self.m.restore(42,x['launch']),
+                                  lambda:self.m.opti_rollback(42,x['launch'])]:
+                    with self.assertRaisesRegex(RuntimeError,'恢复上次设置'):operation()
+                self.m.opti_restore_settings(42)
+                self.assertEqual({path:path.read_bytes() for path in targets},originals)
+                self.assertFalse(self.m.inspect_game(42)['opti']['settings_recovery'])
+
+    def test_partial_settings_restore_and_final_journal_write_can_retry(self):
+        self.fresh();self.install_opti()
+        ini=self.game/'OptiScaler.ini';original=ini.read_bytes()
+        self.m.opti_settings(42,self.fg_settings('4'))
+        _,_,_,targets=self.m._settings_context(42)
+        atomic=self.m.runtime().atomic_copy
+        def fail(src,dst):
+            if Path(dst)==targets[-1]:raise OSError('restore sync failure')
+            return atomic(src,dst)
+        with patch.object(self.m.runtime(),'atomic_copy',side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError,'设置恢复未完成'):self.m.opti_restore_settings(42)
+        self.assertEqual(ini.read_bytes(),original)
+        self.assertTrue(self.m.inspect_game(42)['opti']['settings_recovery'])
+        self.m.opti_restore_settings(42)
+        journal=self.m.opti_record(42)['settings_undo']
+        self.assertTrue(all(Path(f['path']).read_bytes()==Path(f['observed']).read_bytes() for f in journal['files']))
+        save=self.m.opti_save
+        def fail_complete(appid,record):
+            if (record.get('settings_undo') or {}).get('status')=='saved':raise OSError('journal disk failure')
+            return save(appid,record)
+        with patch.object(self.m,'opti_save',side_effect=fail_complete):
+            with self.assertRaisesRegex(RuntimeError,'设置保存未完成'):self.m.opti_settings(42,self.fg_settings('3'))
+        self.assertTrue(self.m.inspect_game(42)['opti']['settings_recovery'])
+        self.m.opti_restore_settings(42)
+        self.assertEqual(ini.read_bytes(),original)
+        self.m.opti_settings(42,self.fg_settings('4'))
+        def fail_restore_complete(appid,record):
+            if (record.get('settings_undo') or {}).get('status')=='restored':raise OSError('restore journal disk failure')
+            return save(appid,record)
+        with patch.object(self.m,'opti_save',side_effect=fail_restore_complete):
+            with self.assertRaisesRegex(RuntimeError,'设置恢复未完成'):self.m.opti_restore_settings(42)
+        self.assertTrue(self.m.inspect_game(42)['opti']['settings_recovery'])
+        self.m.opti_restore_settings(42)
+        self.assertEqual(ini.read_bytes(),original)
+
+    def test_settings_undo_rejects_snapshot_symlink_and_journal_path_escape(self):
+        self.fresh();self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
+        r=self.m.opti_record(42);journal=copy.deepcopy(r['settings_undo'])
+        ini=self.game/'OptiScaler.ini';before=ini.read_bytes()
+        outside=self.home/'outside.ini';outside.write_bytes(b'preserve external file')
+        r['settings_undo']['before']=str(outside);self.m.opti_save(42,r)
+        with self.assertRaisesRegex(RuntimeError,'备份路径'):self.m.opti_restore_settings(42)
+        self.assertEqual(ini.read_bytes(),before)
+        r['settings_undo']=journal;self.m.opti_save(42,r)
+        snapshot=Path(journal['before']);snapshot.unlink();snapshot.symlink_to(outside)
+        with self.assertRaisesRegex(RuntimeError,'普通文件'):self.m.opti_restore_settings(42)
+        self.assertEqual(ini.read_bytes(),before)
+        self.assertEqual(outside.read_bytes(),b'preserve external file')
+
+    def test_version_change_resets_multiplier_and_cannot_resurrect_settings_undo(self):
+        self.fresh();launch=self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
+        self.install_opti(launch)
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
+        p=self.m.opti_rollback(42,launch);self.m.opti_confirm(42,p['target'])
+        self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
 
 
 if __name__=='__main__':unittest.main()

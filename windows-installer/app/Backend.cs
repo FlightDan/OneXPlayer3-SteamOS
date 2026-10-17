@@ -117,7 +117,7 @@ public static class Backend
             CopyDirectory(Path.Combine(Root, "components"), Path.Combine(payload, "components"));
             // Missing optional resources are reported by the component installer.
             // Copy/write errors still propagate: the payload must be trustworthy.
-            foreach (var (source, target) in new[] { ("cache/integration", "integration"), ("cache/plugins", "plugins"), ("cache/components/waydroid", "waydroid") })
+            foreach (var (source, target) in new[] { ("cache/integration", "integration"), ("cache/maintenance", "maintenance"), ("cache/plugins", "plugins"), ("cache/components/waydroid", "waydroid") })
             {
                 var from = Path.Combine(Root, source); var to = Path.Combine(payload, target);
                 if (Directory.Exists(from)) CopyDirectory(from, to);

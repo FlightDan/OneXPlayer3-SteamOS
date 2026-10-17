@@ -1,0 +1,10 @@
+{
+  "name": "OXP3 Light",
+  "author": "OXP3 SteamOS; HueSync: honjow, HHHHanasak1; HHD: Antheas Kapenekakis",
+  "flags": ["root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["utility", "root"],
+    "description": "ONEXPLAYER 3 paired ring, Xbox button and rear slogan lighting."
+  }
+}

@@ -63,7 +63,8 @@ def verify_runtime_access(root, components):
     for component in components.values():
         if component.get('status') != 'files_installed': continue
         for name in component.get('files', []):
-            if name.startswith(prefixes):
+            if (name.startswith(prefixes) or
+                    name.startswith('usr/local/lib/oxp3-maintenance/') and name!='usr/local/lib/oxp3-maintenance/activation.json'):
                 paths[name] = os.R_OK | (os.X_OK if (root/name).stat().st_mode & 0o111 else 0)
     # depmod outputs are generated outside the component file transaction.
     for path in (root/'usr/lib/modules').glob('*/modules.*'):

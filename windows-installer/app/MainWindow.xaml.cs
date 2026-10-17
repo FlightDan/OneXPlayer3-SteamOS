@@ -132,7 +132,6 @@ public partial class MainWindow : Window
         PageFooter.Visibility = step == 5 ? Visibility.Collapsed : Visibility.Visible;
         LogPanel.Visibility = step is 5 or 6 ? Visibility.Visible : Visibility.Collapsed;
         NextButton.Content = step == 4 ? InstallerI18n.T("开始演练") : step == 6 ? InstallerI18n.T("返回首页") : InstallerI18n.T("下一步");
-        AdvancedButton.IsEnabled = operation == null;
         ValidationMessage.Text = ""; ValidationMessage.Foreground = new SolidColorBrush(Color.FromRgb(163, 71, 39)); PageScroll.ScrollToTop();
         if(physicalInstallation) { NextButton.Content=step == 4?PartitionInventory.L("开始安装","Install SteamOS"):NextButton.Content; if(step == 5)PageTitle.Text=PartitionInventory.L("正在安装 SteamOS","Installing SteamOS"); if(step == 6)PageTitle.Text=PartitionInventory.L("本次安装结果","Installation result"); }
         InstallerLanguage.IsEnabled = operation == null && !DownloadsBusy;
@@ -449,6 +448,8 @@ public partial class MainWindow : Window
                 var label = names.TryGetValue(group.Key, out var item) ? (InstallerI18n.Language == "en-US" ? item.En : item.Zh)
                 : group.Key == "deck-access" ? PartitionInventory.L("账户与 SSH 设置", "Account and SSH settings")
                 : group.Key == "shared-storage" ? PartitionInventory.L("共享分区挂载", "Shared partition mounts")
+                : group.Key == "maintenance-tool" ? PartitionInventory.L("修复与更新工具", "Repairs and project updates")
+                : group.Key == "serial-console-policy" ? PartitionInventory.L("串口兼容性", "Serial console compatibility")
                 : group.Key == "system-update-hold" ? PartitionInventory.L("保留当前系统版本", "Preserve current system version")
                 : group.Key == "system-update-policy" ? PartitionInventory.L("历史系统更新策略", "Historical system update policy") : PartitionInventory.L("KDE 语言", "KDE language");
                 if (group.Key == "system-update-hold" && failed.Length == 0) return label + ": " + PartitionInventory.L(
@@ -457,6 +458,9 @@ public partial class MainWindow : Window
                 if (group.Key == "system-update-policy" && failed.Length == 0) return label + ": " + PartitionInventory.L(
                     "此任务曾部署系统更新暂停策略；该记录不代表当前系统的更新状态。",
                     "This task deployed a system update pause policy; this record does not describe the system's current update status.");
+                if (group.Key == "maintenance-tool" && failed.Length == 0) return label + ": " + PartitionInventory.L(
+                    "已安装；进入 KDE 桌面后打开“修复与项目更新”快捷方式。",
+                    "Installed; open the Repairs and Project Updates shortcut on the KDE desktop.");
                 return label + ": " + (failed.Length == 0 ? PartitionInventory.L("文件已部署；首次启动核对激活", "files installed; activation checked at first boot")
                     : PartitionInventory.L("已跳过 / 不可用：", "skipped / unavailable: ") + string.Join("; ", failed.Select(x =>
                         PartitionInventory.L("系统槽 ", "slot ") + x.GetProperty("slot").GetString() + " — " + InstallerI18n.Diagnostic(x.GetProperty("reason").GetString()!))));
@@ -530,18 +534,6 @@ public partial class MainWindow : Window
             ValidationMessage.Text = PartitionInventory.L("导出失败，请选择其他保存位置重试：", "Export failed. Try another save location: ") + error.Message;
         }
         finally { exportingLog = false; UpdateNavigationState(); }
-    }
-    private void OpenAdvanced(object sender, RoutedEventArgs e)
-    { if (operation == null && DebugMode.IsChecked == true) new AdvancedWindow { Owner = this }.ShowDialog(); }
-    private void DebugModeChanged(object sender, RoutedEventArgs e)
-    {
-        if (!ready) return;
-        var enabled = DebugMode.IsChecked == true;
-        AdvancedButton.Visibility = DeveloperOptions.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        PartitionSelector.SetDebugMode(enabled);
-        if (!enabled) { DeveloperOptions.IsExpanded = false; UsePrepared.IsChecked = false; }
-        acknowledgedSelection = null;
-        ConfigurationChanged();
     }
     private void OpenRecent(object sender, RoutedEventArgs e) { if (recent != null) OpenFolder(InstallationController.SessionDirectory(recent)); }
     private void OpenSession(object sender, RoutedEventArgs e) { if (session != null) OpenFolder(InstallationController.SessionDirectory(session)); }

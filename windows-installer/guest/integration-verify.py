@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0,'/mnt/payload/components')
 from runtime_access import verify_runtime_access
 from integration import shared_managed, verify_shared_storage_skip
-from shared_storage import verify_fstab, require_ntfs3
+from shared_storage import verify_fstab, require_ntfs3, verify_steam_runtime
 from file_transaction import snapshot
 from offload_mounts import mount_opt, mount_etc
 from update_hold_verify import verify as verify_update_hold
@@ -42,6 +42,35 @@ for slot in ('A','B'):
         assert json.loads((state/'request.json').read_text())==options
         results=json.loads((state/'result.json').read_text())
         verify_update_hold(root,results['components'].get('system-update-hold'))
+        from serial_console import DROPIN, DATA
+        console=results['components']['serial-console-policy']
+        assert console['status']=='files_installed' and console['files']==[DROPIN]
+        assert (root/DROPIN).read_bytes()==DATA
+        assert (root/DROPIN).stat().st_uid==0 and not (root/DROPIN).stat().st_mode&0o022
+        maintenance=results['components']['maintenance-tool']
+        assert maintenance['status']=='files_installed'
+        runtime=root/'usr/local/lib/oxp3-maintenance'
+        current=json.loads((runtime/'current-release.json').read_text())
+        assert current['version']==results['release']['version']
+        generation=runtime/'releases'/current['maintenance_runtime']
+        assert (generation/'oxp3_maintenance/touch_ui.py').is_file()
+        subprocess.run(['chroot',str(root),'/usr/bin/python3','-I','-B','-c',
+                        'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk'],
+                       check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+        assert repr('/usr/local/lib/oxp3-maintenance/releases/'+current['maintenance_runtime']+'/entry.py') in (runtime/'entry.py').read_text()
+        for relative in maintenance['files']:
+            path=root/relative
+            assert path.is_file() and not path.is_symlink(),relative
+            info=path.stat()
+            if relative.startswith('home/'):
+                assert (info.st_uid,info.st_gid)==owner,relative
+            else:
+                assert info.st_uid==0 and not info.st_mode&0o022,relative
+        launcher=root/'home/deck/Desktop/OXP3-Maintenance.desktop'
+        menu=root/'home/deck/.local/share/applications/OXP3-Maintenance.desktop'
+        assert launcher.read_bytes()==menu.read_bytes()
+        assert launcher.stat().st_mode&0o111
+        assert 'Exec=/usr/bin/python3 -I -B /usr/local/lib/oxp3-maintenance/entry.py gui' in launcher.read_text()
         checked=verify_runtime_access(root,results['components'])
         launcher=root/'home/deck/Desktop/Return.desktop'
         assert launcher.is_file() and launcher.stat().st_uid==owner[0]
@@ -118,6 +147,8 @@ for slot in ('A','B'):
                 assert 'nvme.noacpi=1' in (root/'etc/default/grub.d/oxp3-nvme.cfg').read_text()
         expected_components=set(options['repairs']+options['plugins'])|({'kde-language'} if options['kde_language']!='system' else set())
         expected_components.add('system-update-hold')
+        expected_components.add('serial-console-policy')
+        expected_components.add('maintenance-tool')
         if options.get('set_deck_password',False) or options.get('enable_ssh',False): expected_components.add('deck-access')
         storage_mounts=options.get('storage_mounts',[])
         if storage_mounts:
@@ -127,6 +158,7 @@ for slot in ('A','B'):
                 fstab=snapshot(root/'etc/fstab')
                 assert fstab['exists'] and fstab['uid']==0 and not fstab['mode']&0o022, 'Untrusted shared storage fstab'
                 verify_fstab(base64.b64decode(fstab['data']),storage_mounts,owner)
+                verify_steam_runtime(root,storage_mounts,owner)
                 if any(item['filesystem']=='ntfs' for item in storage_mounts): require_ntfs3(root)
             else: verify_shared_storage_skip(state,report)
         assert set(results['components'])==expected_components

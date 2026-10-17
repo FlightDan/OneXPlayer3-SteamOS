@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 
-DLL_REL = Path("drive_c/windows/system32/driverstore/filerepository/igd_faux.inf_1/igdext64.dll")
+DLL_REL = Path("drive_c/opti2xmx-driver/igdext64.dll")
 OWNER_REL = Path(".oxp3-xess-owner.json")
 DIAGNOSTICS = ("igdext_kernels", "igdext_dump", "igdext_trace.log", "igdext_xell.log")
 
@@ -26,6 +26,29 @@ def dxgi_identity_config():
     return ('\n# Opti2XMX: retain Intel identity through DXVK\n'
             'export DXVK_CONFIG="${DXVK_CONFIG:+$DXVK_CONFIG;}dxgi.customVendorId = 8086;'
             'dxgi.customDeviceId = -1;dxgi.customDeviceDesc = \\\"\\\""\n')
+
+
+def dll_overrides_config(*names):
+    """Replace only our DLL names, preserving unrelated inherited Wine overrides."""
+    code = ('import sys; names=set(sys.argv[2:]); parts=[]\n'
+            'for item in sys.argv[1].split(";"):\n'
+            ' key,sep,value=item.partition("="); aliases=key.split(",")\n'
+            ' kept=[alias for alias in aliases if alias.strip().lower() not in names]\n'
+            ' if sep and kept: parts.append(",".join(kept)+"="+value)\n'
+            ' elif not sep and item.strip() and key.strip().lower() not in names: parts.append(item)\n'
+            'parts.extend(name+"=n,b" for name in sys.argv[2:]); print(";".join(parts))')
+    return ('WINEDLLOVERRIDES="$(python3 -c ' + shlex.quote(code) +
+            ' "${WINEDLLOVERRIDES-}" ' + ' '.join(shlex.quote(name) for name in names) +
+            ')"\nexport WINEDLLOVERRIDES\n')
+
+
+def dll_environment_config(prefix, dll):
+    drive = windows_prefix_path(prefix, Path('drive_c'))
+    if drive not in dll.parents:
+        raise RuntimeError('DLL path must remain inside its original prefix drive_c')
+    winpath = 'C:\\' + str(dll.parent.relative_to(drive)).replace('/', '\\')
+    return ('export INTC_ALT_DRIVER_EXTENSIONS_PATH=' + shlex.quote(winpath) + '\n' +
+            dll_overrides_config('igdext64'))
 
 
 def absolute(value):
@@ -207,20 +230,43 @@ def stock_icds():
     return paths
 
 
+def host_environment():
+    # Decky's frozen PluginLoader exports its bundled loader libraries. Host
+    # tools need the original environment, and are never PluginLoader itself.
+    env = os.environ.copy()
+    original = env.pop('LD_LIBRARY_PATH_ORIG', None)
+    if original:
+        env['LD_LIBRARY_PATH'] = original
+    else:
+        env.pop('LD_LIBRARY_PATH', None)
+    env.pop('PYTHONHOME', None)
+    env.pop('PYTHONPATH', None)
+    return env
+
+
+def host_python(env):
+    python = shutil.which('python3', path=env.get('PATH'))
+    if not python:
+        raise FileNotFoundError('Host python3 is required for XMX validation')
+    return python
+
+
 def driver_check(package, icd):
     """Resolve dependencies and enumerate a GPU, in child processes only."""
     lib = package / "lib/libvulkan_intel.so"
     try:
-        result = subprocess.run(["ldd", str(lib)], capture_output=True, text=True, timeout=20)
+        env = host_environment()
+        python = host_python(env)
+        result = subprocess.run(["ldd", str(lib)], env=env, capture_output=True, text=True, timeout=20)
         report = result.stdout + result.stderr
         if result.returncode or "not found" in report:
             return False, "ldd failed or dependencies missing:\n" + report
         result = subprocess.run(
-            [sys.executable, "-c", "import ctypes,sys; ctypes.CDLL(sys.argv[1], mode=ctypes.RTLD_LOCAL)", str(lib)],
-            capture_output=True, text=True, timeout=20)
+            [python, "-c", "import ctypes,sys; ctypes.CDLL(sys.argv[1], mode=ctypes.RTLD_LOCAL)", str(lib)],
+            env=env, capture_output=True, text=True, timeout=20)
         if result.returncode:
             return False, "driver load failed:\n" + result.stderr
-        env = dict(os.environ, VK_DRIVER_FILES=str(icd), VK_LOADER_LAYERS_DISABLE="*")
+        env.update(VK_DRIVER_FILES=str(icd), VK_LOADER_LAYERS_DISABLE="*")
         result = subprocess.run(["vulkaninfo", "--summary"], env=env, capture_output=True, text=True, timeout=20)
         report = result.stdout + result.stderr
         if result.returncode or "deviceName" not in report:
@@ -250,17 +296,18 @@ def compiler_check(package):
         if not matches:
             return False, "Required IGC libraries libigc.so*/libigdfcl.so* are missing"
         libraries.append(matches[0])
-    env = os.environ.copy()
+    env = host_environment()
     paths = [str(igc), str(neo / "lib/x86_64-linux-gnu")]
     if env.get("LD_LIBRARY_PATH"):
         paths.append(env["LD_LIBRARY_PATH"])
     env["LD_LIBRARY_PATH"] = ":".join(paths)
     try:
+        python = host_python(env)
         result = subprocess.run(["bash", "-n", str(helper)], env=env,
                                 capture_output=True, text=True, timeout=20)
         if result.returncode:
             return False, "Compiler helper syntax failed:\n" + result.stderr
-        result = subprocess.run([sys.executable, "-c",
+        result = subprocess.run([python, "-c",
                                  "import ast,pathlib,sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())", str(packer)],
                                 env=env, capture_output=True, text=True, timeout=20)
         if result.returncode:
@@ -272,7 +319,7 @@ def compiler_check(package):
             if result.returncode or "not found" in report:
                 return False, "Compiler dependencies failed:\n" + report
         result = subprocess.run(
-            [sys.executable, "-c",
+            [python, "-c",
              "import ctypes,sys; [ctypes.CDLL(p, mode=ctypes.RTLD_LOCAL) for p in sys.argv[1:]]",
              *map(str, libraries)], env=env, capture_output=True, text=True, timeout=20)
         if result.returncode:
@@ -501,6 +548,7 @@ def install(args):
             text = "# Per-game XMX environment; edit diagnostic switches here while the game is closed.\n"
             text += "".join(f"export {key}={shlex.quote(value)}\n" for key, value in env.items())
             text += dxgi_identity_config()
+            text += dll_environment_config(prefix, dll)
             atomic_text(config, text)
             atomic_copy(Path(__file__).resolve(), state / "runtime.py")
             launch = "#!/bin/sh\nexec python3 " + shlex.quote(str(state / "runtime.py"))

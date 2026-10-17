@@ -37,25 +37,12 @@ internal static class TouchLayoutChecks
         Require(closedAfterCleanup && !closingWindow.IsVisible, "cleanup-finished-window-closes-automatically");
         events.AddRange(WizardChecks.CheckFreeNavigation(window));
         var picker = Find<PartitionPicker>("PartitionSelector");
-        var debug = Find<CheckBox>("DebugMode");
-        Require(debug.IsChecked == false && Find<Button>("AdvancedButton").Visibility == Visibility.Collapsed
-            && picker.ExampleButton.Visibility == Visibility.Collapsed && Find<Expander>("DeveloperOptions").Visibility == Visibility.Collapsed,
-            "debug-options-hidden-by-default");
+        Require(window.FindName("DebugMode") == null && window.FindName("AdvancedButton") == null,
+            "debug-entry-removed");
+        Require(picker.ExampleButton.Visibility == Visibility.Collapsed && Find<Expander>("DeveloperOptions").Visibility == Visibility.Collapsed
+            && Find<CheckBox>("UsePrepared").IsChecked == false, "development-options-remain-hidden");
         picker.ExampleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(picker.Disks.Items.Count == 0, "hidden-example-action-is-inactive");
-        debug.IsChecked = true;
-        Require(Find<Button>("AdvancedButton").Visibility == Visibility.Visible && picker.ExampleButton.Visibility == Visibility.Visible
-            && Find<Expander>("DeveloperOptions").Visibility == Visibility.Visible, "debug-enables-all-development-options");
-        picker.ExampleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(picker.Disks.Items.Count > 0, "debug-example-action-loads-sample");
-        Find<CheckBox>("UsePrepared").IsChecked = true;
-        Find<TextBox>("ImagePath").Text = "debug-prepared.img";
-        debug.IsChecked = false;
-        Require(picker.Disks.Items.Count == 0 && Find<CheckBox>("UsePrepared").IsChecked == false
-            && Find<TextBox>("ImagePath").Text == "", "disable-debug-clears-mock-and-prepared-source");
-        picker.LoadSnapshot(PartitionInventory.ExampleJson, false);
-        debug.IsChecked = true; debug.IsChecked = false;
-        Require(picker.Disks.Items.Count > 0, "disable-debug-keeps-real-inventory");
         void Load(bool example)
         {
             picker.LoadSnapshot(PartitionInventory.ExampleJson, example);

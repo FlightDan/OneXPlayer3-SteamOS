@@ -3,8 +3,10 @@ $ErrorActionPreference = 'Stop'
 if ($Stamp -notmatch '^\d{8}-\d{6}$') { throw 'Invalid package version' }
 if ($PublicRelease -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public release must identify its source commit.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
+& (Join-Path $PSScriptRoot 'check-maintenance.ps1') -RequireKey:$PublicRelease
 $releasePath = Join-Path $projectRoot 'components/release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
+$selfInstalledPlugins = [version]($release.version -replace '-beta$', '') -ge [version]'0.1.4'
 if ($PublicRelease -and $release.version -eq '0.1.3') {
     foreach ($required in @('components/update_hold.py','components/update_hold_verify.py')) {
         if (!(Test-Path -LiteralPath (Join-Path $projectRoot $required) -PathType Leaf)) {
@@ -43,9 +45,34 @@ $wifiSource = Join-Path $projectRoot ('cache/integration/' + $wifiFiles[0].sourc
 if (!(Test-Path -LiteralPath $wifiSource -PathType Leaf)) { throw 'Wi-Fi c106 payload is missing.' }
 & (Join-Path $PSScriptRoot 'validate-offline-payload.ps1') -ProjectRoot $projectRoot
 & (Join-Path $PSScriptRoot 'validate-windows-reboot-payload.ps1') -ProjectRoot $projectRoot
+if ($selfInstalledPlugins) { & (Join-Path $PSScriptRoot 'validate-opti-payload.ps1') -ProjectRoot $projectRoot }
 $destination = Join-Path $projectRoot "dist/$stamp/Oxp3Installer"
 if (Test-Path -LiteralPath $destination) { throw 'Use a fresh package stamp; an existing package must not be overwritten.' }
 New-Item -ItemType Directory -Force $destination | Out-Null
+function Test-PackageFile([string]$relative, [string]$relativeFile) {
+    $path = $relativeFile.Replace('\','/')
+    if ($selfInstalledPlugins -and $relative -eq 'cache/plugins') {
+        # These root manifests describe retired third-party plugins only. Decky
+        # uses its binary directly; retain its source archive and service too.
+        if (!$path.StartsWith('decky/', [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    }
+    if ($relative -eq 'scripts' -and [IO.Path]::GetFileName($path) -in @(
+        'collect-desktop-runtime.py','deploy-windows-reboot-live.py','repair-project-relocation.ps1')) { return $false }
+    return $true
+}
+function Assert-PackagePluginPolicy([string]$PackageRoot) {
+    if (!$selfInstalledPlugins) { return }
+    $pluginRoot = Join-Path $PackageRoot 'cache/plugins'
+    foreach ($item in Get-ChildItem -LiteralPath $pluginRoot -Recurse -File) {
+        $path = [IO.Path]::GetRelativePath($pluginRoot, $item.FullName)
+        if (!(Test-PackageFile 'cache/plugins' $path)) {
+            throw "Retired third-party plugin archive or metadata in package: $path"
+        }
+    }
+    if (!(Test-Path -LiteralPath (Join-Path $pluginRoot 'decky/PluginLoader') -PathType Leaf)) {
+        throw 'Packaged Decky framework is missing.'
+    }
+}
 function Copy-PackageTree([string]$source, [string]$relative) {
     $target = Join-Path $destination $relative
     New-Item -ItemType Directory -Force $target | Out-Null
@@ -54,11 +81,12 @@ function Copy-PackageTree([string]$source, [string]$relative) {
         $_.Extension -notin @('.pyc','.pdb') -and
         !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])protondb([\\/])' -and $_.Name -match '\.zip$' -and $_.Name -ne 'protondb-1.3.4.zip') -and
         !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])hltb([\\/])' -and $_.Name -match '\.zip$' -and $_.Name -ne 'hltb-2.0.12.zip') -and
-        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])tabmaster([\\/])' -and $_.Name -match '\.zip$')
+        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])tabmaster([\\/])' -and $_.Name -match '\.zip$') -and
+        !($relative -eq 'cache/plugins' -and $_.FullName -match '([\\/])autoflatpaks([\\/])' -and $_.Name -match '\.zip$')
     }) {
         if ($PublicRelease -and $relative -eq 'docs' -and $item.Name -match '^(early-repair-audit-20261014|final-installer-validation|five-repairs-20261014|g3e-repair-status|permission-regression-20261014)\.json$') { continue }
-        if ($relative -eq 'scripts' -and $item.Name -eq 'collect-desktop-runtime.py') { continue }
         $relativeFile = [IO.Path]::GetRelativePath($source, $item.FullName)
+        if (!(Test-PackageFile $relative $relativeFile)) { continue }
         $fileTarget = Join-Path $target $relativeFile
         New-Item -ItemType Directory -Force (Split-Path $fileTarget -Parent) | Out-Null
         Copy-Item -LiteralPath $item.FullName -Destination $fileTarget
@@ -121,6 +149,7 @@ if ($release.version -eq '0.1.3' -and (Test-Path -LiteralPath (Join-Path $projec
 }
 $buildInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
+Copy-PackageTree (Join-Path $projectRoot 'cache/maintenance') 'cache/maintenance'
 Copy-PackageTree (Join-Path $projectRoot 'cache/plugins') 'cache/plugins'
 foreach ($name in 'secret-input-check.sh','refind-image.sh','refind-image.py','integration.sh','integration-image.py','integration-check.sh','integration-delta-check.sh','integration-verify.sh','integration-verify.py','upgrade-source.sh','upgrade-source.py','physical-readiness.sh','physical-readiness.py','resize-prepared.sh','resize_prepared.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }
 foreach ($name in 'offload_mounts.py','test_offload_mounts.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }
@@ -136,7 +165,8 @@ foreach ($resource in 'waydroid','oxp3-controls','hdr') {
         Copy-Item -LiteralPath (Join-Path $source $name) -Destination (Join-Path $target $name)
     }
 }
-foreach ($item in @(@('decky','PluginLoader'), @('steamgriddb','steamgriddb-1.8.1.zip'), @('protondb','protondb-1.3.4.zip'), @('tabmaster','tabmaster-2.15.1+oxp3.1.zip'), @('hltb','hltb-2.0.12.zip'))) {
+foreach ($item in @(@('decky','PluginLoader'), @('steamgriddb','steamgriddb-1.8.1.zip'), @('protondb','protondb-1.3.4.zip'), @('tabmaster','tabmaster-2.15.1+oxp3.1.zip'), @('autoflatpaks','autoflatpaks-1.6.8+oxp3.1.zip'), @('hltb','hltb-2.0.12.zip'))) {
+    if (!(Test-PackageFile 'cache/plugins' "$($item[0])/$($item[1])")) { continue }
     $directory = Join-Path $destination "cache/plugins/$($item[0])"
     New-Item -ItemType Directory -Force $directory | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "cache/plugins/$($item[0])/$($item[1])") -Destination $directory
@@ -179,6 +209,7 @@ QEMU, its Windows DLL dependencies, EDK2, Alpine packages, 7-Zip and .NET source
 No WSL2, SDK, Node.js or installed VM software is needed to run the prepared app.
 '@ | Set-Content -LiteralPath (Join-Path $destination 'DEVELOPMENT_PACKAGE.txt') -Encoding utf8
 }
+Assert-PackagePluginPolicy $destination
 $prefix = if ($PublicRelease) { 'oxp3-steamos-installer' } else { 'oxp3-development' }
 $archive = Join-Path $projectRoot "dist/$prefix-$($release.version)-$stamp.$Format"
 & 'C:\Program Files\7-Zip\7z.exe' a "-t$Format" $archive (Join-Path $destination '*') | Select-Object -Last 5

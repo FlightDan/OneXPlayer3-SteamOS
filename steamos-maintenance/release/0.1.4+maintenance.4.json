@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "0.1.4+maintenance.4",
+  "display_version": "0.1.4",
+  "channel": "stable",
+  "notes": "修复默认维护包选择：同一项目版本按 maintenance.N 数字修订号选择最新维护包；API 与 Atom 回退、更新提示及降级检查使用一致顺序。包含前三次维护修订。"
+}

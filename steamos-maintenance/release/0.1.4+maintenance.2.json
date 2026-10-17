@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "0.1.4+maintenance.2",
+  "display_version": "0.1.4",
+  "channel": "stable",
+  "notes": "修复旧安装接管后的失败恢复；在写入前拒绝未纳入恢复记录的宿主包依赖，并保留原始安装错误。"
+}

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "0.1.4",
+  "display_version": "0.1.4",
+  "channel": "stable",
+  "notes": "完整组件清单、按需下载与旧版直接升级；Opti2XMX 插件和可选 XMX 运行库独立分发。"
+}

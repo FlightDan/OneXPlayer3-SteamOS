@@ -1,6 +1,7 @@
 # OneXPlayer3-SteamOS
 
-[简体中文](README.md) | [English](README.en.md)
+[简体中文](README.md) | [English](README.en.md) | [安装方法](#3-安装方法)
+
 
 ## 1. 简介
 
@@ -136,7 +137,39 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 </details>
 
-## 3. 独家插件 · Opti2XMX
+## 3. 安装方法
+
+### 在 Windows 中使用安装器安装双系统
+
+完整 Windows x64 安装应用 ZIP 通过 [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。当前 main 分支整合版为 **0.1.3 stable**；使用前请阅读 [0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
+
+1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
+2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
+3. 为目标 GPT 磁盘准备至少 **64 GiB 连续未分配空间**，并为 Windows 中的系统准备工作空间预留至少 **45 GiB** 可用空间，建议 **64 GiB**。
+4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件；选择安装内容后直接进入“确认方案”。共享分区挂载功能暂时隐藏，新安装不提供挂载选择。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
+5. 核对目标磁盘、分区方案与安装选项，可按需启用 rEFInd 启动菜单，确认后开始安装。
+6. 安装完成后，按应用提示启动 SteamOS，并检查游戏模式、桌面、按键和插件。
+
+安装包不含系统镜像，准备 SteamOS 3.10 及部分组件初始化需要联网。完整步骤见[安装指南](windows-installer/docs/INSTALLATION_GUIDE.md)。
+
+### 在 SteamOS 中更新本项目或安装修复
+
+[OXP3 修复与项目更新工具](steamos-maintenance/README.md)，供已安装 SteamOS 的用户选择修复、插件及后续项目更新。使用 GTK 原生触屏窗口，维护当前槽位，提供签名包验证、回退及中断恢复。
+
+在 SteamOS 的 KDE 桌面模式打开终端，运行以下命令下载并启动安装脚本：
+
+```bash
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  --output install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.4/install-oxp3-maintenance.sh \
+  && bash install-oxp3-maintenance.sh
+```
+
+按窗口提示选择需要的修复或插件，所需组件会按选择下载。0.1.4 提供正式签名维护包与 Bash 安装入口；使用说明见[维护工具文档](steamos-maintenance/README.md)，已测范围与待测项见[验证记录](steamos-maintenance/VALIDATION.md)。
+
+这里的更新只针对本项目；不升级 SteamOS，也不改变官方系统更新设置。
+
+## 4. 独家插件 · Opti2XMX
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** 是为这套适配开发的 Decky 插件，可为兼容的游戏直接提供原生的 **XeSS XMX 加速与 XeSS 帧生成**，并为其他兼容游戏提供支持 **XeSS 帧生成的 OptiScaler**。
 
@@ -162,21 +195,6 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 ![开启相关配置后的黑神话悟空游戏画面](windows-installer/docs/screenshots/xess-gameplay.png)
 
 </details>
-
-## 4. 安装方法
-
-完整 Windows x64 安装应用 ZIP 通过 **[Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)** 提供。当前 main 分支整合版为 **0.1.3 stable**；该渠道标签不代表所有硬件功能均已验收。共享分区挂载选择已隐藏。修复后的 Steam 客户端更新界面已通过用户测试；更新可能下载数百 MB，请等待进度完成，进度仍在变化时不要强制关机。使用前请阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
-
-1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
-2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
-3. 为目标 GPT 磁盘准备至少 **64 GiB 连续未分配空间**，并为 Windows 中的系统准备工作空间预留至少 **45 GiB** 可用空间，建议 **64 GiB**。
-4. 双击 **`SteamOSInstaller.exe`**，按向导选择安装位置、官方系统镜像及需要的适配组件；选择安装内容后直接进入“确认方案”。共享分区挂载功能暂时隐藏，新安装不提供挂载选择。支持内置硬盘双系统安装；外部 SD / SSD 的验证范围见实现状态。
-5. 核对目标磁盘、分区方案与安装选项，可按需启用 rEFInd 启动菜单，确认后开始安装。
-6. 安装完成后，按应用提示启动 SteamOS，并检查游戏模式、桌面、按键和插件。
-
-系统镜像从 Valve 官方来源获取。首次使用陀螺仪需进行校准；Waydroid 的 Android 镜像需另行初始化。当前适配以 SteamOS 3.10 为基线，陀螺仪方案针对 BIOS 5.09。
-
-安装包不含系统镜像，准备 SteamOS 3.10 及部分组件初始化需要联网。完整步骤见 [安装指南](windows-installer/docs/INSTALLATION_GUIDE.md)。
 
 ## 5. Roadmap
 

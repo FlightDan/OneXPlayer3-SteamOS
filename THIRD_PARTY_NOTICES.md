@@ -41,6 +41,17 @@ Opti2XMX's current AGPL-3.0-only and Decky template BSD-3-Clause notices are ret
 
 ## 集成的第三方 Decky 插件 / Integrated third-party Decky plugins
 
+0.1.4 开发分支新增 **OXP3 Light**，灯光协议来源于 honjow / HHHHanasak1 的 HueSync
+及 Antheas Kapenekakis 的 HHD。固定来源、原作者和完整许可随插件保存，见
+[来源说明](windows-installer/components/light/THIRD_PARTY_NOTICES.md)、
+[HueSync BSD 许可](windows-installer/components/light/LICENSE-HueSync) 与
+[HHD LGPL 许可](windows-installer/components/light/LICENSE-HHD)。
+
+Split-lock 修复参考 kas5852 的上游 PR #16 和 20261015 修复包，保留
+Copyright (c) 2026 HANA & Claude 及完整
+[MIT 许可](windows-installer/components/split-lock/UPSTREAM_LICENSE)。
+这些组件的许可独立适用，不会因本项目的 AGPL 声明被替换。
+
 以下来源依据本地集成归档的元数据与随附许可记录；版本为当前整合基线，发行包可能更新。
 
 Sources below follow the metadata and notices in the locally integrated archives. Versions describe the current integration baseline and may change between releases.
@@ -51,12 +62,14 @@ Sources below follow the metadata and notices in the locally integrated archives
 | ProtonDB Badges | 1.3.4 | [bschelst/protondb-decky](https://github.com/bschelst/protondb-decky) | Proton 兼容性徽章 / Proton compatibility badges |
 | TabMaster | 2.15.1+oxp3.1 (local patch of 2.15.1) | [Tormak9970/TabMaster](https://github.com/Tormak9970/TabMaster) | 游戏库标签管理与缺失成就缓存兼容 / Library tabs with absent achievement-cache compatibility |
 | CSS Loader | 2.1.2 | [suchmememanyskill/SDH-CssLoader](https://github.com/suchmememanyskill/SDH-CssLoader) | Steam 界面主题 / Steam UI themes |
-| AutoFlatpaks | 1.6.8 | [jurassicplayer/decky-autoflatpaks](https://github.com/jurassicplayer/decky-autoflatpaks) | Flatpak 更新管理 / Flatpak update management |
+| AutoFlatpaks | 1.6.8+oxp3.1 | [jurassicplayer/decky-autoflatpaks](https://github.com/jurassicplayer/decky-autoflatpaks) | Flatpak 更新管理 / Flatpak update management |
 | Deck Settings | 1.2.6 | [DeckSettings/decky-game-settings](https://github.com/DeckSettings/decky-game-settings) | 社区游戏配置 / Community game settings |
 | HLTB for Deck | 2.0.12 | [morwy/hltb-for-deck](https://github.com/morwy/hltb-for-deck) | 游戏时长信息 / Game completion times |
 | Animation Changer | 1.3.2 | [TheLogicMaster/SDH-AnimationChanger](https://github.com/TheLogicMaster/SDH-AnimationChanger) | 启动与休眠动画管理 / Boot and suspend animations |
 
 TabMaster `2.15.1+oxp3.1` is built locally from the official Decky store 2.15.1 archive. Its TypeScript patch, unified diffs, and build notes are included in [the compatibility patch source](windows-installer/components/tabmaster-compat/README.txt).
+
+AutoFlatpaks `1.6.8+oxp3.1` retains its upstream BSD-3-Clause license and defers polling until Steam exposes a complete battery state. The guarded poll source, bundle diff and reproducible builder accompany the [compatibility patch](windows-installer/components/autoflatpaks-compat/README.txt).
 
 ## Android / Android support
 

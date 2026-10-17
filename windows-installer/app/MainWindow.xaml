@@ -36,10 +36,6 @@
     <Button x:Name="ResultTab" Tag="6" Click="NavigateStep" Style="{StaticResource StepLink}"><TextBlock TextWrapping="Wrap" x:Name="NavResult" Text="07   完成" Foreground="#94A9C3"/></Button>
    </StackPanel></ScrollViewer>
    <StackPanel Grid.Row="2">
-    <CheckBox x:Name="DebugMode" Content="调试模式" IsChecked="False" Checked="DebugModeChanged" Unchecked="DebugModeChanged" Margin="0,0,0,4" ToolTip="显示高级工具和示例 / 开发选项">
-     <CheckBox.Style><Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="#192B43"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter Property="Foreground" Value="#192B43"/></Trigger></Style.Triggers></Style></CheckBox.Style>
-    </CheckBox>
-    <Button x:Name="AdvancedButton" Content="高级工具 ↗" Click="OpenAdvanced" Visibility="Collapsed" Background="#253F5F" Foreground="White" Margin="0,8,0,8" Padding="8,6"/>
     <UniformGrid x:Name="InstallerLanguage" Columns="2" Margin="0,0,0,8">
      <RadioButton x:Name="ChineseLanguage" Content="中文" Tag="zh-CN" GroupName="Language" Style="{StaticResource LanguageOption}" Checked="LanguageChanged" AutomationProperties.Name="简体中文"/>
      <RadioButton x:Name="EnglishLanguage" Content="English" Tag="en-US" GroupName="Language" Style="{StaticResource LanguageOption}" Checked="LanguageChanged"/>

@@ -6,10 +6,9 @@ import zipfile
 base = Path(__file__).resolve().parent
 version = json.loads((base / 'package.json').read_text(encoding='utf-8'))['version']
 output = base / f'opti2xmx-{version}.zip'
-files = ['plugin.json', 'package.json', 'main.py', 'manager.py', 'opti.py', 'download_progress.py',
+files = ['plugin.json', 'package.json', 'main.py', 'manager.py', 'opti.py', 'download_progress.py', 'runtime_setup.py', 'runtime-source.json',
          'per_game.py', 'dist/index.js', 'README.md', 'README.zh-CN.md',
-         'LICENSE', 'THIRD_PARTY_NOTICES.md', 'docs/RUNTIME.md',
-         'assets/screenshots/main-en.png', 'assets/screenshots/advanced-en.png']
+         'LICENSE', 'THIRD_PARTY_NOTICES.md', 'docs/RUNTIME.md', 'docs/FRAME_GENERATION.md']
 for file in files:
     if not (base / file).is_file():
         raise SystemExit('Missing build file: ' + file)
