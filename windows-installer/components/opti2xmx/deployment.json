@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "plugin_version": "0.2.4",
-  "plugin_sha256": "21149eb40674b21fc70a0054ca5b02c025a7de4669bb0721f6e2ee8956290f3a",
-  "plugin_source": "https://github.com/FlightDan/Opti2XMX",
+  "plugin_sha256": "62da515d477b5fb6d06a88c3d3d508a8885342cbe87f5e6f6a56cfa438dfedbd",
+  "plugin_source": "https://github.com/FlightDan/Opti2XMX/tree/c9f361de2d044f46c65d7b05e9d1ac8ebba3b6b7",
   "runtime": {
     "schema": 1,
     "version": "20261005",
@@ -17,17 +17,19 @@
     "package.json": "ecd56688fa0d4f50be3a2b56514b4c52e94359ac662e04a9965e75bc4cfe7ff7",
     "main.py": "fd8a655a5e618acf3237eee46a663b0aab43aa2ff43a0a5303bf0555177fceb2",
     "manager.py": "5ca0febbe67e01fbb0b432d30d6f001074c96e77873215a54babafcdd52daa0a",
-    "opti.py": "c12a6f6b8321f1c64cddee6afa7e3d9f6c61d980e72c166076cfdcc21ac27cf9",
+    "opti.py": "ffdb44570a98e4d793d5a4e02ad77e25a5fd7d1738885043d4a1d31fe601885b",
     "download_progress.py": "b583686246be05c098a8a510e5ee89dfb31dd75f502c4057a0242b8955423e1f",
     "runtime_setup.py": "2b097c5c7c25385452c6c01ca7ebafe2d2f20f99ca78b72a05209f08e12e0d0e",
     "runtime-source.json": "2b207a1c94a92f4a695e787096ad6e2268e038e32e5368217ceff9c8bb158670",
     "per_game.py": "fcd34a7393fb6c9cb0ee4b22313794544f6d031d67dfaf38137fcc483f7a79af",
-    "dist/index.js": "c15247dacdc33deab27628ee3b69aacc0323448920b583d60bf7f43b0fd6cbb8",
+    "dist/index.js": "e89af81c94db1a4a9972d0c8d30dc251049be6361f54b93317c3d16e8f9eec83",
     "README.md": "3dc246f212574889f3a7869e0651687448890ad9abf9379f24b3a8dc28151794",
     "README.zh-CN.md": "64fcca71af23926aa0798ded67405f95030b599e6585b2e7fb30d5d492664d66",
     "LICENSE": "9cf448c34a21ce7a4f637264c7bc89ed46403ad939d08aa1d35584a975ad354d",
     "THIRD_PARTY_NOTICES.md": "0e0ac0e8dd1c8142bea425dfc638539260fa937c66bf11fd7a6e02af9263bbd5",
     "docs/RUNTIME.md": "355957683b63c950425e2e9a85da33d48226278152aa6f94ca953236da824da1",
-    "docs/FRAME_GENERATION.md": "fd798ffe29ac7683761405b79ce86b130e072ee13e28a7eb709c63f604d46178"
-  }
+    "docs/FRAME_GENERATION.md": "93e72baf834d1d8d19af6eb1189618d43947d60e86974c506b487bff34b21703"
+  },
+  "source_commit": "c9f361de2d044f46c65d7b05e9d1ac8ebba3b6b7",
+  "artifact_url": "https://github.com/FlightDan/Opti2XMX/actions/runs/39014296275"
 }

@@ -105,7 +105,7 @@ class OptiMixin:
         fg_input=get('FrameGen','FGInput','upscaler').lower()
         if fg_input not in ('fsrfg30','fsrfg','dlssg','upscaler'):fg_input='upscaler'
         interpolation=get('XeFG','InterpolationCount','auto').strip()
-        multiplier={'1':'2','2':'3','3':'4'}.get(interpolation,'2')
+        multiplier='native' if fg=='native' else {'1':'2','2':'3','3':'4'}.get(interpolation,'2')
         settings_undo=(r or {}).get('settings_undo') or {}
         return dict(managed=bool(active), installed=bool(ini), version=r.get('version', '') if active else '',
                     injection_enabled=r.get('injection_enabled', True) if active else bool(ini),
@@ -304,7 +304,7 @@ class OptiMixin:
                     for section,key,value in [('Spoofing','Dxgi','false'),('Spoofing','StreamlineSpoofing','false'),
                                                ('FrameGen','Enabled','false'),('FrameGen','FGInput','nofg'),
                                                 ('FrameGen','FGOutput','nofg'),('FrameGen','FGType','nofg'),('OptiFG','Enabled','false'),
-                                                ('XeFG','InterpolationCount','1')]:
+                                                ('XeFG','InterpolationCount','auto')]:
                         text=ini_set(text,section,key,value)
                     data=text.encode()
                 changes[str(target)]=data
@@ -628,10 +628,14 @@ class OptiMixin:
         prefix=Path(info['prefix']);rt=self.runtime()
         allowed={'sr':{'xess','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
                  'fg_input':{'fsrfg30','fsrfg','dlssg','upscaler'},'spoof':{'real','nvidia','amd','intel'},
-                 'fg_multiplier':{'2','3','4'}}
+                 'fg_multiplier':{'native','2','3','4'}}
         settings=dict(settings)
         settings.setdefault('fg_multiplier',fg_multiplier)
         if set(settings)!=set(allowed) or any(settings[k] not in v for k,v in allowed.items()):raise ValueError('不支持的设置值')
+        # Opti's "auto" interpolation count still defaults to 2x. Relinquish
+        # FG interception for game control instead of presenting auto as native.
+        if settings['fg']=='xefg' and settings['fg_multiplier']=='native':
+            settings['fg']='native'
         with rt.prefix_lock(prefix):
             rt.game_idle(prefix,Path(r['executable']).name)
             r,info,ini,targets=self._settings_context(appid)
@@ -649,7 +653,7 @@ class OptiMixin:
                                 'real':('auto','auto','auto')}[spoof]
             updates=[('Upscalers','Dx12Upscaler',settings['sr']),('FrameGen','Enabled','false' if fg=='native' else 'true'),
                      ('FrameGen','FGInput','nofg' if fg=='native' else settings['fg_input']),('FrameGen','FGOutput','nofg' if fg=='native' else fg),
-                     ('XeFG','InterpolationCount',str(int(settings['fg_multiplier'])-1)),
+                     ('XeFG','InterpolationCount','auto' if settings['fg_multiplier']=='native' else str(int(settings['fg_multiplier'])-1)),
                      ('Spoofing','Dxgi','false' if spoof=='real' else 'true'),('Spoofing','StreamlineSpoofing','false'),
                      ('Spoofing','SpoofedVendorId',vendor),('Spoofing','SpoofedDeviceId',device),('Spoofing','SpoofedGPUName',name)]
             for section,key,value in updates:text=ini_set(text,section,key,value)

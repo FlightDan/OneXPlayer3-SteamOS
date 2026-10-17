@@ -198,10 +198,12 @@ class Lifecycle(Tests):
 
     def test_multiplier_requests_are_written_read_and_old_rpc_defaults_to_two(self):
         self.fresh();self.install_opti()
-        for multiplier,interpolations in [('2','1'),('3','2'),('4','3')]:
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
+        for multiplier,interpolations in [('2','1'),('3','2'),('4','3'),('native','auto')]:
             self.m.opti_settings(42,self.fg_settings(multiplier))
             self.assertIn('InterpolationCount='+interpolations,(self.game/'OptiScaler.ini').read_text())
             self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],multiplier)
+            self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg'],'native' if multiplier=='native' else 'xefg')
         self.m.opti_settings(42,self.fg_settings())
         self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
         ini=self.game/'OptiScaler.ini';before=ini.read_bytes()
@@ -209,7 +211,7 @@ class Lifecycle(Tests):
             with self.assertRaises(ValueError):self.m.opti_settings(42,self.fg_settings(value) if value is not None else dict(self.fg_settings(),fg_multiplier=None))
             self.assertEqual(ini.read_bytes(),before)
         ini.write_text('[XeFG]\nInterpolationCount=auto\n')
-        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
 
     def test_settings_undo_is_independent_and_latest_only(self):
         self.fresh();self.install_opti()
@@ -379,7 +381,7 @@ class Lifecycle(Tests):
     def test_version_change_resets_multiplier_and_cannot_resurrect_settings_undo(self):
         self.fresh();launch=self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
         self.install_opti(launch)
-        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
         self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
         p=self.m.opti_rollback(42,launch);self.m.opti_confirm(42,p['target'])
         self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
