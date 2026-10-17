@@ -138,7 +138,7 @@ Windows / SteamOS boot menu screenshot. D-pad and A/B are now working during boo
 
 ### Install a dual-boot system from Windows
 
-Download the complete Windows x64 installer ZIP from [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases). The current main-branch integration release is **0.1.3 stable**; read the [0.1.3 release notes](windows-installer/docs/RELEASE_0.1.3.md) before use.
+Download the complete Windows x64 installer ZIP from [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases). The current main-branch integration release is **0.1.4 stable**; read the [0.1.4 release notes](windows-installer/docs/RELEASE_0.1.4.md) before use.
 
 1. Download the Windows installer ZIP from Releases, extract it completely and keep the accompanying files together.
 2. Back up your data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Restore protection after confirming Windows starts normally.

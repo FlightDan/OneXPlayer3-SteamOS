@@ -141,7 +141,7 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 ### 在 Windows 中使用安装器安装双系统
 
-完整 Windows x64 安装应用 ZIP 通过 [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。当前 main 分支整合版为 **0.1.3 stable**；使用前请阅读 [0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
+完整 Windows x64 安装应用 ZIP 通过 [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。当前 main 分支整合版为 **0.1.4 stable**；使用前请阅读 [0.1.4 发布说明](windows-installer/docs/RELEASE_0.1.4.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
