@@ -7,13 +7,14 @@ root = Path(__file__).resolve().parents[1]
 research = root.parent / 'research'
 controls = root / 'components/controls'
 destination = root / 'cache/components/oxp3-controls'; destination.mkdir(parents=True, exist_ok=True)
-archive = destination / 'oxp3-controls-20261016-r6.zip'
+archive = destination / 'oxp3-controls-20261017-r7.zip'
 selected = {
     'rapl/provider.py': 'rapl/provider.py', 'rapl/test_provider.py': 'rapl/test_provider.py',
     'manager/tdp-error-propagation.patch': 'manager/tdp-error-propagation.patch',
     'manager/tdp-live-state-cache.patch': 'manager/tdp-live-state-cache.patch',
     **{f'overlay/{name}': f'overlay/{name}' for name in (
-        'telemetry.py', 'allow-read.py', 'presets.conf', 'update-layout.py', 'test-layout-device.py',
+        'telemetry.py', 'allow-read.py', 'test_telemetry_fan.py', 'test_telemetry_gpu.py',
+        'presets.conf', 'update-layout.py', 'test-layout-device.py',
         'cpu_control.py', 'cpu-plugin-main.py', 'cpu-plugin-index.js', 'test_cpu_control.py',
         'fan.py', 'fan-plugin-main.py', 'fan-plugin-index.js', 'fan-sleep.py', 'load-fan-module.py', 'test_fan.py')},
     **{f'charging/{name}': f'charging/{name}' for name in (
@@ -26,6 +27,9 @@ selected.update({f'overlay/{name}': f'overlay/{name}' for name in (
     'power_control.py', 'test_power_control.py', 'test_cpu_power_ui.mjs')})
 
 def source_path(source):
+    if source in ('overlay/telemetry.py', 'overlay/allow-read.py',
+                  'overlay/test_telemetry_fan.py', 'overlay/test_telemetry_gpu.py'):
+        return controls / source
     if source.startswith('rapl/'):
         return controls / source
     if source.startswith('overlay/') and source.split('/', 1)[1] in (
@@ -36,11 +40,11 @@ def source_path(source):
 
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
     for target, source in selected.items():
-        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 16, 0, 0, 0))
+        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 17, 0, 0, 0))
         entry.compress_type = zipfile.ZIP_DEFLATED; entry.external_attr = 0o100644 << 16
         package.writestr(entry, source_path(source).read_bytes())
 profile = {
-    'schema': 1, 'id': 'oxp3-controls', 'version': '20261016-r6', 'archive': archive.name,
+    'schema': 1, 'id': 'oxp3-controls', 'version': '20261017-r7', 'archive': archive.name,
     'source_files': list(selected), 'deployment': 'resources_only', 'default': False,
     'target': {'vendor': 'ONE-NETBOOK', 'product': 'ONEXPLAYER 3', 'cpu': 'Intel Arc G3 Extreme',
                'system_version': '3.10', 'system_build': '20260924.1000',

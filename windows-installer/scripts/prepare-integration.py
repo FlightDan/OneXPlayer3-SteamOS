@@ -86,15 +86,18 @@ component('native-tdp', { '/var/lib/oxp3-rapl/provider.py':(controls/'rapl/provi
     '/etc/steamos-manager/remotes.d/oxp3-rapl.toml':(research/'rapl/oxp3-rapl.toml').read_bytes(),
     '/etc/dbus-1/system.d/org.onexplayer.SteamOSManager.PowerControl.conf':(research/'rapl/org.onexplayer.SteamOSManager.PowerControl.conf').read_bytes()}, ['oxp3-rapl.service'], {'steamos-manager':'26.4.1-2'})
 component('overlay', {
-    '/var/lib/oxp3-overlay-telemetry/telemetry.py':(research/'overlay/telemetry.py').read_bytes(),
-    '/var/lib/oxp3-overlay-telemetry/allow-read.py':(research/'overlay/allow-read.py').read_bytes(),
+    '/var/lib/oxp3-overlay-telemetry/telemetry.py':(controls/'overlay/telemetry.py').read_bytes(),
+    '/var/lib/oxp3-overlay-telemetry/allow-read.py':(controls/'overlay/allow-read.py').read_bytes(),
     '/home/deck/.config/MangoHud/presets.conf':fan['presets'].encode(),
     '/etc/systemd/system/oxp3-overlay-read.service':b'[Unit]\nDescription=OXP3 read-only energy counters\nAfter=systemd-udev-trigger.service\n[Service]\nType=oneshot\nExecStart=/usr/bin/python3 -I -B /var/lib/oxp3-overlay-telemetry/allow-read.py\nRemainAfterExit=yes\n[Install]\nWantedBy=multi-user.target\n',
     '/home/deck/.config/systemd/user/oxp3-overlay-telemetry.service':b'[Unit]\nDescription=OXP3 overlay telemetry\n[Service]\nExecStart=/usr/bin/python3 -I -B /var/lib/oxp3-overlay-telemetry/telemetry.py collect\nRestart=on-failure\n[Install]\nWantedBy=default.target\n'}, ['oxp3-overlay-read.service'], {'mangohud':'0.8.3.rc1.r24.g33c2c7dd-4'})
 overlay_target=store/'overlay/user-default-target.conf'; overlay_target.write_bytes(b'[Unit]\nWants=oxp3-overlay-telemetry.service\n')
 overlay_sources=store/'sources/overlay'; overlay_sources.mkdir(parents=True,exist_ok=True)
 for name in ('telemetry.py','update-layout.py','test-layout-device.py'):
-    shutil.copyfile(research/'overlay'/name,overlay_sources/name)
+    source = controls/'overlay'/name if name == 'telemetry.py' else research/'overlay'/name
+    shutil.copyfile(source,overlay_sources/name)
+for name in ('allow-read.py','test_telemetry_fan.py','test_telemetry_gpu.py'):
+    shutil.copyfile(controls/'overlay'/name,overlay_sources/name)
 manifest['overlay']['files'].append({'target':'home/deck/.config/systemd/user/default.target.d/90-oxp3-overlay.conf','source':'overlay/user-default-target.conf','mode':0o644,'user':True})
 # Include both transport variants of this exact Bluetooth family; retain c106.
 firmware_store=root/'cache/be201-firmware'
