@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "plugin_version": "0.2.4",
-  "plugin_sha256": "62da515d477b5fb6d06a88c3d3d508a8885342cbe87f5e6f6a56cfa438dfedbd",
-  "source_commit": "c9f361de2d044f46c65d7b05e9d1ac8ebba3b6b7",
-  "source_url": "https://github.com/FlightDan/Opti2XMX/tree/c9f361de2d044f46c65d7b05e9d1ac8ebba3b6b7",
-  "files_sha256": "a74a668e9a12b1b693ea78ef5ac2198938c602f398e5b5837bd6830d45f92099",
+  "plugin_version": "0.2.5",
+  "plugin_sha256": "a1b69bb25c38056ab64079a6f80ea2b32bad99b822ef9275d0107fab752986d2",
+  "source_commit": "369fdb2b084e4a03f2cc62fee16fa5470766e7d7",
+  "source_url": "https://github.com/FlightDan/Opti2XMX/tree/369fdb2b084e4a03f2cc62fee16fa5470766e7d7",
+  "files_sha256": "65051285868d7257f4d4bb3141a78934ae38273fbca4ff6057894bf038f77d93",
   "files": {
     "plugin.json": "60120e7e4d1914b49805c1a3499bffc43c3833e5190b3896d0f8f3ab72482bcf",
-    "package.json": "ecd56688fa0d4f50be3a2b56514b4c52e94359ac662e04a9965e75bc4cfe7ff7",
+    "package.json": "d5060efa32c02742112977a00adf375bc4f64082d4821683124be059ba25819f",
     "main.py": "fd8a655a5e618acf3237eee46a663b0aab43aa2ff43a0a5303bf0555177fceb2",
     "manager.py": "5ca0febbe67e01fbb0b432d30d6f001074c96e77873215a54babafcdd52daa0a",
     "opti.py": "ffdb44570a98e4d793d5a4e02ad77e25a5fd7d1738885043d4a1d31fe601885b",
@@ -31,5 +31,6 @@
     "published": true,
     "url": "https://github.com/FlightDan/Opti2XMX/releases/download/v0.2.3/opti2xmx-xmx-runtime-20261005-aa384e5704286e2d.tar.gz"
   },
-  "artifact_url": "https://github.com/FlightDan/Opti2XMX/actions/runs/39014296275"
+  "artifact_url": "https://github.com/FlightDan/Opti2XMX/actions/runs/39018662428",
+  "release_url": "https://github.com/FlightDan/Opti2XMX/releases/tag/v0.2.5"
 }
