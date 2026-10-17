@@ -5,15 +5,9 @@
 
 ## 1. 简介
 
-为 **ONEXPLAYER 3 掌机**提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 **Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）**。
+为 ONEXPLAYER 3 掌机提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）。
 
-当前 main 分支整合版为 **OXP3 SteamOS 0.1.3（stable 渠道）**，目标为 **SteamOS 3.10**；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。新安装隐藏共享分区挂载选择，选择安装内容后可直接继续到确认方案。新装镜像让 `atomupd` 更新器继续运行并指向私有本地空更新源，因此正常运行时没有系统更新候选。请先阅读[0.1.3 发布说明](windows-installer/docs/RELEASE_0.1.3.md)。
-
-**Steam 客户端更新界面：**Animation Changer 插件的路径冲突曾导致更新界面黑屏。0.1.3 已整合修复，用户测试确认更新界面现可正常显示。Steam 客户端更新可能下载数百 MB，请等待进度完成，进度仍在变化时不要强制关机。此项验证不代表完整无人值守全新安装已验收。
-
-**系统更新风险：**本构建当前暂停系统更新。若恢复更新或执行官方 SteamOS 系统更新，系统可能从 3.10 回滚至 3.8，并可能覆盖全部 OXP3 适配，包括 Wi-Fi 和手柄支持；兼容性尚未验证。
-
-此更新器策略只随新准备的安装镜像生效，不会修改已经安装的 SteamOS；旧准备镜像须从官方原始下载重新准备，才能采用新版行为。
+当前 main 分支整合版为 OXP3 SteamOS 0.1.4，目标为 SteamOS 3.10；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。同时为使用其他版本 SteamOS 的掌机提供脚本维护工具。
 
 发现问题，请发送邮件至 **[dan@devdan.cc](mailto:dan@devdan.cc)**，或提交 [GitHub Issue](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues)。
 

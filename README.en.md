@@ -4,13 +4,9 @@
 
 ## 1. Introduction
 
-SteamOS support for the **ONEXPLAYER 3 handheld**, covering Game Mode, the KDE desktop, controller input and hardware controls, with **Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game)**.
+SteamOS support for the ONEXPLAYER 3 handheld, covering Game Mode, the KDE desktop, controller input and hardware controls, with Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game).
 
-The current main-branch integration release is **OXP3 SteamOS 0.1.3 (stable channel)**, targeting **SteamOS 3.10**; check [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) for available installer assets. New installations hide the shared-partition mount choice, so it does not block continuing to Review plan. The new-install image keeps the `atomupd` updater running against a private local empty feed, so a healthy updater has no OS update candidate. Read the [0.1.3 release notes](windows-installer/docs/RELEASE_0.1.3.md) before use.
-
-**Steam client update screen:** A path conflict with the Animation Changer plugin caused the update screen to appear black. Version 0.1.3 integrates the fix, and the user confirmed the screen now displays correctly. Steam client updates may download hundreds of megabytes; let progress finish and do not force power off while it is advancing. This does not establish a fully unattended fresh-install validation.
-
-**SteamOS update risk:** OS updates are held in this build. Restoring updates or running an official SteamOS system update may roll the system back from 3.10 to 3.8 and overwrite all OXP3 adaptations, including Wi-Fi and controller support. Compatibility has not been verified.
+The current main-branch integration release is OXP3 SteamOS 0.1.4, targeting SteamOS 3.10; check GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) for available installer assets. Script-based maintenance tools are also available for handhelds running other SteamOS versions.
 
 Report bugs by email at **[dan@devdan.cc](mailto:dan@devdan.cc)** or through [GitHub Issues](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues).
 
