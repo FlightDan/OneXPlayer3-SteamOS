@@ -68,12 +68,14 @@ Screenshots / logs:
 | --- | --- | :---: |
 | HDR · Game Mode / KDE desktop | Panel-specific **1100 / 472 nit mapping** | ✅ |
 | Controller, back buttons and multifunction key | M1 → L4, Home → L5, M2 → R4, multifunction key → R5; customizable through Steam Input | ✅ |
-| BMI260 gyroscope | In-game orientation and motion support; calibrate after installation | ✅ |
+| BMI260 gyroscope | In-game orientation and motion support; requires BIOS 5.09 and calibration after installation | ✅ |
 | Intel XeSS / XMX | Native XeSS XMX acceleration in compatible games | ✅ |
 | Refresh rate / VRR | Internal display support from 30 to 144 Hz | ✅ |
 | Native TDP | **10–40 W** adjustment through Steam's performance menu | ✅ |
 | OXP3 Fan | Firmware automatic control and custom fan curves | ✅ |
-| OXP3 CPU | EPP and core-group frequency controls | ✅ |
+| OXP3 CPU | EPP, core-group frequency limits, PL1 at 10–40 W and independent PL2 up to 80 W; PL1 syncs with Steam's native TDP control | ✅ |
+| [OXP3 Light](windows-installer/components/light/README.md) | On/off, solid colors and brightness for the stick rings, Xbox button and rear slogan light; settings are not automatically reapplied after boot or resume | ✅ |
+| Split-lock workaround | Reduces split-lock report flooding; takes effect after reboot and does not automatically clear historical reports | ✅ |
 | Performance overlay | CPU / GPU / APU power, fan and video-memory information are displayed correctly | ✅ |
 | Volume keys | Volume keys work normally | ✅ |
 | Waydroid | Android apps and a Game Mode launcher; not fully validated | 🧪 |
@@ -145,11 +147,13 @@ Download the complete Windows x64 installer ZIP from [Releases](https://github.c
 
 System images are not included. Preparing SteamOS 3.10 and initializing some components requires an internet connection. See the [installation guide](windows-installer/docs/INSTALLATION_GUIDE.md) for full instructions.
 
+Version 0.1.4 provides the project's OXP3 control plugins and Opti2XMX; install third-party Decky plugins separately. New images include desktop and application-menu shortcuts for OXP3 Repairs and Project Updates.
+
 ### Update this project or install repairs from SteamOS
 
 [OXP3 Repairs and Project Updates](steamos-maintenance/README.md) lets existing SteamOS users select project repairs, plugins and subsequent project updates. Its native GTK touch interface maintains the current slot and supports signature verification, rollback and interrupted-operation recovery.
 
-Open a terminal in SteamOS KDE Desktop Mode, then download and launch the installer:
+Open a terminal in SteamOS KDE Desktop Mode and run the following as the regular desktop user (do not add `sudo`). On first use, verify the release public-key fingerprint using the [maintenance instructions](steamos-maintenance/README.md):
 
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
@@ -160,11 +164,15 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 
 Select the repairs or plugins you need; components download on demand. Version 0.1.4 provides signed maintenance packages and a Bash installer. See the [maintenance instructions](steamos-maintenance/README.md) and [validation record](steamos-maintenance/VALIDATION.md) for tested coverage and remaining checks.
 
+The maintenance tool targets ONEXPLAYER 3 and checks compatibility per component. Native drivers, HDR, Decky and plugin runtimes still require SteamOS 3.10 / build 20260924.1000 / kernel 7.2.4. Other SteamOS versions currently have adapters for settings such as the on-screen keyboard and Flathub; incompatible items show the reason.
+
 This updates the OXP3 project only; it does not upgrade SteamOS or change the official OS update settings.
 
 ## 4. Featured Plugin · Opti2XMX
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** is a Decky plugin developed for this adaptation. It provides native **XeSS XMX acceleration and XeSS frame generation** directly for compatible games, and **OptiScaler with XeSS frame-generation support** for other compatible games.
+
+OXP3 SteamOS 0.1.4 integrates Opti2XMX **0.2.4**. Its XeSS FG 2x / 3x / 4x controls remain experimental; see the [frame-generation notes](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md) for compatibility and test coverage.
 
 - Configure XMX directly for native XeSS games, or use OptiScaler in other compatible games.
 - Control XMX acceleration and Opti injection independently, with installation, version switching, rollback and uninstall support.

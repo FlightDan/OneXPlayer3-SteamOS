@@ -69,12 +69,14 @@ Decky / 插件版本（如适用）：
 | --- | --- | :---: |
 | HDR · 游戏模式 / KDE 桌面 | 面板适配的 **1100 / 472 尼特映射** | ✅ |
 | 手柄、背键与多功能键 | M1 → L4、Home → L5、M2 → R4、多功能键 → R5，支持 Steam Input 自定义 | ✅ |
-| BMI260 陀螺仪 | 游戏内方向与跟随支持；新安装需校准 | ✅ |
+| BMI260 陀螺仪 | 游戏内方向与跟随支持；要求 BIOS 5.09，新安装需校准 | ✅ |
 | Intel XeSS / XMX | 兼容游戏中的原生 XeSS XMX 加速 | ✅ |
 | 刷新率 / VRR | 内屏 30–144 Hz 适配 | ✅ |
 | 原生 TDP | Steam 性能菜单 **10–40 W** 调节 | ✅ |
 | OXP3 Fan | 固件自动模式与自定义风扇曲线 | ✅ |
-| OXP3 CPU | EPP 与核心分组限频控制 | ✅ |
+| OXP3 CPU | EPP、核心分组限频、PL1 10–40 W 与独立 PL2（最高 80 W）；PL1 联动 Steam 原生 TDP | ✅ |
+| [OXP3 Light](windows-installer/components/light/README.md) | 摇杆灯环、Xbox 按钮与背部标语灯的开关、纯色及亮度控制；不自动恢复开机或休眠后的灯光设置 | ✅ |
+| Split-lock 修复 | 减少 split-lock 报告洪泛，重启生效；不自动清理历史报告 | ✅ |
 | 性能覆盖层 | CPU / GPU / APU 功耗、风扇与显存信息已正确显示 | ✅ |
 | 音量按键 | 音量按键正常 | ✅ |
 | Waydroid | Android 应用与游戏模式入口；未充分验证 | 🧪 |
@@ -146,11 +148,13 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 安装包不含系统镜像，准备 SteamOS 3.10 及部分组件初始化需要联网。完整步骤见[安装指南](windows-installer/docs/INSTALLATION_GUIDE.md)。
 
+0.1.4 提供本项目的 OXP3 控制插件与 Opti2XMX；第三方 Decky 插件由用户自行安装。新镜像内置“OXP3 修复与项目更新”桌面及应用菜单入口。
+
 ### 在 SteamOS 中更新本项目或安装修复
 
 [OXP3 修复与项目更新工具](steamos-maintenance/README.md)，供已安装 SteamOS 的用户选择修复、插件及后续项目更新。使用 GTK 原生触屏窗口，维护当前槽位，提供签名包验证、回退及中断恢复。
 
-在 SteamOS 的 KDE 桌面模式打开终端，运行以下命令下载并启动安装脚本：
+在 SteamOS 的 KDE 桌面模式打开终端，以普通桌面用户运行以下命令（不要加 `sudo`）。首次使用请按[维护工具文档](steamos-maintenance/README.md)核对发行公钥指纹：
 
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
@@ -161,11 +165,15 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 
 按窗口提示选择需要的修复或插件，所需组件会按选择下载。0.1.4 提供正式签名维护包与 Bash 安装入口；使用说明见[维护工具文档](steamos-maintenance/README.md)，已测范围与待测项见[验证记录](steamos-maintenance/VALIDATION.md)。
 
+维护工具面向 ONEXPLAYER 3，按组件检查兼容性。原生驱动、HDR、Decky 与插件运行库仍要求 SteamOS 3.10 / build 20260924.1000 / 内核 7.2.4；其他 SteamOS 版本目前提供屏幕键盘、Flathub 等已适配设置，不兼容项会显示原因。
+
 这里的更新只针对本项目；不升级 SteamOS，也不改变官方系统更新设置。
 
 ## 4. 独家插件 · Opti2XMX
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** 是为这套适配开发的 Decky 插件，可为兼容的游戏直接提供原生的 **XeSS XMX 加速与 XeSS 帧生成**，并为其他兼容游戏提供支持 **XeSS 帧生成的 OptiScaler**。
+
+0.1.4 整合 Opti2XMX **0.2.4**；其 XeSS FG 2x / 3x / 4x 控件仍标为实验性，兼容性与测试范围见[帧生成说明](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md)。
 
 - 原生 XeSS 游戏可直接配置 XMX；其他兼容游戏可通过 OptiScaler 接入。
 - XMX 加速与 Opti 注入独立开关，支持安装、版本切换、回退和卸载。
