@@ -6,6 +6,13 @@ export function language(): 'zh' | 'en' {
 }
 
 const english: Record<string, string> = {
+  '仅限 Intel；更改前请退出游戏。': 'Intel only. Exit the game before changing.',
+  '原生 XeSS 帧生成请关闭。': 'Turn off for native XeSS Frame Generation.',
+  '默认官方源；镜像由第三方提供。': 'Official source by default; third-party mirrors available.',
+  '保留文件并建立回退备份。': 'Keep files and create rollback backups.',
+  '开启 Opti 注入后生效。': 'Applies when Opti injection is enabled.',
+  '插帧倍率': 'FG multiplier', '游戏原生控制': 'Game controlled', '原生': 'Native',
+  '选择游戏支持的帧生成类型。': 'Select the frame generation type supported by the game.',
   '启用 Intel XMX 执行路径；帧生成仍需游戏、运行时和 Proton 支持。': 'Enable the Intel XMX path. Frame generation still requires game, runtime and Proton support.',
   'XeSS FG 倍率（实验）': 'XeSS FG multiplier (experimental)',
   '仅用于 Opti XeSS FG 输出。实际倍率取决于运行时支持；原生 XeSS FG 请在游戏内设置。': 'For Opti XeSS FG output. The runtime determines the effective multiplier. Configure native XeSS FG in the game.',
@@ -109,6 +116,11 @@ const english: Record<string, string> = {
   '未找到该游戏的可见窗口，请回到游戏后重试': 'No visible window found for this game. Return to the game and try again.',
   '此游戏已有其他 XMX 配置，需要先迁移后才能用此开关。': 'This game has another XMX setup. Migrate it before using this switch.',
   'XMX 运行组件未就绪。': 'XMX runtime components are not ready.',
+  '请先选择要运行的游戏程序。': 'Select the game executable first.',
+  '选择与 Steam 启动选项一致的版本。': 'Choose the version used by your Steam launch option.',
+  '修复安装 Opti 0.9.4': 'Repair Opti 0.9.4 installation',
+  '缺少注入文件；备份现有文件后重新安装，可回退。': 'Injector missing. Back up existing files and reinstall; rollback is available.',
+  '游戏已有注入文件，请先迁移或处理冲突：': 'An injector already exists. Migrate it or resolve the conflict first: ',
   '请先从 Steam 用 Proton 启动游戏一次，退出后点击刷新。': 'Launch this game once with Proton, exit, then refresh.',
   '尚未发现 XeSS。请先为此游戏安装 OptiScaler 并运行一次，再刷新。': 'XeSS was not found. Install OptiScaler for this game, run it once, then refresh.',
   '未识别到可接入的游戏程序，请检查游戏安装。': 'No compatible executable found. Check the game installation.',

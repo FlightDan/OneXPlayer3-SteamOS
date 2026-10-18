@@ -109,7 +109,75 @@ class Lifecycle(Tests):
     def test_existing_injector_never_overwritten(self):
         (self.game/'OptiScaler.ini').unlink()
         (self.game/'dxgi.dll').write_bytes(b'MZ reshade')
-        with self.assertRaisesRegex(RuntimeError,'其他注入器'):self.install_opti()
+        with self.assertRaisesRegex(RuntimeError,'注入文件'):self.install_opti()
+
+    def test_partial_install_restores_exact_leftovers_and_keeps_legacy_backup(self):
+        (self.game/'dxgi.dll').unlink()
+        before={n:(self.game/n).read_bytes() for n in ('OptiScaler.ini','libxess.dll')}
+        (self.game/'libxess.dll.b').write_bytes(b'legacy backup')
+        status=self.m.inspect_game(42)['opti']
+        self.assertTrue(status['incomplete'])
+        self.assertFalse(status['injection_enabled'])
+        launch=self.install_opti()
+        self.assertFalse(self.m.inspect_game(42)['opti']['incomplete'])
+        self.assertEqual(self.m.inspect_game(42)['automatic']['reason'],'')
+        pending=self.m.opti_uninstall(42,launch);self.m.opti_confirm(42,pending['target'])
+        self.assertFalse((self.game/'dxgi.dll').exists())
+        self.assertEqual({n:(self.game/n).read_bytes() for n in before},before)
+        self.assertEqual((self.game/'libxess.dll.b').read_bytes(),b'legacy backup')
+
+    def test_partial_install_copy_failure_rolls_back(self):
+        (self.game/'dxgi.dll').unlink()
+        before={n:(self.game/n).read_bytes() for n in ('OptiScaler.ini','libxess.dll')}
+        original=self.m.runtime().atomic_copy
+        def fail(src,dst,*args,**kwargs):
+            if Path(dst)==self.game/'libxess.dll':raise OSError('disk failure')
+            return original(src,dst,*args,**kwargs)
+        with patch.object(self.m.runtime(),'atomic_copy',side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError,'操作中断'):self.install_opti()
+        pending=self.m.opti_rollback(42,'');self.m.opti_confirm(42,pending['target'])
+        self.assertFalse((self.game/'dxgi.dll').exists())
+        self.assertEqual({n:(self.game/n).read_bytes() for n in before},before)
+
+    def test_partial_install_rechecks_proxy_after_download(self):
+        (self.game/'dxgi.dll').unlink()
+        before=(self.game/'OptiScaler.ini').read_bytes()
+        def download(*args,**kwargs):
+            (self.game/'dxgi.dll').write_bytes(b'MZ foreign')
+            return self.payload
+        with patch.object(self.m,'opti_package',side_effect=download):
+            with self.assertRaisesRegex(RuntimeError,'注入文件'):self.install_opti()
+        self.assertFalse(self.m.opti_path(42).exists())
+        self.assertEqual((self.game/'dxgi.dll').read_bytes(),b'MZ foreign')
+        self.assertEqual((self.game/'OptiScaler.ini').read_bytes(),before)
+
+    def test_removed_record_does_not_authorize_overwriting_proxy(self):
+        self.fresh();launch=self.install_opti()
+        pending=self.m.opti_uninstall(42,launch);self.m.opti_confirm(42,pending['target'])
+        (self.game/'dxgi.dll').write_bytes(b'MZ foreign')
+        with self.assertRaisesRegex(RuntimeError,'注入文件'):self.install_opti(pending['target'])
+        self.assertEqual((self.game/'dxgi.dll').read_bytes(),b'MZ foreign')
+
+    def test_multi_executable_remembers_managed_selection(self):
+        self.fresh();(self.game/'other.exe').write_bytes(b'MZ fixture')
+        self.assertEqual(self.m.inspect_game(42)['automatic']['executable'],'')
+        self.install_opti()
+        self.assertEqual(self.m.inspect_game(42)['automatic']['executable'],'game.exe')
+
+    def test_partial_install_rejects_foreign_nvapi(self):
+        (self.game/'dxgi.dll').unlink()
+        (self.game/'nvapi64.dll').write_bytes(b'MZ foreign')
+        with self.assertRaisesRegex(RuntimeError,'注入文件'):self.install_opti()
+        self.assertFalse(self.m.opti_path(42).exists())
+        self.assertEqual((self.game/'nvapi64.dll').read_bytes(),b'MZ foreign')
+
+    def test_partial_reinstall_after_disabled_uninstall(self):
+        (self.game/'dxgi.dll').unlink()
+        launch=self.install_opti()
+        pending=self.m.opti_toggle(42,False,launch);self.m.opti_confirm(42,pending['target'])
+        pending=self.m.opti_uninstall(42,launch);self.m.opti_confirm(42,pending['target'])
+        self.install_opti(pending['target'])
+        self.assertTrue(self.m.inspect_game(42)['opti']['injection_enabled'])
 
     def test_changed_ini_is_backed_up_on_upgrade_rollback(self):
         launch=self.migrate();self.install_opti(launch)
@@ -198,10 +266,12 @@ class Lifecycle(Tests):
 
     def test_multiplier_requests_are_written_read_and_old_rpc_defaults_to_two(self):
         self.fresh();self.install_opti()
-        for multiplier,interpolations in [('2','1'),('3','2'),('4','3')]:
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
+        for multiplier,interpolations in [('2','1'),('3','2'),('4','3'),('native','auto')]:
             self.m.opti_settings(42,self.fg_settings(multiplier))
             self.assertIn('InterpolationCount='+interpolations,(self.game/'OptiScaler.ini').read_text())
             self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],multiplier)
+            self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg'],'native' if multiplier=='native' else 'xefg')
         self.m.opti_settings(42,self.fg_settings())
         self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
         ini=self.game/'OptiScaler.ini';before=ini.read_bytes()
@@ -209,7 +279,7 @@ class Lifecycle(Tests):
             with self.assertRaises(ValueError):self.m.opti_settings(42,self.fg_settings(value) if value is not None else dict(self.fg_settings(),fg_multiplier=None))
             self.assertEqual(ini.read_bytes(),before)
         ini.write_text('[XeFG]\nInterpolationCount=auto\n')
-        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
 
     def test_settings_undo_is_independent_and_latest_only(self):
         self.fresh();self.install_opti()
@@ -379,7 +449,7 @@ class Lifecycle(Tests):
     def test_version_change_resets_multiplier_and_cannot_resurrect_settings_undo(self):
         self.fresh();launch=self.install_opti();self.m.opti_settings(42,self.fg_settings('4'))
         self.install_opti(launch)
-        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'2')
+        self.assertEqual(self.m.inspect_game(42)['opti']['settings']['fg_multiplier'],'native')
         self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
         p=self.m.opti_rollback(42,launch);self.m.opti_confirm(42,p['target'])
         self.assertFalse(self.m.inspect_game(42)['opti']['settings_rollback'])
