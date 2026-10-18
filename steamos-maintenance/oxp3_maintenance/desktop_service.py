@@ -246,8 +246,8 @@ class DesktopService:
             items.append({'id': check['id'], 'title': labels[check['status']] + ' · ' + check['title'][language], 'detail': detail})
         counts = report['summary']
         view = self._view(self.t('一键体检结果', 'Health check results'),
-                         self.t('已完成只读检查。异常和无法判断的项目优先显示；此结果不代表按键已在游戏中验证。',
-                                'Read-only checks finished. Warnings and unknowns appear first; button operation in games has not been verified.'),
+                           self.t('已完成只读检查，异常和无法判断的项目优先显示。实际按键响应和互联网连接仍需另行验证。',
+                                  'Read-only checks finished; warnings and unknowns appear first. Actual button response and Internet access still need separate verification.'),
                          facts=[(self.t('检查时间', 'Checked at'), report['created_at']),
                                 (self.t('结果', 'Results'), ' · '.join(labels[k] + ' ' + str(v) for k, v in counts.items()))],
                          items=items, report_ready=True)

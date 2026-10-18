@@ -60,6 +60,27 @@ class HealthTests(unittest.TestCase):
     def finding(self, report, name):
         return next(item for item in report['checks'] if item['id'] == name)
 
+    def test_wifi_results_are_integrated_and_rendered_with_controller_results(self):
+        check = dict(id='wifi.networkmanager', status='info', title=health.words('Wi-Fi 连接', 'Wi-Fi connection'),
+                     message=health.words('已连接；尚未验证互联网。', 'Connected; Internet not verified.'),
+                     advice=health.words('查看网络设置。', 'Review network settings.'), evidence={'adapters': []})
+        query = mock.Mock(return_value=[check])
+        report = self.collect(query_wifi=query)
+        query.assert_called_once_with(root=self.root)
+        self.assertEqual(self.finding(report, 'wifi.networkmanager'), check)
+        self.assertIn('input.devices', [item['id'] for item in report['checks']])
+        with mock.patch.object(Path, 'home', return_value=self.root / 'home/deck'):
+            service = DesktopService(SimpleNamespace(bundle=None, bundle_dir=None), language='zh')
+        service.health_report = report
+        view = service._health_view()
+        self.assertTrue(any(item['id'] == 'wifi.networkmanager' and '已连接' in item['detail'] for item in view['items']))
+
+    def test_wifi_failure_keeps_partial_controller_report(self):
+        report = self.collect(query_wifi=mock.Mock(side_effect=RuntimeError('PRIVATE NETWORK DATA')))
+        self.assertEqual(self.finding(report, 'wifi.status')['status'], 'unknown')
+        self.assertEqual(self.finding(report, 'input.devices')['evidence']['gamepads'], 1)
+        self.assertNotIn('PRIVATE NETWORK DATA', json.dumps(report))
+
     def snapshot(self):
         return {p.relative_to(self.root).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns)
                 for p in self.root.rglob('*') if p.is_file()}

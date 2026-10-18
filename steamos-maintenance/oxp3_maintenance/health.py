@@ -403,8 +403,8 @@ class Report:
                 self.unknown('input.profile', words('OXP3 输入配置', 'OXP3 input profile'), error)
 
 
-def collect(*, root=Path('/'), system_probe=None, query_services=None):
-    from . import probe
+def collect(*, root=Path('/'), system_probe=None, query_services=None, query_wifi=None):
+    from . import probe, wifi_health
     report = Report(root)
     system = {}
     try:
@@ -437,6 +437,10 @@ def collect(*, root=Path('/'), system_probe=None, query_services=None):
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
         report.unknown('legacy.records', words('旧安装记录', 'Legacy installation records'), error)
     report.controllers(system, selected, query_services or service_states)
+    try:
+        report.checks.extend((query_wifi or wifi_health.collect)(root=report.root))
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        report.unknown('wifi.status', words('Wi-Fi 状态', 'Wi-Fi status'), error)
     report.add('input.manual_test', 'info', words('按键实际响应', 'Actual button response'),
                words('本次没有读取按键事件，尚未验证游戏内响应。', 'Input events were not captured; in-game response is unverified.'),
                words('打开 Steam → 设置 → 控制器 → 测试设备输入，按动按键和摇杆；反馈时注明桌面或游戏模式、故障发生时间及体检报告。',
@@ -444,7 +448,7 @@ def collect(*, root=Path('/'), system_probe=None, query_services=None):
     report.checks.sort(key=lambda item: STATUSES.index(item['status']))
     counts = {status: sum(item['status'] == status for item in report.checks) for status in STATUSES}
     return {'schema': 1, 'kind': 'oxp3-health-report', 'created_at': datetime.now(timezone.utc).isoformat(),
-            'read_only': True, 'scope': 'active_system_configuration_and_controller_enumeration',
+            'read_only': True, 'scope': 'active_system_configuration_controller_and_wifi_status',
             'summary': counts, 'checks': report.checks}
 
 
