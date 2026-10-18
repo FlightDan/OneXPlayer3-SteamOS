@@ -12,11 +12,13 @@ from pathlib import Path
 import re
 import stat
 
-from . import compatibility
+from . import compatibility, state_io
 
 MAX_ENTRIES = 128
 MAX_JSON = 8 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
+MAX_JOURNAL = 256 * 1024 * 1024
+MAX_JOURNAL_TOTAL = 2 * 1024 * 1024 * 1024
 _ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}\Z')
 _KNOWN = compatibility.BASELINE | compatibility.PORTABLE
 _PLUGIN_NAMES = {
@@ -106,8 +108,10 @@ def installed_components(report):
 class _Reader:
     def __init__(self, root):
         self.root, self.total = root, 0
+        self.journal_total = 0
 
-    def read(self, relative, *, trusted=True, maximum=MAX_JSON):
+    @contextmanager
+    def stream(self, relative, *, trusted=True):
         parts = _parts(relative)
         with _directory(self.root, '/'.join(parts[:-1]), trusted=trusted) as (parent, protected):
             if os.name == 'posix':
@@ -124,16 +128,39 @@ class _Reader:
                 protected = protected and _protected(info)
                 if trusted and not protected:
                     raise InventoryError('untrusted_metadata')
-                if info.st_size > maximum or self.total + info.st_size > MAX_TOTAL:
-                    raise InventoryError('metadata_limit')
-                raw = stream.read(min(maximum, MAX_TOTAL - self.total) + 1)
-                self.total += len(raw)
-                if len(raw) > maximum or self.total > MAX_TOTAL:
-                    raise InventoryError('metadata_limit')
+                yield stream, info, protected
                 after = os.fstat(stream.fileno())
-                if (info.st_size, info.st_mtime_ns, info.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                named = (os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)
+                         if os.name == 'posix' else (parent / parts[-1]).lstat())
+                if (info.st_size, info.st_mtime_ns, info.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns) or (
+                        _linked(named) or not stat.S_ISREG(named.st_mode) or named.st_nlink != 1
+                        or (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino)
+                        or trusted and not _protected(after)):
                     raise InventoryError('metadata_changed')
+
+    def read(self, relative, *, trusted=True, maximum=MAX_JSON):
+        with self.stream(relative, trusted=trusted) as (stream, info, protected):
+            if info.st_size > maximum or self.total + info.st_size > MAX_TOTAL:
+                raise InventoryError('metadata_limit')
+            raw = stream.read(min(maximum, MAX_TOTAL - self.total) + 1)
+            self.total += len(raw)
+            if len(raw) > maximum or self.total > MAX_TOTAL:
+                raise InventoryError('metadata_limit')
         value = json.loads(raw.decode('utf-8'), object_pairs_hook=_unique)
+        if not isinstance(value, dict):
+            raise InventoryError('invalid_metadata')
+        return value, protected
+
+    def journal(self, relative):
+        """Read bounded fingerprints without retaining installer backup bytes."""
+        with self.stream(relative) as (stream, info, protected):
+            maximum = min(MAX_JOURNAL, MAX_JOURNAL_TOTAL - self.journal_total)
+            if maximum < 1 or info.st_size > maximum:
+                raise InventoryError('metadata_limit')
+            try:
+                value = state_io.load_journal(stream, max_bytes=maximum)
+            finally:
+                self.journal_total += stream.tell()
         if not isinstance(value, dict):
             raise InventoryError('invalid_metadata')
         return value, protected
@@ -189,7 +216,7 @@ def _choices(value):
     return sorted(set(choices))
 
 
-def _backup_complete(value):
+def _backup_complete(value, *, digests=False):
     if value.get('phase') != 'installed':
         raise InventoryError('legacy_recovery_required')
     allowed = value.get('allowed')
@@ -197,6 +224,8 @@ def _backup_complete(value):
     if (not isinstance(allowed, list) or not 0 < len(allowed) <= 12000
             or not isinstance(originals, dict) or not isinstance(applied, dict)):
         raise InventoryError('missing_legacy_originals')
+    for relative in allowed:
+        _parts(relative)
     if len(set(allowed)) != len(allowed) or set(allowed) != set(originals) or set(allowed) != set(applied):
         raise InventoryError('incomplete_legacy_originals')
     for relative in allowed:
@@ -210,8 +239,16 @@ def _backup_complete(value):
                     raise InventoryError('invalid_legacy_originals')
             if original['mode'] > 0o7777:
                 raise InventoryError('invalid_legacy_originals')
-            base64.b64decode(original['data'], validate=True)
-        base64.b64decode(applied[relative], validate=True)
+            if digests:
+                if not isinstance(original.get('data'), state_io.DataDigest):
+                    raise InventoryError('invalid_legacy_originals')
+            else:
+                base64.b64decode(original['data'], validate=True)
+        if digests:
+            if not isinstance(applied[relative], state_io.DataDigest):
+                raise InventoryError('invalid_legacy_applied')
+        else:
+            base64.b64decode(applied[relative], validate=True)
     return len(allowed)
 
 
@@ -303,26 +340,40 @@ def inspect(root, system, managed=None):
             conflict(base, _error(exc))
             continue
         for name in names:
-            if name in ('request.json', 'result.json', 'target-disk.json', 'lock'):
+            if name in ('request.json', 'result.json', 'target-disk.json', 'lock',
+                        'activation.json', '.activation.lock'):
                 continue
             if not _ID.fullmatch(name):
                 conflict(base, 'unsafe_journal_name')
                 continue
             relative = base + '/' + name + '/state.json'
-            loaded = load(relative)
+            # The other slot's journals are historical payloads, not evidence
+            # of the running installation. Keep its small selection summary.
+            if group not in (active, 'shared'):
+                try:
+                    with _directory(root, base + '/' + name, trusted=True):
+                        pass
+                except _ERRORS as exc:
+                    conflict(base + '/' + name, _error(exc))
+                continue
+            try:
+                loaded = reader.journal(relative)
+            except FileNotFoundError:
+                continue
+            except _ERRORS as exc:
+                conflict(relative, _error(exc), name if name in _KNOWN else None)
+                continue
             if not loaded:
                 continue
             if name not in _KNOWN:
                 result['unknown_journals'].append({'component': name, 'source': relative, 'slot': group})
-                continue
-            if group not in (active, 'shared'):
                 continue
             value = loaded[0]
             if value.get('phase') == 'rolled_back':
                 continue
             evidence = {'source': relative, 'backups': False}
             try:
-                evidence.update(backups=True, file_count=_backup_complete(value))
+                evidence.update(backups=True, file_count=_backup_complete(value, digests=True))
             except (KeyError, *_ERRORS) as exc:
                 conflict(relative, _error(exc), name)
             legacy.setdefault(name, []).append(evidence)

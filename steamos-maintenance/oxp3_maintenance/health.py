@@ -407,6 +407,7 @@ class Report:
         if authoritative is None:
             return set()
         evidence = inventory.inspect(self.root, system)
+        journals = inventory._Reader(self.root)
         selected = set()
         for name, record in evidence['components'].items():
             if name in authoritative or record['state'] == 'absent':
@@ -419,13 +420,13 @@ class Report:
             try:
                 entries = []
                 for source in sources:
-                    journal = read_json(self.root, source)
-                    inventory._backup_complete(journal)
+                    journal, _ = journals.journal(source)
+                    inventory._backup_complete(journal, digests=True)
                     for relative in journal['allowed']:
                         Store._path(relative)
-                        raw = base64.b64decode(journal['applied'][relative], validate=True)
+                        digest = journal['applied'][relative]
                         # Legacy applied journals record bytes, not necessarily final metadata.
-                        expected = {'exists': True, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
+                        expected = {'exists': True, 'sha256': digest.sha256, 'bytes': digest.size}
                         entries.append((relative, expected, relative in _MUTABLE_SETTINGS.get(name, set())))
                 self.compare(name, entries, source='legacy_installer_bytes')
             except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-from oxp3_maintenance import catalog, cli, downloads, gui, probe, releases
+from oxp3_maintenance import auth_session, catalog, cli, downloads, gui, probe, releases
 from oxp3_maintenance.desktop_service import DesktopService
 
 
@@ -36,6 +36,19 @@ class DesktopServiceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Review the changes again'):
                 self.service.perform('apply')
         backend.assert_not_called()
+
+    def test_installation_check_never_elevates_downloaded_entry_without_installed_engine(self):
+        with mock.patch.object(Path, 'is_file', return_value=False), \
+             mock.patch.object(subprocess, 'run') as run:
+            with self.assertRaisesRegex(RuntimeError, 'latest maintenance engine'):
+                self.service._backend('installation-status')
+        run.assert_not_called()
+
+    def test_old_engine_installation_check_reports_update_tool_only(self):
+        with mock.patch.object(auth_session.os.path, 'lexists', return_value=True), \
+             mock.patch.object(self.service.authorization, 'request', side_effect=auth_session.SessionUnavailable('old engine')):
+            with self.assertRaisesRegex(RuntimeError, 'Update tool only'):
+                self.service._backend('installation-status')
 
     def test_review_binds_apply_to_manifest_version_and_exact_selection(self):
         with mock.patch.object(self.service, '_backend', side_effect=[self.plan, self.applied]) as backend, \
@@ -136,7 +149,7 @@ class DesktopServiceTests(unittest.TestCase):
             view = self.service.perform('discover')
         fetch.assert_called_once_with(candidate, Path('/trusted.pem'), progress=self.service._network_progress, opener=mock.ANY)
         self.assertEqual(fetch.call_args.kwargs['opener'].__self__.mode, 'auto')
-        describe.assert_called_once_with(value, None)
+        describe.assert_called_once_with(value, None, {})
         backend.assert_not_called()
         run.assert_not_called()
         self.assertIs(self.service.candidate, candidate)
@@ -171,17 +184,47 @@ class DesktopServiceTests(unittest.TestCase):
         backend.assert_not_called()
 
     def test_backend_uses_selected_only_and_review_bindings_with_no_write_timeout(self):
-        response = SimpleNamespace(returncode=0, stdout=json.dumps(self.applied), stderr='')
-        with mock.patch.object(subprocess, 'run', return_value=response) as run:
+        with mock.patch.object(auth_session.os.path, 'lexists', return_value=True), \
+             mock.patch.object(self.service.authorization, 'request', return_value=self.applied) as request:
             self.service._backend('apply', ['keyboard'], expected_version='1.1.0',
-                                  expected_manifest='reviewed-manifest')
-        command = run.call_args.args[0]
-        self.assertEqual(command[:4], ['pkexec', '/usr/bin/python3', '-I', '-B'])
-        self.assertIn('--selected-only', command)
-        self.assertEqual(command[command.index('--select') + 1], 'keyboard')
-        self.assertEqual(command[command.index('--expected-version') + 1], '1.1.0')
-        self.assertEqual(command[command.index('--expected-manifest') + 1], 'reviewed-manifest')
-        self.assertIsNone(run.call_args.kwargs['timeout'])
+                                  expected_manifest='a' * 64)
+        request.assert_called_once_with('apply', {'bundle': '/offline.tar.gz', 'selected': ['keyboard'],
+                                                'expected_version': '1.1.0', 'expected_manifest': 'a' * 64})
+
+    def test_authorize_returns_overview_and_close_ends_client_without_blocking(self):
+        with mock.patch.object(self.service.authorization, 'authorize') as authorize, \
+             mock.patch.object(self.service.authorization, 'close') as close:
+            view = self.service.perform('authorize')
+            self.assertTrue(view['authorized'])
+            self.assertEqual(view['heading'], self.service.perform('overview')['heading'])
+            self.service.close()
+        authorize.assert_called_once()
+        close.assert_called_once()
+
+    def test_old_engine_authorize_keeps_overview_and_tool_only_bridge(self):
+        with mock.patch.object(auth_session.os.path, 'lexists', return_value=True), \
+             mock.patch.object(self.service.authorization, 'authorize', side_effect=auth_session.SessionUnavailable('old engine')):
+            view = self.service.perform('authorize')
+        self.assertFalse(view['authorized'])
+        self.assertTrue(view['upgrade_required'])
+        self.assertIn('Update tool only', view['message'])
+        with mock.patch.object(auth_session.os.path, 'lexists', return_value=True), \
+             mock.patch.object(self.service.authorization, 'request', side_effect=auth_session.SessionUnavailable('old engine')), \
+             mock.patch.object(auth_session, 'trusted_entry'), \
+             mock.patch.object(self.service, '_single_backend', return_value=self.plan) as bridge:
+            self.assertEqual(self.service._backend('plan', tool_only=True), self.plan)
+        bridge.assert_called_once()
+
+    def test_missing_engine_authorize_preserves_explicit_first_install_only(self):
+        with mock.patch.object(auth_session.os.path, 'lexists', return_value=False), \
+             mock.patch.object(self.service.authorization, 'authorize', side_effect=auth_session.SessionUnavailable('not installed')), \
+             mock.patch.object(self.service, '_single_backend', return_value=self.plan) as bridge:
+            view = self.service.perform('authorize')
+            self.assertTrue(view['bootstrap_required'])
+            self.service._backend('plan', ['keyboard'])
+            with self.assertRaises(RuntimeError):
+                self.service._backend('health')
+        bridge.assert_called_once()
 
     def test_backend_never_invokes_privileged_discovery_or_download(self):
         with mock.patch.object(subprocess, 'run') as run:

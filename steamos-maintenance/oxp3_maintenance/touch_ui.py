@@ -15,7 +15,7 @@ TEXT = {
         'recovery': '恢复', 'settings': '设置', 'health': '一键体检',
         'intro': '管理这台掌机的项目修复、插件与更新。',
         'health_intro': '只读检查手柄、Wi-Fi 状态与近期错误、已安装组件；完成后可导出诊断报告。',
-        'health_again': '重新体检', 'health_export': '导出报告', 'health_back': '返回概览',
+        'health_again': '重新体检', 'health_export': '导出报告', 'health_back': '返回修复与插件',
         'github_network': 'GitHub 下载线路',
         'network_auto': '自动（先直连，失败后尝试备用线路）', 'network_direct': '直连',
         'network_hint': '自动先直连，失败后尝试备用线路；第三方线路只访问公开文件，下载仍校验签名。',
@@ -48,6 +48,7 @@ TEXT = {
         'load_bundle': '选择此维护包中的组件',
         'ready': '就绪', 'review_count': '检查更改（{count}）',
         'show_installed': '显示已安装（{count}）',
+        'check_installed': '检查已安装组件',
         'hidden_installed': '已安装项目已隐藏。可打开上方开关重新选择。',
     },
     'en': {
@@ -55,7 +56,7 @@ TEXT = {
         'recovery': 'Recovery', 'settings': 'Settings', 'health': 'Run health check',
         'intro': 'Manage project repairs, plugins and updates for this handheld.',
         'health_intro': 'Read-only checks cover controllers, Wi-Fi status and recent errors, and installed components. Export the report for diagnosis.',
-        'health_again': 'Run health check again', 'health_export': 'Export report', 'health_back': 'Back to overview',
+        'health_again': 'Run health check again', 'health_export': 'Export report', 'health_back': 'Back to repairs & plugins',
         'github_network': 'GitHub download route',
         'network_auto': 'Auto (try direct first, then fallbacks)', 'network_direct': 'Direct',
         'network_hint': 'Auto tries direct first, then fallbacks. Third-party routes access public files only; downloads still verify signatures.',
@@ -88,6 +89,7 @@ TEXT = {
         'load_bundle': 'Choose components in this bundle',
         'ready': 'Ready', 'review_count': 'Review ({count})',
         'show_installed': 'Show installed ({count})',
+        'check_installed': 'Check installed components',
         'hidden_installed': 'Installed items are hidden. Use the switch above to select them again.',
     },
 }
@@ -183,6 +185,8 @@ class TouchWindow:
         self.selections = {}
         self.busy = self.mutating = self.closed = False
         self.reviewing, self.initial_imported = False, False
+        self.startup_pending = True
+        self.installation_check_pending = True
         self.show_installed = False
         self.retry_task = self.confirm_task = None
         self.actions, self.nav_buttons, self.checks = [], {}, {}
@@ -285,7 +289,7 @@ class TouchWindow:
         self._render()
         self.window.show_all()
         self.service.on_progress = lambda message: self.GLib.idle_add(self._progress_message, message)
-        self.GLib.idle_add(lambda: (self.perform('overview'), False)[1])
+        self.GLib.idle_add(lambda: (self.perform('authorize', route='overview'), False)[1])
 
     def _label(self, text, css=None):
         label = self.Gtk.Label(label=str(text))
@@ -332,6 +336,8 @@ class TouchWindow:
         elif route == 'repairs' and self.service.has_source and not self.initial_imported:
             self.initial_imported = True
             self.perform('import', path=str(self.service.source))
+        elif route == 'repairs' and route not in self.views and self.service.preferences.get('enabled', True):
+            self.perform('discover')
         elif route == 'settings' and route not in self.views:
             self.perform('preferences')
 
@@ -343,7 +349,7 @@ class TouchWindow:
         self._clear(self.footer)
         for route, button in self.nav_buttons.items():
             context = button.get_style_context()
-            active_route = 'overview' if self.route == 'health' else self.route
+            active_route = 'repairs' if self.route == 'health' else self.route
             context.add_class('active') if route == active_route else context.remove_class('active')
         default_message = {'overview': 'intro', 'repairs': 'empty', 'recovery': 'recovery_intro',
                            'settings': 'daily_detail', 'health': 'health_intro'}
@@ -370,9 +376,7 @@ class TouchWindow:
             box.pack_start(self._label(fact[1]), False, False, 0)
             self.page.pack_start(box, False, False, 0)
         if self.route == 'overview':
-            self.page.pack_start(self._label(self.text['health_intro'], 'muted'), False, False, 0)
-            self._action(self.toolbar, self.text['health'], self._start_health_check, primary=True)
-            self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'))
+            self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'), primary=True)
             self._action(self.toolbar, self.text['refresh'], lambda _: self.perform('status'))
             self._action(self.footer, self.text['browse'], lambda _: self.navigate('repairs'))
         elif self.route == 'repairs':
@@ -426,9 +430,10 @@ class TouchWindow:
             return
         self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover'), primary=True)
         self._action(self.toolbar, self.text['import'], self._choose_bundle)
+        self._action(self.toolbar, self.text['health'], self._start_health_check)
         items = view.get('items', [])
         if items:
-            installed_count = sum(item.get('installed') is True for item in items)
+            installed_count = sum(self._hideable_installed(item) for item in items)
             filters = Gtk.Box(spacing=12)
             filters.pack_start(self._label(self.text['show_installed'].format(count=installed_count), 'muted'), True, True, 0)
             self.installed_switch = Gtk.Switch()
@@ -437,7 +442,8 @@ class TouchWindow:
             self.installed_switch.connect('notify::active', self._filter_installed)
             filters.pack_end(self.installed_switch, False, False, 0)
             self.page.pack_start(filters, False, False, 0)
-            visible = [item for item in items if self.show_installed or item.get('installed') is not True]
+            self._action(self.page, self.text['check_installed'], lambda _: self.perform('check-installed'))
+            visible = [item for item in items if self.show_installed or not self._hideable_installed(item)]
             self._render_items(visible)
             if not visible:
                 self.page.pack_start(self._label(self.text['hidden_installed'], 'muted'), False, False, 0)
@@ -468,7 +474,7 @@ class TouchWindow:
         self._render_items(view.get('items', []), selectable=False)
         if view.get('report_ready'):
             self._action(self.footer, self.text['health_export'], self._export_health_report, primary=True)
-        self._action(self.footer, self.text['health_back'], lambda _: self.navigate('overview'))
+        self._action(self.footer, self.text['health_back'], lambda _: self.navigate('repairs'))
 
     def _start_health_check(self, *_):
         self.perform('health', route='health')
@@ -520,10 +526,14 @@ class TouchWindow:
         self.selections[self.route] = set(self.selected)
         self._selection_count()
 
+    @staticmethod
+    def _hideable_installed(item):
+        return item.get('installed') is True and item.get('update_available') is not True
+
     def _filter_installed(self, switch, *_):
         self.show_installed = switch.get_active()
         if not self.show_installed:
-            hidden = {item['id'] for item in self.views.get('repairs', {}).get('items', []) if item.get('installed') is True}
+            hidden = {item['id'] for item in self.views.get('repairs', {}).get('items', []) if self._hideable_installed(item)}
             self.selected.difference_update(hidden)
             self.selections['repairs'] = set(self.selected)
         self._render()
@@ -670,13 +680,25 @@ class TouchWindow:
         self.route = route
         self.views[route] = view
         self.reviewing = bool(view.get('review'))
-        if action in ('discover', 'import', 'status'):
+        if action in ('discover', 'import', 'status', 'check-installed'):
             self.selected = {item['id'] for item in view.get('items', []) if item.get('selected') and item.get('enabled')}
             self.selections[route] = set(self.selected)
         self._render()
         self.scroll.get_vadjustment().set_value(0)
         self._notice(self.text['done'] if action in self.service.mutating_actions else self.text['ready'],
                      'success' if action in self.service.mutating_actions else 'normal')
+        if action in ('discover', 'import') and getattr(self, 'installation_check_pending', False):
+            self.installation_check_pending = False
+            if any(item.get('installed') is None for item in view.get('items', [])):
+                # Protected installer journals need one system authorization.
+                # Checking never installs a component, including on retry.
+                self.perform('check-installed', route='repairs')
+        if action in ('overview', 'authorize') and getattr(self, 'startup_pending', False):
+            self.startup_pending = False
+            # Open an explicitly supplied offline bundle first. Otherwise check
+            # once per launch, honoring the saved automatic-check preference.
+            if self.service.has_source or self.service.preferences.get('enabled', True):
+                self.navigate('repairs')
         return False
 
     def _retry(self, *_):
@@ -693,6 +715,7 @@ class TouchWindow:
             self._notice(self.text['wait_close'], 'warning')
             return True
         self.closed = True
+        self.service.close()
         return False
 
 
@@ -702,5 +725,8 @@ def run(args):
         raise RuntimeError('请以桌面用户打开维护工具。' if language == 'zh' else 'Open the maintenance tool as the desktop user, not root.')
     from .desktop_service import DesktopService
     window = TouchWindow(DesktopService(args, language=language), language=language)
-    window.Gtk.main()
+    try:
+        window.Gtk.main()
+    finally:
+        window.service.close()
     return None

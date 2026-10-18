@@ -26,6 +26,51 @@ def installed_release():
     return {'version': '0.0.0', 'display_version': 'Not installed', 'channel': 'beta'}
 
 
+def _legacy_bundled_opti_runtime(root, system):
+    """Recognize the old combined install only through authenticated live files."""
+    from . import adoption, inventory
+    from .opti_migration import PLUGIN, RUNTIME_PREFIX
+    try:
+        root = Path(root).absolute()
+        reader = inventory._Reader(root)
+        label = system['slot'].get('label')
+        participating = set()
+        for group in ((label, 'shared') if label in ('A', 'B') else ('shared',)):
+            try:
+                journal, _ = reader.journal('home/.oxp3-installer/integration/' + group + '/' + PLUGIN + '/state.json')
+            except FileNotFoundError:
+                continue
+            if journal.get('phase') == 'rolled_back':
+                continue
+            allowed = journal.get('allowed')
+            if not isinstance(allowed, list):
+                return None
+            for path in allowed:
+                inventory._parts(path)
+            runtime_paths = {path for path in allowed if path.startswith(RUNTIME_PREFIX)}
+            if runtime_paths:
+                # import_originals alone does not require phase=installed or
+                # complete recovery backups for ordinary file journals.
+                inventory._backup_complete(journal, digests=True)
+                participating.update(runtime_paths)
+        directory = adoption._directory_originals(root, PLUGIN)
+        if directory:
+            if participating & directory.keys():
+                return None  # Ambiguous original ownership between journals.
+            adoption.validate_current(root, directory, system)
+            return True
+        records = ({path: record for path, record in adoption.import_originals(root, system, [PLUGIN]).items()
+                    if path in participating and record.get('component') == PLUGIN} if participating else {})
+        if records:
+            adoption.validate_current(root, records, system)
+            return True
+        # An observed runtime without a trusted baseline is unknown, never an
+        # instruction to reinstall it. A plugin/config alone proves no runtime.
+        return None if os.path.lexists(Path(root) / RUNTIME_PREFIX.rstrip('/')) else False
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def installed_component_states(root, system, store, names, *, validated_originals=None):
     """Tri-state current installation evidence; legacy choices are not proof.
 
@@ -42,39 +87,43 @@ def installed_component_states(root, system, store, names, *, validated_original
     confirmed = {record['component'] for record in (validated_originals or {}).values()}
     evidence = inventory.inspect(root, system, managed)
     output = {}
+
+    def verify_paths(paths):
+        try:
+            for relative, record in paths.items():
+                actual = store._read(relative, user=record['user'])
+                expected = record['snapshot']
+                if not actual['exists']:
+                    raise RuntimeError('Managed component file is missing')
+                if record['mutable']:
+                    scope = ('shared' if relative.startswith(('home/', 'opt/')) else slot) + ':' + relative
+                    original_baseline = index.get('originals', {}).get(scope)
+                    if expected == {'exists': False} or expected == original_baseline:
+                        # Reapplying after restore can keep a customized
+                        # setting with its original snapshot as baseline.
+                        # Its presence is still managed; validate current
+                        # ownership and conservative configuration modes.
+                        owner = (store.uid, store.gid) if record['user'] else (0, 0)
+                        mode = actual['mode']
+                        if ((actual['uid'], actual['gid']) != owner
+                                or type(mode) is not int or not 0 <= mode <= 0o777
+                                or mode & 0o133 or not mode & 0o400):
+                            raise RuntimeError('Managed preserved configuration metadata is unsafe')
+                    elif any(actual[key] != expected[key] for key in ('mode', 'uid', 'gid')):
+                        raise RuntimeError('Managed configuration metadata changed')
+                elif actual != expected:
+                    raise RuntimeError('Managed component file changed')
+            if paths:
+                return True
+        except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
+
     for name in names:
         if slot in managed.get('components', {}).get(name, {}).get('slots', []):
             paths = {relative: record for relative, record in current.get('paths', {}).items()
                      if record['component'] == name}
-            output[name] = None
-            try:
-                for relative, record in paths.items():
-                    actual = store._read(relative, user=record['user'])
-                    expected = record['snapshot']
-                    if not actual['exists']:
-                        raise RuntimeError('Managed component file is missing')
-                    if record['mutable']:
-                        scope = ('shared' if relative.startswith(('home/', 'opt/')) else slot) + ':' + relative
-                        original_baseline = index.get('originals', {}).get(scope)
-                        if expected == {'exists': False} or expected == original_baseline:
-                            # Reapplying after restore can keep a customized
-                            # setting with its original snapshot as baseline.
-                            # Its presence is still managed; validate current
-                            # ownership and conservative configuration modes.
-                            owner = (store.uid, store.gid) if record['user'] else (0, 0)
-                            mode = actual['mode']
-                            if ((actual['uid'], actual['gid']) != owner
-                                    or type(mode) is not int or not 0 <= mode <= 0o777
-                                    or mode & 0o133 or not mode & 0o400):
-                                raise RuntimeError('Managed preserved configuration metadata is unsafe')
-                        elif any(actual[key] != expected[key] for key in ('mode', 'uid', 'gid')):
-                            raise RuntimeError('Managed configuration metadata changed')
-                    elif actual != expected:
-                        raise RuntimeError('Managed component file changed')
-                if paths:
-                    output[name] = True
-            except (RuntimeError, OSError, ValueError, KeyError, TypeError):
-                pass
+            output[name] = verify_paths(paths)
         elif name in restored:
             output[name] = False
         elif name in confirmed:
@@ -92,6 +141,136 @@ def installed_component_states(root, system, store, names, *, validated_original
                 output[name] = False
             else:
                 output[name] = None
+    from .opti_migration import PLUGIN, RUNTIME, RUNTIME_PREFIX
+    authoritative = restored | {name for name, record in managed.get('components', {}).items()
+                                if slot in record.get('slots', [])}
+    if RUNTIME in output and RUNTIME not in authoritative:
+        runtime_paths = {path: record for path, record in current.get('paths', {}).items()
+                         if path.startswith(RUNTIME_PREFIX)}
+        if runtime_paths:
+            output[RUNTIME] = (verify_paths(runtime_paths)
+                               if slot in managed.get('components', {}).get(PLUGIN, {}).get('slots', [])
+                               and all(item['component'] == PLUGIN for item in runtime_paths.values()) else None)
+        elif PLUGIN in authoritative:
+            output[RUNTIME] = None
+        else:
+            output[RUNTIME] = _legacy_bundled_opti_runtime(root, system)
+    return output
+
+
+def read_installed_component_states(root, system, names):
+    """Advisory installation checks without creating locks or writing state.
+
+    The desktop first tries this without elevation. Unreadable current state
+    blocks legacy fallback, so surviving installer journals cannot revive a
+    restored component. The privileged apply path still repeats full adoption.
+    """
+    from . import adoption, health, inventory, state_io
+    from .opti_migration import PLUGIN, RUNTIME, RUNTIME_PREFIX
+    output = {name: None for name in names}
+    class InstallationReport(health.Report):
+        def original_index(self, scope):
+            if hasattr(self, '_original_index'):
+                return self._original_index
+            slot = system['slot']['id']
+            def load(scopes):
+                with health.regular(self.root, health.STATE + '/index.json', trusted=True, verify_name=True) as (stream, before):
+                    if before.st_size > health.MAX_INDEX:
+                        raise ValueError('index_size_limit')
+                    return state_io.load(stream, slot=slot, max_bytes=health.MAX_INDEX, original_scopes=scopes)
+            index = load({scope})
+            paths = index['slots'][slot]['current']['paths']
+            if not isinstance(paths, dict) or len(paths) > health.MAX_PATHS:
+                raise ValueError('invalid_paths')
+            scopes = {scope}
+            for path, entry in paths.items():
+                health.Store._path(path)
+                if not isinstance(entry, dict):
+                    raise ValueError('invalid_entry')
+                if entry.get('mutable') is True:
+                    scopes.add(('shared' if path.startswith(('home/', 'opt/')) else slot) + ':' + path)
+            self._original_index = load(scopes) if scopes != {scope} else index
+            return self._original_index
+
+        def preserved(self, relative, expected, actual):
+            # Called only by compare while managed() holds the existing shared
+            # lock. Load only this path's original digest, never backup bytes.
+            slot = system['slot']['id']
+            scope = ('shared' if relative.startswith(('home/', 'opt/')) else slot) + ':' + relative
+            index = self.original_index(scope)
+            entry = index['slots'][slot]['current']['paths'][relative]
+            if (type(entry.get('user')) is not bool or entry.get('mutable') is not True
+                    or health.expected_snapshot(entry['snapshot']) != expected):
+                return False
+            original = index.get('originals', {}).get(scope)
+            if expected != {'exists': False} and (original is None or health.expected_snapshot(original) != expected):
+                return None
+            owner = (system['uid'], system['gid']) if entry['user'] else (0, 0)
+            mode = actual['mode']
+            return ((actual['uid'], actual['gid']) == owner
+                    and 0 <= mode <= 0o777 and not mode & 0o133 and bool(mode & 0o400))
+
+        def matches(self, entries):
+            if not entries:
+                return None
+            try:
+                for relative, expected, mutable in entries:
+                    actual = health.fingerprint(self.root, relative, self.budget)
+                    if not actual.get('exists'):
+                        return None
+                    if mutable:
+                        preserved = self.preserved(relative, expected, actual)
+                        if preserved is False:
+                            return None
+                        if preserved is None and any(actual.get(key) != expected.get(key) for key in ('mode', 'uid', 'gid')):
+                            return None
+                    elif actual != expected:
+                        return None
+                return True
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+                return None
+
+        def compare(self, name, entries, *, source):
+            runtime_entries = [entry for entry in entries if entry[0].startswith(RUNTIME_PREFIX)]
+            if runtime_entries:
+                self.runtime_owner_seen = True
+                if name == PLUGIN:
+                    self.bundled_runtime = self.matches(runtime_entries)
+                else:
+                    self.runtime_other_owner = True
+            if name in output:
+                output[name] = self.matches(entries)
+
+    report = InstallationReport(root)
+    if report.interrupted():
+        return output
+    selected, authoritative = report.managed(system)
+    if authoritative is None:
+        return {name: None for name in names}
+    for name in authoritative - selected:
+        if name in output:
+            output[name] = False
+    evidence = inventory.inspect(root, system)
+    for name in names:
+        if name in authoritative:
+            continue
+        entry = evidence.get('components', {}).get(name, {})
+        if entry.get('state') == 'legacy_with_backups' and not entry.get('conflicts'):
+            try:
+                records = adoption.validate_current(root, adoption.import_originals(root, system, [name]), system)
+                output[name] = True if records else None
+            except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+                pass
+        elif entry.get('state') == 'absent' and entry.get('absence_verified'):
+            output[name] = False
+    if RUNTIME in output and RUNTIME not in authoritative:
+        if getattr(report, 'runtime_owner_seen', False):
+            output[RUNTIME] = (getattr(report, 'bundled_runtime', None) if PLUGIN in selected
+                               and not getattr(report, 'runtime_other_owner', False) else None)
+        elif PLUGIN in authoritative:
+            output[RUNTIME] = None
+        else:
+            output[RUNTIME] = _legacy_bundled_opti_runtime(root, system)
     return output
 
 
@@ -135,7 +314,8 @@ def parser():
     result = argparse.ArgumentParser(description='OXP3 project repairs and updates; SteamOS base upgrades are not performed.')
     result.add_argument('action', nargs='?', default='gui', choices=(
         'gui', 'status', 'plan', 'apply', 'bootstrap', 'check-updates', 'update',
-        'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download', 'health'))
+        'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download', 'health',
+        'installation-status', 'session-service'))
     result.add_argument('--bundle', help='Signed maintenance .tar.gz')
     result.add_argument('--bundle-dir', help='Extracted signed maintenance directory')
     result.add_argument('--select', nargs='*', default=[], help='Component IDs; dependencies are included')
@@ -155,6 +335,12 @@ def parser():
 
 
 def dispatch(args):
+    if args.action == 'session-service':
+        from .auth_session import serve
+        defaults = vars(parser().parse_args(['session-service']))
+        if vars(args) != defaults:
+            raise ValueError('Maintenance session service accepts no command-line parameters')
+        return serve()
     if args.action == 'health':
         from .health import collect
         return collect()
@@ -196,6 +382,11 @@ def dispatch(args):
     if args.action in ('rollback', 'restore', 'recover'):
         return operations.restore(args, previous=args.action == 'rollback', recovery=args.action == 'recover')
     system = probe.live()
+    if args.action == 'installation-status':
+        from .compatibility import BASELINE, PORTABLE
+        names = sorted(set(args.select)) if args.select else sorted(BASELINE | PORTABLE)
+        return {'installed_states': read_installed_component_states('/', system, names),
+                'system': system, 'read_only': True}
     if args.action == 'logs':
         operations.require_root()
         store = operations.store_for(system)

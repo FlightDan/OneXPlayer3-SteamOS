@@ -366,6 +366,21 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.finding(report, 'files.input')['status'], 'info')
         self.assertNotIn('PRIVATE PASSWORD', json.dumps(report))
 
+    def test_large_legacy_journal_compares_fingerprints_without_full_json_reads(self):
+        relative = 'usr/local/lib/example-runtime'
+        contents = b'x' * (7 * 1024 * 1024)
+        self.write(relative, contents)
+        path = self.write('home/.oxp3-installer/integration/A/gyro/state.json', {
+            'phase': 'installed', 'allowed': [relative], 'original': {relative: {'exists': False}},
+            'applied': {relative: base64.b64encode(contents).decode()}})
+        self.assertGreater(path.stat().st_size, inventory.MAX_JSON)
+        with mock.patch.object(health, 'read_json', side_effect=AssertionError('full journal read')):
+            report = self.collect()
+        check = self.finding(report, 'files.gyro')
+        self.assertEqual(check['status'], 'ok')
+        self.assertNotIn('legacy.records', [item['id'] for item in report['checks']])
+        self.assertNotIn(base64.b64encode(contents).decode(), json.dumps(report))
+
     def test_export_contains_only_sanitized_report_and_does_not_overwrite(self):
         report = self.collect()
         folder = Path(self.temp.name) / 'reports'

@@ -83,7 +83,7 @@ class TouchHealthTests(unittest.TestCase):
         ui = TouchWindow.__new__(TouchWindow)
         ui.toolbar, ui.footer = object(), object()
         ui.text = {'health_again': 'Run again', 'health_export': 'Export report',
-                   'health_back': 'Back to overview'}
+                   'health_back': 'Back to repairs & plugins'}
         ui._start_health_check = mock.Mock()
         ui._export_health_report = mock.Mock()
         ui._render_items = mock.Mock()
@@ -104,6 +104,10 @@ class TouchHealthTests(unittest.TestCase):
         export = next(call for call in ui._action.call_args_list if call.args[1] == 'Export report')
         self.assertIs(export.args[2], ui._export_health_report)
         self.assertTrue(export.kwargs['primary'])
+        ui.navigate = mock.Mock()
+        back = next(call for call in ui._action.call_args_list if call.args[1] == 'Back to repairs & plugins')
+        back.args[2](None)
+        ui.navigate.assert_called_once_with('repairs')
 
     def test_failed_health_check_retries_the_health_action_without_confirmation(self):
         self.service.perform.side_effect = [RuntimeError('temporary failure'), self.health_view()]

@@ -20,6 +20,7 @@ class TouchOverviewRefreshTests(unittest.TestCase):
         self.callbacks = []
         self.service = SimpleNamespace(
             mutating_actions={'apply', 'rollback', 'restore', 'recover'},
+            preferences={'enabled': True},
             has_source=False, perform=mock.Mock(side_effect=self.perform_service))
         self.ui = ui = TouchWindow.__new__(TouchWindow)
         ui.service = self.service
@@ -110,6 +111,86 @@ class TouchOverviewRefreshTests(unittest.TestCase):
         self.service.perform.assert_called_once_with('overview')
         self.complete()
         self.assertFalse(self.ui.busy)
+
+    def test_launch_checks_once_and_opens_results(self):
+        self.ui.views.pop('repairs')
+        self.ui.startup_pending = True
+        self.ui.perform('overview', route='overview')
+        self.complete()
+        self.service.perform.assert_called_with('discover')
+        self.assertFalse(self.ui.startup_pending)
+        self.complete()
+        self.assertEqual(self.ui.route, 'repairs')
+        self.ui.navigate('overview')
+        self.complete()
+        self.assertEqual([c.args[0] for c in self.service.perform.call_args_list],
+                         ['overview', 'discover', 'overview'])
+
+    def test_launch_respects_disabled_checks(self):
+        self.ui.views.pop('repairs')
+        self.service.preferences['enabled'] = False
+        self.ui.startup_pending = True
+        self.ui.perform('overview', route='overview')
+        self.complete()
+        self.service.perform.assert_called_once_with('overview')
+        self.assertEqual(self.ui.route, 'overview')
+        self.assertFalse(self.ui.startup_pending)
+
+    def test_launch_imports_explicit_bundle_even_with_checks_disabled(self):
+        self.ui.views.pop('repairs')
+        self.service.preferences['enabled'] = False
+        self.service.has_source = True
+        self.service.source = '/offline/catalog.json'
+        self.ui.initial_imported = False
+        self.ui.startup_pending = True
+        self.ui.perform('overview', route='overview')
+        self.complete()
+        self.service.perform.assert_called_with('import', path='/offline/catalog.json')
+        self.complete()
+        self.assertEqual(self.ui.route, 'repairs')
+
+    def test_failed_automatic_check_is_retryable_and_never_applies(self):
+        self.ui.views.pop('repairs')
+        self.ui.startup_pending = True
+        self.service.perform.side_effect = [self.overview(), RuntimeError('offline'), {'items': []}]
+        self.ui.perform('overview', route='overview')
+        self.complete()
+        self.complete()
+        self.assertEqual(self.ui.retry_task, ('discover', {}, None))
+        self.ui._retry()
+        self.complete()
+        self.assertEqual([c.args[0] for c in self.service.perform.call_args_list],
+                         ['overview', 'discover', 'discover'])
+
+    def test_first_catalog_checks_unknown_installations_once(self):
+        self.ui.installation_check_pending = True
+        self.service.perform.side_effect = [
+            {'items': [{'id': 'keyboard', 'installed': None, 'enabled': True, 'selected': False}]},
+            {'items': [{'id': 'keyboard', 'installed': True, 'enabled': True, 'selected': False}]},
+            {'items': []}]
+        self.ui.perform('discover')
+        self.complete()
+        self.service.perform.assert_called_with('check-installed')
+        self.assertFalse(self.ui.mutating)
+        self.complete()
+        self.assertEqual(self.ui.selected, set())
+        self.assertTrue(self.ui.views['repairs']['items'][0]['installed'])
+        self.ui.perform('discover')
+        self.complete()
+        self.assertEqual([c.args[0] for c in self.service.perform.call_args_list],
+                         ['discover', 'check-installed', 'discover'])
+
+    def test_cancelled_automatic_installation_check_keeps_unknown_unselected(self):
+        self.ui.installation_check_pending = True
+        self.service.perform.side_effect = [
+            {'items': [{'id': 'keyboard', 'installed': None, 'enabled': True, 'selected': False}]},
+            RuntimeError('Authentication cancelled')]
+        self.ui.perform('discover')
+        self.complete()
+        self.complete()
+        self.assertEqual(self.ui.retry_task, ('check-installed', {}, 'repairs'))
+        self.assertEqual(self.ui.selected, set())
+        self.assertIsNone(self.ui.views['repairs']['items'][0]['installed'])
 
 
 if __name__ == '__main__':

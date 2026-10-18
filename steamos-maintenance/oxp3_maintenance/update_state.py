@@ -53,10 +53,18 @@ def _receipt_matches(name, revision, slot, runtime):
 
 
 def component_states(catalog, installed, slot=None, *, runtime=Path('/usr/local/lib/oxp3-maintenance')):
+    """Current revision evidence only; this is not installation detection."""
     current = revisions(catalog)
     recorded = installed.get('component_revisions_by_slot', {}).get(slot, {})
     return {name: True if recorded.get(name) == revision and _receipt_matches(name, revision, slot, runtime)
             else None for name, revision in current.items()}
+
+
+def available_updates(catalog, installed, slot=None):
+    """Known older revisions need updates even while their files are installed."""
+    recorded = installed.get('component_revisions_by_slot', {}).get(slot, {})
+    return {name: recorded[name] != revision if name in recorded else None
+            for name, revision in revisions(catalog).items()}
 
 
 def needs_engine_bridge(installed, runtime=Path('/usr/local/lib/oxp3-maintenance')):

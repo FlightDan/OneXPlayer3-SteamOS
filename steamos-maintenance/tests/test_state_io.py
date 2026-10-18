@@ -116,6 +116,61 @@ class StateIOTests(unittest.TestCase):
         self.assertEqual(set(current), {'selected', 'legacy_adopted', 'paths'})
         self.assertEqual(set(current['paths']['etc/example']), {'component', 'mutable', 'snapshot'})
 
+    def test_legacy_journal_projection_hashes_original_and_applied_in_bounded_reads(self):
+        raw = b'legacy bytes' * 1000
+        blob = base64.b64encode(raw).decode()
+        value = {'phase': 'installed', 'allowed': ['etc/example'],
+                 'original': {'etc/example': {'exists': True, 'mode': 420, 'uid': 0, 'gid': 0, 'data': blob}},
+                 'applied': {'etc/example': blob}, 'private': {'data': 'not retained'}}
+        for step in (1, 7, state_io.CHUNK_SIZE):
+            projected = state_io.load_journal(BoundedReader(encoded(value), step))
+            digest = state_io.DataDigest(hashlib.sha256(raw).hexdigest(), len(raw))
+            self.assertEqual(projected['original']['etc/example']['data'], digest)
+            self.assertEqual(projected['applied']['etc/example'], digest)
+            self.assertNotIn('private', projected)
+        self.assertEqual(state_io.load(io.BytesIO(encoded(value))), value)
+
+    def test_installation_projection_retains_only_requested_original_digests_and_users(self):
+        value = document()
+        original = value['slots']['B']['current']['paths']['etc/example']['snapshot']
+        value['originals'] = {'B:etc/example': original, 'A:etc/example': {'data': 'not-base64'},
+                              'shared:opt/unrelated': {'data': 'not-base64'}}
+        for step in (1, 7, state_io.CHUNK_SIZE):
+            projected = state_io.load(BoundedReader(encoded(value), step), slot='B',
+                                      original_scopes={'B:etc/example'})
+            self.assertEqual(set(projected['originals']), {'B:etc/example'})
+            self.assertEqual(projected['originals']['B:etc/example']['data'],
+                             state_io.DataDigest(hashlib.sha256(b'a').hexdigest(), 1))
+            self.assertIs(projected['slots']['B']['current']['paths']['etc/example']['user'], False)
+        value['originals']['B:etc/example']['data'] = 'not-base64'
+        with self.assertRaises(ValueError):
+            state_io.load(io.BytesIO(encoded(value)), slot='B', original_scopes={'B:etc/example'})
+        for scope in ('A:etc/example', 'shared:etc/example', 'B:home/deck/config',
+                      'B:../outside', 'B:/absolute', 'B:etc\\example'):
+            with self.subTest(scope=scope), self.assertRaises(ValueError):
+                state_io.load(io.BytesIO(encoded(document())), slot='B', original_scopes={scope})
+
+    def test_legacy_projection_does_not_materialize_payloads(self):
+        blob = base64.b64encode(b'x' * (4 * 1024 * 1024)).decode()
+        wire = encoded({'original': {'etc/example': {'data': blob}}, 'applied': {'etc/example': blob}})
+        tracemalloc.start()
+        try:
+            value = state_io.load_journal(BoundedReader(wire))
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertEqual(value['applied']['etc/example'].size, 4 * 1024 * 1024)
+        self.assertLess(peak, 2 * 1024 * 1024)
+
+    def test_legacy_projection_rejects_invalid_payloads_and_skipped_json(self):
+        for wire in (b'{"applied":{"etc/example":"YQ==AAAA"}}',
+                     b'{"original":{"etc/example":{"data":"!"}}}',
+                     b'{"private":{"x":1,"x":2}}'):
+            with self.subTest(wire=wire), self.assertRaises(ValueError):
+                state_io.load_journal(BoundedReader(wire, 1))
+        with mock.patch.object(state_io, 'MAX_METADATA', 4096), self.assertRaisesRegex(ValueError, 'metadata limit'):
+            state_io.load_journal(io.BytesIO(encoded({'allowed': [{'data': 'x' * 5000}]})))
+
     def test_json_object_cannot_forge_a_data_digest(self):
         value = document({'sha256': 'a' * 64, 'size': 1})
         result = state_io.load(io.BytesIO(encoded(value)), slot='B')

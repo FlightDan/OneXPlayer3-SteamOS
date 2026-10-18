@@ -1,10 +1,11 @@
 """Touch UI controller. Unprivileged discovery; explicit, reviewed root writes."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import uuid
 
-from . import cli
+from . import auth_session, cli
 
 
 class DesktopService:
@@ -20,7 +21,10 @@ class DesktopService:
         self.review = None
         self.seed = self.source
         self.health_report = None
+        self.installation_catalog = None
+        self.installation_plan = None
         self.on_progress = None
+        self.authorization = auth_session.Client()
         self.labels = dict(zip(
             ('input','multifunction','gyro','hdr','desktop-hdr','gamescope-env','wifi','xe-dsb','gm7-resume','manager','native-tdp','overlay','fan-driver','oxp3-fan','oxp3-cpu','charging','legacy-runtime','windows-reboot','decky','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','flathub-ustc','slot-switch','refind'),
             ('背键驱动','多功能键','陀螺仪','游戏模式 HDR','桌面 HDR','游戏模式启动环境','无线与蓝牙固件','显示兼容配置','GM7 休眠恢复','SteamOS 管理器','原生功耗控制','性能叠加层','风扇与充电驱动','风扇控制插件','CPU 控制插件','充电控制插件','音量与电量修复','重启进入 Windows','Decky 插件环境','SteamGridDB 游戏封面','ProtonDB 兼容性标记','TabMaster 游戏库分页','CSS Loader 界面主题','AutoFlatpaks 应用更新','Deck Settings 游戏设置','HLTB 游戏时长','Animation Changer 启动画面','Waydroid 安卓环境','Flathub 应用源','系统槽位切换','rEFInd 启动菜单')
@@ -124,9 +128,56 @@ class DesktopService:
 
     def _backend(self, action, selected=(), *, all_components=False, tool_only=False,
                  expected_version=None, expected_manifest=None):
-        if action not in {'status', 'logs', 'plan', 'apply', 'rollback', 'restore', 'recover', 'health'}:
+        if action not in auth_session.ACTIONS:
+            raise ValueError('Unsupported desktop action')
+        if not os.path.lexists(auth_session.ENTRY):
+            # Preserve the original signed Bash bootstrap's explicit plan /
+            # bootstrap path. A downloaded application never hosts a session.
+            if action not in ('plan', 'apply'):
+                raise RuntimeError(self.t('请先完成首次安装；会话授权需要已安装的维护工具。',
+                                          'Install the latest maintenance engine first; window authorization requires an installed engine.'))
+            return self._single_backend(action, selected, all_components=all_components,
+                                        tool_only=tool_only, expected_version=expected_version,
+                                        expected_manifest=expected_manifest)
+        params = {}
+        if selected:
+            params['selected'] = list(selected)
+        if action in ('plan', 'apply'):
+            if not self.source:
+                raise RuntimeError(self.t('请先选择维护包。', 'Choose a maintenance bundle first.'))
+            params['bundle_dir' if Path(self.source).is_dir() else 'bundle'] = str(self.source)
+        for name, value in (('all_components', all_components), ('tool_only', tool_only),
+                            ('expected_version', expected_version), ('expected_manifest', expected_manifest)):
+            if value:
+                params[name] = value
+        try:
+            return self.authorization.request(action, params)
+        except auth_session.SessionUnavailable as error:
+            if action in ('plan', 'apply') and tool_only and not selected and not all_components:
+                # The older installed verifier authenticates the tool bridge;
+                # no persistent root helper ever runs from the fetched bundle.
+                auth_session.trusted_entry()
+                return self._single_backend(action, (), tool_only=True, expected_version=expected_version,
+                                            expected_manifest=expected_manifest)
+            raise RuntimeError(self.t('当前维护引擎尚不支持本窗口持续授权，请先使用“仅更新工具”升级。',
+                                      'The installed maintenance engine needs “Update tool only” before window authorization.')) from error
+
+    def close(self):
+        self.authorization.close()
+
+    def _single_backend(self, action, selected=(), *, all_components=False, tool_only=False,
+                        expected_version=None, expected_manifest=None):
+        """Compatibility bridge: original first install or protected old tool only."""
+        if action not in ('plan', 'apply'):
             raise ValueError('Unsupported desktop action')
         installed = Path('/usr/local/lib/oxp3-maintenance/entry.py')
+        if os.path.lexists(installed):
+            auth_session.trusted_entry()
+            if not tool_only or selected or all_components:
+                raise RuntimeError('Use “Update tool only” to upgrade the installed maintenance engine first')
+        if action == 'installation-status' and not installed.is_file():
+            raise RuntimeError(self.t('请先使用“仅更新工具”安装新版维护工具，再检查受保护的安装记录。',
+                                      'Install the latest maintenance engine with “Update tool only”, then check protected installation records.'))
         entry = installed if installed.is_file() else Path(__file__).resolve().parent.parent / 'entry.py'
         command_action = 'bootstrap' if action == 'apply' and not installed.is_file() else action
         command = ['pkexec', '/usr/bin/python3', '-I', '-B', str(entry), command_action, '--json']
@@ -157,6 +208,9 @@ class DesktopService:
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(self.t('读取超时，请稍后重试。', 'Reading timed out; retry later.')) from error
         if value.returncode:
+            if action == 'installation-status' and 'invalid choice' in value.stderr:
+                raise RuntimeError(self.t('当前维护引擎尚不支持只读安装检查，请先使用“仅更新工具”升级。',
+                                          'The installed maintenance engine does not support installation checks. Use “Update tool only” first.'))
             if value.returncode == 2:
                 try:
                     refused = json.loads(value.stdout)
@@ -174,6 +228,8 @@ class DesktopService:
         return json.loads(value.stdout)
 
     def _plan_view(self, result, *, review=False):
+        if not review:
+            self.installation_plan = (self.source, result)
         catalog = result.get('catalog', {})
         categories = {}
         for group in ('repairs', 'plugins'):
@@ -186,9 +242,13 @@ class DesktopService:
             category = categories.get(name, 'plugins')
             installed = result.get('installed_states', {}).get(name)
             installed = installed if type(installed) is bool else None
-            items.append({'id': name, 'title': self._label(name), 'detail': self._reason(item.get('reason', '')),
+            update = result.get('update_available', {}).get(name)
+            items.append({'id': name, 'title': self._label(name),
+                          'detail': self._installation_detail(item.get('reason', ''), installed, update),
                           'enabled': ready, 'category': category, 'installed': installed,
-                          'selected': name in result['selected'] if review else ready and category == 'repairs' and installed is not True})
+                          'update_available': update,
+                          'selected': name in result['selected'] if review else ready and
+                          (update is True or category == 'repairs' and installed is False)})
         items.sort(key=lambda item: item['category'] != 'repairs')
         facts = [(self.t('项目版本', 'Project version'), result['release']['version'])]
         if review:
@@ -261,17 +321,21 @@ class DesktopService:
         from .downloads import trusted_key
         return describe_source(self.source, trusted_key())
 
-    def _distribution_view(self, value):
+    def _distribution_view(self, value, *, installation=None, system=None):
         from .catalog import describe
-        from .update_state import component_states
-        try:
-            from .probe import live
-            system = live()
-        except Exception:
-            system = None
+        from .update_state import available_updates
+        self.installation_catalog = value
+        if system is None:
+            try:
+                from .probe import live
+                system = live()
+            except Exception:
+                system = None
         installed = cli.installed_release()
         slot = system.get('slot', {}).get('id') if system else None
-        states = component_states(value, installed, slot)
+        names = [item['id'] for item in value['components']]
+        states = installation if installation is not None else self._installation_evidence(system, names)
+        updates = available_updates(value, installed, slot)
         report = describe(value, system, states)
         items = []
         for item in report['components']:
@@ -279,15 +343,62 @@ class DesktopService:
             self.labels[name] = item.get('zh' if self.zh else 'en', name)
             enabled = item['status'] in ('requires_preflight', 'download_available')
             current = states.get(name)
-            previously_managed = name in installed.get('component_revisions_by_slot', {}).get(slot, {})
-            items.append(dict(id=name, title=self._label(name), detail=self._reason(item['reason']),
+            items.append(dict(id=name, title=self._label(name),
+                              detail=self._installation_detail(item['reason'], current, updates.get(name)),
                               enabled=enabled, category=item['kind'], installed=current,
-                              selected=enabled and current is not True and (item['kind'] == 'repairs' or previously_managed)))
+                              update_available=updates.get(name),
+                              selected=enabled and (updates.get(name) is True or
+                              current is False and item['kind'] == 'repairs')))
         return self._view(self.t('选择更新与修复', 'Choose updates and repairs'),
                           self.t('清单包含全部组件。只下载所选项目及其依赖；旧版本无需逐版升级。',
                                  'The complete catalog covers every component. Download selected items and dependencies directly from any older version.'),
                           facts=[(self.t('目标版本', 'Target version'), value['release']['version'])],
                           items=items, source=str(self.source or ''), source_ready=self.has_source)
+
+    def _installation_evidence(self, system, names):
+        if system is None:
+            return {name: None for name in names}
+        try:
+            return cli.read_installed_component_states('/', system, names)
+        except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+            return {name: None for name in names}
+
+    def _installation_detail(self, reason, installed, update=None):
+        if installed is True:
+            status = self.t('已安装；有可用更新。', 'Installed; update available.') if update is True else self.t('已安装。', 'Installed.')
+        elif installed is False:
+            status = self.t('未安装。', 'Not installed.')
+        else:
+            status = self.t('安装状态待检查。', 'Installation status needs checking.')
+            if update is True:
+                status += self.t(' 已记录的组件修订有更新。', ' An update is available for the recorded revision.')
+        detail = self._reason(reason)
+        return status + ('\n' + detail if detail else '')
+
+    def _legacy_catalog_view(self, value, system, *, installation=None):
+        from .catalog import describe
+        self.installation_catalog = value
+        names = [item['id'] for item in value.get('components', [])]
+        states = installation if installation is not None else self._installation_evidence(system, names)
+        catalog = describe(value, system, states)
+        items = []
+        for item in catalog['components']:
+            name = item['id']
+            self.labels[name] = item.get('zh' if self.zh else 'en', name)
+            enabled = item['status'] in ('requires_preflight', 'download_available')
+            category = item.get('category', item.get('kind', 'plugins'))
+            category = category if category in ('repairs', 'plugins') else 'plugins'
+            installed = item.get('installed')
+            installed = installed if type(installed) is bool else None
+            items.append(dict(id=name, title=self._label(name),
+                              detail=self._installation_detail(item['reason'], installed), enabled=enabled,
+                              category=category, installed=installed, update_available=None,
+                              selected=enabled and category == 'repairs' and installed is False))
+        items.sort(key=lambda item: item['category'] != 'repairs')
+        return self._view(self.t('最新修复与插件', 'Latest repairs and plugins'),
+                          self.t('安装状态为只读文件检查结果；无法读取的项目保留为未知，可使用“检查已安装”授权读取。',
+                                 'Installation status uses read-only file checks. Unreadable items remain unknown; use “Check installed” to authorize reading.'),
+                          items=items, source_ready=self.has_source)
 
     def _materialize(self, selected, catalog):
         from .distribution import materialize
@@ -307,6 +418,21 @@ class DesktopService:
             raise RuntimeError(self.error_text(error)) from error
 
     def _perform(self, action, **params):
+        if action == 'authorize':
+            try:
+                self.authorization.authorize()
+            except auth_session.SessionUnavailable:
+                installed = os.path.lexists(auth_session.ENTRY)
+                view = self._perform('overview')
+                view.update(message=self.t('首次安装沿用原有系统认证；完成后同一窗口可持续授权。' if not installed else '请先使用“仅更新工具”升级；新版将在同一窗口复用一次系统授权。',
+                                           'First installation uses the existing system authentication flow. Window authorization is available after installation.' if not installed else 'Use “Update tool only” first. The new engine reuses one authorization for this window.'),
+                            authorized=False, bootstrap_required=not installed, upgrade_required=installed)
+                return view
+            view = self._perform('overview')
+            view.update(message=self.t('本窗口内的维护操作无需重复输入密码；关闭窗口后授权结束。',
+                                       'Maintenance actions in this window reuse this authorization. Closing the window ends it.'),
+                        authorized=True)
+            return view
         if action == 'health':
             # A failed rerun must not silently export an older successful report.
             self.health_report = None
@@ -373,6 +499,8 @@ class DesktopService:
             return self._view(self.t('当前状态', 'Current status'), message, facts=facts,
                               items=[dict(id=n, title=self._label(n), detail=self.t('由维护工具管理', 'Managed by this tool'), enabled=True, selected=False) for n in names])
         if action == 'discover':
+            self.installation_catalog = None
+            self.installation_plan = None
             self.review = None
             from .releases import check_releases, fetch_catalog
             from .downloads import trusted_key
@@ -403,24 +531,21 @@ class DesktopService:
                 system = live()
             except Exception:
                 system = None
-            catalog = describe(value, system)
-            items = []
-            for item in catalog['components']:
-                name = item['id']
-                self.labels[name] = item.get('zh' if self.zh else 'en', name)
-                enabled = item['status'] in ('requires_preflight', 'download_available')
-                category = item.get('category', item.get('kind', 'plugins'))
-                category = category if category in ('repairs', 'plugins') else 'plugins'
-                installed = item.get('installed')
-                installed = installed if type(installed) is bool else None
-                items.append(dict(id=name, title=self._label(name), detail=self._reason(item['reason']), enabled=enabled,
-                                  category=category, installed=installed,
-                                  selected=enabled and category == 'repairs' and installed is not True))
-            items.sort(key=lambda item: item['category'] != 'repairs')
+            view = self._legacy_catalog_view(value, system)
             facts.append((self.t('完整维护包', 'Full maintenance bundle'), '%.1f MiB' % (candidate['size'] / 1024 ** 2)))
-            return self._view(self.t('最新修复与插件', 'Latest repairs and plugins'),
-                              self.t('功能目录签名已验证。可以只下载，或选择组件后检查安装条件。', 'Signed catalog verified. Download only, or choose components for installation checks.'),
-                              facts=facts, items=items, source_ready=self.has_source)
+            return dict(view, facts=facts)
+        if action == 'check-installed':
+            value = self.installation_catalog
+            if value is None:
+                if self.installation_plan and self.installation_plan[0] == self.source:
+                    plan = self.installation_plan[1]
+                    result = self._backend('installation-status', list(plan['components']))
+                    return self._plan_view(dict(plan, installed_states=result['installed_states']))
+                raise RuntimeError(self.t('请先检查更新或导入维护包。', 'Check updates or import a maintenance bundle first.'))
+            result = self._backend('installation-status', [item['id'] for item in value.get('components', [])])
+            if value.get('schema') == 2:
+                return self._distribution_view(value, installation=result['installed_states'], system=result['system'])
+            return self._legacy_catalog_view(value, result['system'], installation=result['installed_states'])
         if action == 'download':
             self.review = None
             if not self.candidate:
@@ -437,6 +562,8 @@ class DesktopService:
                               self.t('所下载内容已通过签名检查。未下载的可选组件会在选择后获取。', 'Downloaded content is verified. Optional components are fetched when selected.'),
                               facts=[(self.t('保存位置', 'Saved to'), str(self.source))], source=str(self.source), source_ready=True)
         if action == 'import':
+            self.installation_catalog = None
+            self.installation_plan = None
             path = params.get('path')
             if not isinstance(path, str) or not path:
                 raise ValueError('Choose a maintenance bundle')

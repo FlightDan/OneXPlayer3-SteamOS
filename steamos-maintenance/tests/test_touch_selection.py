@@ -11,13 +11,14 @@ class TouchSelectionTests(unittest.TestCase):
         ui = TouchWindow.__new__(TouchWindow)
         ui.views = {'repairs': {'items': [
             {'id': 'installed', 'installed': True},
+            {'id': 'update', 'installed': True, 'update_available': True},
             {'id': 'missing', 'installed': False},
             {'id': 'unknown', 'installed': None}]}}
-        ui.selected = {'installed', 'missing', 'unknown'}
+        ui.selected = {'installed', 'update', 'missing', 'unknown'}
         ui.selections = {}
         ui._render = Mock()
         ui._filter_installed(SimpleNamespace(get_active=lambda: False))
-        self.assertEqual(ui.selected, {'missing', 'unknown'})
+        self.assertEqual(ui.selected, {'update', 'missing', 'unknown'})
         self.assertEqual(ui.selections['repairs'], ui.selected)
         ui._render.assert_called_once()
 

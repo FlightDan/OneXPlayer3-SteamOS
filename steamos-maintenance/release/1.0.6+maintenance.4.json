@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.4",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "修复新装系统的已安装组件识别与筛选，区分安装状态和组件更新；启动自动检查，未知项不默认勾选；体检移入修复与插件，兼容大型安装日志；维护窗口使用一次系统管理员授权。"
+}

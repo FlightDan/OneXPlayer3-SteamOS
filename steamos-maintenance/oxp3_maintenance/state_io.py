@@ -90,11 +90,22 @@ class _Base64Digest:
 
 
 class _Reader:
-    def __init__(self, stream, slot, max_bytes):
+    def __init__(self, stream, slot, max_bytes, original_scopes=()):
         if type(max_bytes) is not int or max_bytes < 1:
             raise ValueError('Invalid JSON byte limit')
         if slot is not None and not isinstance(slot, str):
             raise ValueError('Invalid projection slot')
+        self.original_scopes = frozenset(original_scopes)
+        if (self.original_scopes and slot is None or len(self.original_scopes) > 20000
+                or any(not isinstance(scope, str) or len(scope) > MAX_KEY for scope in self.original_scopes)):
+            raise ValueError('Invalid original projection scopes')
+        for scope in self.original_scopes:
+            owner, separator, relative = scope.partition(':')
+            if (owner not in ('shared', slot) or not separator or not relative
+                    or '\\' in relative or ':' in relative or '\x00' in relative
+                    or any(part in ('', '.', '..') for part in relative.split('/'))
+                    or (owner == 'shared') != relative.startswith(('home/', 'opt/'))):
+                raise ValueError('Invalid original projection scope')
         self.stream, self.slot, self.maximum = stream, slot, max_bytes
         self.buffer, self.position = '', 0
         self.eof = False
@@ -159,7 +170,11 @@ class _Reader:
         if self.slot is None:
             return True
         if not path:
-            return key in ('format', 'slots')
+            return key in ('format', 'slots') or key == 'originals' and bool(self.original_scopes)
+        if path == ('originals',):
+            return key in self.original_scopes
+        if len(path) == 2 and path[0] == 'originals':
+            return key in ('exists', 'mode', 'uid', 'gid', 'data')
         if path == ('slots',):
             return key == self.slot
         if path == ('slots', self.slot):
@@ -170,14 +185,16 @@ class _Reader:
         if path == current + ('paths',):
             return True
         if len(path) == 5 and path[:4] == current + ('paths',):
-            return key in ('component', 'mutable', 'snapshot')
+            return key in ('component', 'mutable', 'snapshot') or key == 'user' and bool(self.original_scopes)
         if len(path) == 6 and path[:4] == current + ('paths',) and path[-1] == 'snapshot':
             return key in ('exists', 'mode', 'uid', 'gid', 'data')
         # Keep unexpected nested structures so callers can reject their shape.
         return True
 
     def payload(self, path):
-        return (self.slot is not None and len(path) == 7
+        return (self.slot is not None and len(path) == 3 and path[0] == 'originals'
+                and path[1] in self.original_scopes and path[-1] == 'data'
+                or self.slot is not None and len(path) == 7
                 and path[:4] == ('slots', self.slot, 'current', 'paths')
                 and path[-2:] == ('snapshot', 'data'))
 
@@ -199,8 +216,8 @@ class _Reader:
             # reads and skipped projection fields use the document byte limit.
             if key and length > MAX_KEY:
                 self.error('JSON string limit exceeded')
-            if (key or not path or path[-1] != 'data'
-                    or self.slot is not None and keep and sink is None):
+            if sink is None and (key or not path or path[-1] != 'data'
+                    or self.slot is not None and keep):
                 self.budget(len(text) * 2)
             if sink is not None:
                 sink.feed(text)
@@ -357,14 +374,41 @@ class _Reader:
         self.error()
 
 
-def load(stream, *, slot=None, max_bytes=MAX_BYTES):
-    """Read bounded chunks, retaining full state or the selected health view."""
-    reader = _Reader(stream, slot, max_bytes)
+class _JournalReader(_Reader):
+    """Validate legacy JSON while fingerprinting only its file snapshots."""
+    def retained(self, path, key):
+        if not path:
+            return key in ('phase', 'allowed', 'original', 'applied')
+        if len(path) == 2 and path[0] == 'original':
+            return key in ('exists', 'mode', 'uid', 'gid', 'data')
+        return True
+
+    def payload(self, path):
+        return (len(path) == 2 and path[0] == 'applied'
+                or len(path) == 3 and path[0] == 'original' and path[-1] == 'data')
+
+
+def _load(reader):
     result = reader.value()
     reader.whitespace()
     if reader.peek():
         reader.error('Trailing JSON data')
     return result
+
+
+def load(stream, *, slot=None, max_bytes=MAX_BYTES, original_scopes=()):
+    """Read full state or a slot view, optionally adding selected original digests.
+
+    Installation checks may request ``shared:home/...`` / ``shared:opt/...``
+    or ``<active-slot>:<other-path>`` originals. That opt-in also retains user
+    ownership flags; the default health projection stays unchanged.
+    """
+    return _load(_Reader(stream, slot, max_bytes, original_scopes))
+
+
+def load_journal(stream, *, max_bytes=MAX_BYTES):
+    """Read legacy evidence with digests; never use this view for adoption."""
+    return _load(_JournalReader(stream, '', max_bytes))
 
 
 def dump(value, stream):

@@ -176,6 +176,56 @@ class InventoryTests(unittest.TestCase):
         self.request('A')
         self.assertEqual(self.inspect()['selected'], [])
 
+    def test_large_current_journals_use_bounded_digest_projection(self):
+        relative = 'etc/inputplumber/example.yaml'
+        payload = base64.b64encode(b'x' * (7 * 1024 * 1024)).decode()
+        path, _ = self.journal(applied={relative: payload})
+        self.assertGreater(path.stat().st_size, inventory.MAX_JSON)
+        with patch.object(inventory, 'MAX_TOTAL', 1024):
+            result = self.inspect()
+        self.assertTrue(result['complete'], result['conflicts'])
+        self.assertEqual(result['components']['input']['state'], 'legacy_with_backups')
+        self.assertNotIn(payload, json.dumps(result))
+
+    def test_inactive_journal_payload_is_not_opened(self):
+        self.request('B', ('gyro',))
+        self.journal('gyro', 'B')
+        original = inventory._Reader.journal
+        def journal(reader, relative):
+            if '/B/' in relative:
+                raise AssertionError('inactive slot payload read')
+            return original(reader, relative)
+        with patch.object(inventory._Reader, 'journal', journal):
+            result = self.inspect()
+        self.assertTrue(result['complete'], result['conflicts'])
+        self.assertEqual(result['slots']['B']['selected'], ['gyro'])
+
+    def test_activation_files_are_not_mistaken_for_component_journals(self):
+        for group in ('A', 'B'):
+            self.write('home/.oxp3-installer/integration/' + group + '/activation.json', {'phase': 'complete'})
+            self.write('home/.oxp3-installer/integration/' + group + '/.activation.lock', b'')
+        self.assertTrue(self.inspect()['complete'])
+        self.write('home/.oxp3-installer/integration/A/.unexpected/state.json', {})
+        self.assertIn('unsafe_journal_name', [item['reason'] for item in self.inspect()['conflicts']])
+
+    def test_journal_budget_and_untrusted_files_fail_closed(self):
+        path, _ = self.journal()
+        with patch.object(inventory, 'MAX_JOURNAL', path.stat().st_size - 1):
+            result = self.inspect()
+        self.assertIn('metadata_limit', [item['reason'] for item in result['conflicts']])
+        self.assertEqual(result['components']['input']['state'], 'absent')
+        self.untrusted.add(path.stat().st_ino)
+        self.assertIn('untrusted_metadata', [item['reason'] for item in self.inspect()['conflicts']])
+
+    def test_current_journal_invalid_base64_and_forged_digest_are_rejected(self):
+        relative = 'etc/inputplumber/example.yaml'
+        for applied in ('not base64!', {'sha256': 'a' * 64, 'size': 1}):
+            with self.subTest(applied=applied):
+                self.journal(applied={relative: applied})
+                result = self.inspect()
+                self.assertFalse(result['complete'])
+                self.assertNotEqual(result['components']['input']['state'], 'legacy_with_backups')
+
     def test_shared_journal_and_unknown_journal_are_identified(self):
         self.journal('keyboard', 'shared')
         self.journal('future-component')
