@@ -346,6 +346,40 @@ def _windows(payload, root):
     return output
 
 
+def _slot_switch(payload, root, metadata, owned):
+    """Update the recovery launcher as data; never invoke its boot helper."""
+    if metadata.get('files') or metadata.get('runtime_archive') or metadata.get('units'):
+        raise ValueError('Slot switch requires its fixed file-only maintenance adapter')
+    for tool in ('python3', 'pkexec', 'kdialog', 'steamos-bootconf', 'systemctl', 'busctl'):
+        _trusted_executable(root, 'usr/bin/' + tool)
+    source = payload / 'components/slot-switch'
+    files = {'home/.oxp3-slot-switch/' + name:
+             _entry(_read(source, name), 0o755 if name == 'oxp3-switch-slot' else 0o644)
+             for name in ('boot.py', 'desktop.py', 'oxp3-switch-slot')}
+    files['etc/polkit-1/rules.d/49-oxp3-slot-switch.rules'] = _entry(_read(source, '49-oxp3-slot-switch.rules'))
+    for target in ('home/deck/Desktop/oxp3-slot-switch.desktop',
+                   'home/deck/.local/share/applications/oxp3-slot-switch.desktop'):
+        files[target] = _entry(_read(source, 'oxp3-slot-switch.desktop'), 0o755, user=True)
+    for relative, entry in files.items():
+        target = _safe(root, relative)
+        if os.path.lexists(target) and relative not in owned:
+            raise ValueError('Unmanaged slot switch conflict; adopt the existing installation explicitly: ' + relative)
+        if entry['user']:
+            continue
+        # Shared executable code and authorization rules must never inherit a
+        # desktop user's writable ancestor. Store repeats path checks at write.
+        for path in (target, *target.parents):
+            if not path.is_relative_to(root):
+                break
+            if not os.path.lexists(path):
+                continue
+            info = path.lstat()
+            if (not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
+                    or os.name == 'posix' and (info.st_uid != 0 or info.st_mode & 0o022)):
+                raise ValueError('Untrusted slot switch code or authorization path: ' + relative)
+    return files
+
+
 def _flathub(payload, root):
     _trusted_executable(root, 'usr/bin/flatpak')
     parser = configparser.ConfigParser(interpolation=None)
@@ -402,6 +436,8 @@ WantedBy=multi-user.target
 
 
 def _materialize(name, payload, root, metadata, planned, probe, owned):
+    if name == 'slot-switch':
+        return _slot_switch(payload, root, metadata, owned)
     if name == 'serial-console-policy':
         from .serial_console import DROPIN, files
         return files(_existing(root, DROPIN))
@@ -608,9 +644,6 @@ def build_plan(payload: Path, root: Path, selected: list[str], probe: dict, mana
                 raise ValueError('Third-party plugins are installed by the user; maintenance leaves them unchanged')
             policy = compatibility.evaluate(name, probe, metadata)
             report['compatibility'] = policy
-            if name == 'slot-switch':
-                report['separate_operation'] = True
-                raise ValueError('Slot switch is a separate recovery operation; it is unavailable in maintenance')
             if not items[name].get('available', True) or name == 'refind':
                 report['separate_operation'] = name == 'refind'
                 raise ValueError('rEFInd is a separate boot-manager operation; it is unavailable in maintenance')

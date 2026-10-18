@@ -1,13 +1,39 @@
 """KDE recovery launcher; status first, explicit save-and-reboot confirmation."""
+import configparser
 import html
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 
 HELPER = '/home/.oxp3-slot-switch/oxp3-switch-slot'
 DIALOG = '/usr/bin/kdialog'
-ZH = (os.environ.get('LC_ALL') or os.environ.get('LC_MESSAGES') or os.environ.get('LANG', '')).startswith('zh')
+
+
+def display_language(env=None, config_home=None):
+    """Use Plasma's translation language, independently of regional formats."""
+    env = os.environ if env is None else env
+    config_home = Path(config_home or env.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    values = []
+    for filename, section, key in (('plasma-localerc', 'Translations', 'LANGUAGE'),
+                                   ('kdeglobals', 'Locale', 'Language')):
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
+        try:
+            parser.read(config_home / filename, encoding='utf-8')
+            values.append(parser.get(section, key, fallback=''))
+        except (OSError, configparser.Error, UnicodeError):
+            pass
+    values.extend(env.get(key, '') for key in ('LANGUAGE', 'LC_MESSAGES', 'LANG'))
+    for value in values:
+        for language in value.split(':'):
+            language = language.strip()
+            if re.fullmatch(r'[A-Za-z][A-Za-z0-9_.@-]*', language):
+                return language.lower().replace('-', '_').split('_')[0].split('.')[0]
+    return 'en'
+
+
+ZH = display_language() == 'zh'
 
 
 def text(zh, en):
@@ -19,6 +45,8 @@ def valid_data(args, data):
     if not isinstance(data, dict): return False
     if args[0] == 'reboot':
         return data.get('reboot_requested') is True and data.get('target') == args[1]
+    if args[0] == 'updater-status':
+        return type(data.get('atomupd_active')) is bool
     if args[0] != 'status': return False
     if any(data.get(key) not in ('A', 'B') for key in ('current', 'selected', 'target')):
         return False
@@ -70,7 +98,7 @@ def helper(*args):
     return reply['data']
 
 
-def message(state, stop_updaters=False):
+def message(state):
     lines = [text('当前运行：{current} 槽；原定下次启动：{selected} 槽。',
                   'Running slot: {current}; scheduled boot slot: {selected}.').format(**state)]
     system = dict(line.split('=', 1) for line in state.get('current_system', '').splitlines() if '=' in line)
@@ -93,11 +121,6 @@ def message(state, stop_updaters=False):
                    'This switches the OS; shared games, saves and personal files are not restored.'),
               text('切换成功后将继续使用该槽，直到再次切换或系统更新。',
                    'After a successful boot, this slot remains selected until another switch or OS update.')]
-    if stop_updaters:
-        lines += ['', text('已选择：临时停止更新服务（后台检查）。仅在 RAUC 未运行时执行；失败时恢复，重启后临时屏蔽自动清除。',
-                            'Selected: temporarily stop the update service (background checks), only when RAUC is inactive. Restore it on failure; temporary masks clear on reboot.'),
-                  text('RAUC 运行或安装中时仍会拒绝切换，即使它报告空闲。',
-                       'Switching is still refused while RAUC is running or installing, even if it reports idle.')]
     # KDE rich-text detection must not render content from metadata as markup.
     return '<qt>' + '<br/>'.join(html.escape(line) for line in lines) + '</qt>'
 
@@ -105,23 +128,25 @@ def message(state, stop_updaters=False):
 def main():
     try:
         state = helper('status')
-        choice = subprocess.run([DIALOG, '--title', text('更新服务处理方式', 'Updater Handling'),
-                                 '--checklist', text('默认不停止任何服务。可选择临时停止更新服务的后台检查；RAUC 正在运行或状态未知时仍会拒绝切换。失败时恢复更新服务，重启后清除临时屏蔽。',
-                                                    'By default, no services are stopped. You may allow temporarily stopping background update checks. Running RAUC or unknown update state still blocks switching. The updater is restored on failure and temporary masks clear on reboot.'),
-                                 'stop-updaters', text('临时停止更新服务（后台检查）', 'Temporarily stop update service (background checks)'), 'off'],
-                                text=True, stdout=subprocess.PIPE, timeout=3600)
-        if choice.returncode in (1, 2): return 0
-        if choice.returncode != 0: raise RuntimeError(text('选项窗口无法打开。', 'Could not open the options dialog.'))
-        selected = choice.stdout.strip()
-        if selected not in ('', 'stop-updaters', '"stop-updaters"'):
-            raise RuntimeError(text('无法识别更新服务选项。', 'Unrecognized updater option.'))
-        stop_updaters = bool(selected)
         result = subprocess.run([DIALOG, '--title', text('SteamOS 槽位切换 / 系统回退', 'SteamOS Slot Switch / OS Recovery'),
                                  '--continue-label', text('切换并重启', 'Switch and Restart'),
                                  '--cancel-label', text('取消', 'Cancel'),
-                                 '--warningcontinuecancel', message(state, stop_updaters)], timeout=3600)
+                                 '--warningcontinuecancel', message(state)], timeout=3600)
         if result.returncode in (1, 2): return 0
         if result.returncode != 0: raise RuntimeError(text('确认窗口无法打开。', 'Could not open the confirmation dialog.'))
+        # Read only after the user confirms the slot. The privileged reboot
+        # operation checks again and refuses races; never retry a reboot here.
+        stop_updaters = helper('updater-status')['atomupd_active']
+        if stop_updaters:
+            result = subprocess.run([DIALOG, '--title', text('停止后台更新检查并重启？', 'Stop Background Update Checks and Restart?'),
+                                     '--continue-label', text('停止检查并重启', 'Stop Checks and Restart'),
+                                     '--cancel-label', text('取消', 'Cancel'),
+                                     '--warningcontinuecancel', text(
+                                         '当前更新服务正在运行，是否停止后台检查并重启？\n\n仅临时停止后台检查；正在进行的系统升级不会被中断。重启失败时会恢复更新服务。',
+                                         'The update service is running. Stop background checks and restart?\n\nOnly background checks will be stopped temporarily. An active OS update will not be interrupted. If restarting fails, the update service will be restored.')], timeout=3600)
+            if result.returncode in (1, 2): return 0
+            if result.returncode != 0:
+                raise RuntimeError(text('更新服务确认窗口无法打开。', 'Could not open the updater confirmation dialog.'))
         args = ('reboot', state['target'], state['token'])
         if stop_updaters: args += ('--stop-updaters',)
         helper(*args)

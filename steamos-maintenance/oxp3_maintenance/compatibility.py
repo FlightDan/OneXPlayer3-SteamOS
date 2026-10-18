@@ -49,6 +49,9 @@ def evaluate(name, system, metadata=None):
         requirements['packages']['gamescope'] = '3.16.30-1'
     if name == 'gyro':
         requirements.update(bios='5.09', package_patterns={'inputplumber': r'0\.78\.0(?:-[^\s]+)?'})
+    if name == 'slot-switch':
+        requirements['resources'] = ['usr/bin/' + tool for tool in (
+            'python3', 'pkexec', 'kdialog', 'steamos-bootconf', 'systemctl', 'busctl')]
     supported = device_supported(system) if portable else baseline_supported(system)
     reason = ('Supported OXP3 SteamOS adapter; required resources are checked during planning'
               if portable else 'Supported exact OXP3 SteamOS baseline') if supported else (

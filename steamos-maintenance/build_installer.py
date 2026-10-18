@@ -12,7 +12,7 @@ import zipfile
 from build_bundle import _run
 from oxp3_maintenance.bundle import BundleError
 
-BOOTSTRAP_FILES = ('__init__.py', 'bundle.py', 'releases.py', 'catalog.py', 'distribution.py', 'downloads.py', 'bootstrap.py')
+BOOTSTRAP_FILES = ('__init__.py', 'bundle.py', 'network.py', 'releases.py', 'catalog.py', 'distribution.py', 'downloads.py', 'bootstrap.py')
 INSTALLER_NAME = 'install-oxp3-maintenance.sh'
 
 

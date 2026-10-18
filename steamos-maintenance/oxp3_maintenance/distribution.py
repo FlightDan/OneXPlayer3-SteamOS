@@ -223,8 +223,6 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
 def _download(ref, target, opener=None, progress=None):
     if not asset_url(ref['url']):
         raise BundleError('Component asset URL is not allowed.')
-    if opener is None:
-        opener = urllib.request.build_opener(_Redirect()).open
     try:
         with _request(ref['url'], opener=opener, download=True, progress=progress) as response:
             final = response.geturl() if hasattr(response, 'geturl') else ref['url']

@@ -85,6 +85,23 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(builder._group('payload/integration/wifi/000.bin', {'wifi'}), ('runtime-wifi', 'wifi'))
         self.assertEqual(builder._group('payload/integration/oxp3-fan/000.bin', {'oxp3-fan'}), ('plugin-oxp3-fan', 'oxp3-fan'))
 
+    def test_slot_switch_has_explicit_package_and_never_enters_engine_only_seed(self):
+        option = {'id': 'slot-switch', 'en': 'Slot Switch', 'zh': '槽位切换',
+                  'default': False, 'dependencies': []}
+        directory = self.payload / 'components/slot-switch'
+        directory.mkdir(parents=True)
+        for name in ('boot.py', 'desktop.py', 'oxp3-switch-slot', '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop'):
+            (directory / name).write_bytes(b'fixture ' + name.encode())
+        (self.payload / 'components/slot_switch.py').write_bytes(b'installer data only')
+        result = self._build('slot-switch-distribution', extra_plugins=[option])
+        self.assertEqual(result['catalog']['component_packages']['slot-switch'], ['core', 'repair-slot-switch'])
+        item = next(x for x in result['catalog']['components'] if x['id'] == 'slot-switch')
+        self.assertEqual(item['delivery'], 'maintenance')
+        self.assertTrue(item['available'])
+        seed = bundle.inspect_bundle(self._seed(result), self.public, openssl=self.openssl)
+        self.assertFalse(any(name.startswith('payload/components/slot-switch/')
+                             or name == 'payload/components/slot_switch.py' for name in seed['files']))
+
     def test_animation_repair_is_optional_core_only_and_tracks_its_adapter_revision(self):
         option = {'id': 'animation-changer-compat', 'en': 'Animation Changer path repair',
                   'zh': 'Animation Changer 路径修复', 'default': False, 'dependencies': []}

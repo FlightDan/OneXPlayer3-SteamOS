@@ -8,7 +8,7 @@ from .bundle import BundleError, _unique_object, _verify_signature
 from .releases import _Version
 
 MAX_CATALOG_BYTES = 1024 * 1024
-MANUAL = {'refind', 'slot-switch', 'shared-storage'}
+MANUAL = {'refind', 'shared-storage'}
 
 
 def canonical(value):

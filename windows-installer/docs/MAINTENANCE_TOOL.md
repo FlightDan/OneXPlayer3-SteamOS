@@ -9,7 +9,7 @@
 
 ## 内置范围
 
-只准备 `entry.py`、`OXP3-Maintenance.desktop`、`oxp3_maintenance/*.py` 和发行者提供的 `trusted-public-key.pem`。不复制测试、缓存、驱动、插件、XMX 运行库、完整维护包或 shell 下载入口。当前无公钥的开发暂存为 25 个文件、413354 字节；后续源码变化以准备报告为准。
+只准备 `entry.py`、`OXP3-Maintenance.desktop`、`oxp3_maintenance/*.py` 和发行者提供的 `trusted-public-key.pem`。不复制测试、缓存、驱动、插件、XMX 运行库、完整维护包或 shell 下载入口。暂存文件数、大小与哈希以本次源码生成的准备报告为准。
 
 复用维护工具自身的 `runtime_files()` 生成固定入口、按内容哈希区分的程序目录、实际发行元数据和空激活记录。离线读取只针对目标镜像，绝不读取构建主机已安装的维护工具。桌面名称跟随安装器语言；程序目录内的原始文件不参与本地化，以保持生成哈希一致。文件沿用安装器的每槽和共享 home 事务备份及恢复流程。
 
@@ -34,9 +34,11 @@ python windows-installer/scripts/prepare-maintenance.py --check --require-key
 & windows-installer/scripts/check-maintenance.ps1 -RequireKey
 ```
 
-`make-development-package.ps1 -PublicRelease` 强制执行该检查。当前仓库未配置生产公钥；开发构建可打开程序窗口，但下载、离线导入和授权安装会因缺少可信公钥停止。不要发布无公钥镜像，也不要用 QA 公钥替代生产信任配置；已有无公钥开发安装无法通过 Bash 安装入口补设信任锚。
+`make-development-package.ps1 -PublicRelease` 强制执行该检查。正式版本携带既有发行公钥；若开发构建缺少可信公钥，下载、离线导入和授权安装将停止。不要发布无公钥镜像，也不要用 QA 公钥替代生产信任配置；已有无公钥开发安装无法通过 Bash 安装入口补设信任锚。
 
 ## 验证范围
+
+`1.0.6+maintenance.1` 的随附维护运行时新增“一键体检”与诊断 ZIP 导出，可检查当前输入设备、输入服务及安装文件差异。体检本身不修改配置；导出由桌面用户明确点击后保存。GitHub 下载线路默认自动回退，也可在设置中选直连或预置反代。两项功能由相同的维护程序源码和暂存清单交付，无需新增安装选项；完整说明见 [维护修订记录](../../steamos-maintenance/docs/RELEASE-1.0.6-maintenance.1.md)和[下载线路](GITHUB_DOWNLOAD_ROUTES.md)。
 
 `--cli maintenance-tool-checks` 在隔离 QEMU Linux 中测试双槽/重复准备、CLI 加载、快捷方式权限、回退、修改清单拒绝、缺少程序时写入前拒绝。相关共享存储、更新保护和运行文件访问回归由现有测试套件覆盖。`integration-verify.py` 另行核对实际镜像两槽中的文件、桌面用户读取权限、入口和系统 PyGObject/GTK 3 导入。
 

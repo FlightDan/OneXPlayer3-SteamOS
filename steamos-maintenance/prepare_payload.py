@@ -28,10 +28,9 @@ from oxp3_maintenance.payload_policy import (
 
 EXCLUDED = {
     'refind': 'Separate EFI boot-manager operation; maintenance does not deploy it.',
-    'slot-switch': 'Shared recovery entry requires its own reviewed maintenance adapter.',
     'shared-storage': 'Separate shared-storage and mount-layout operation.',
 }
-SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-lock',
+SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-lock', 'slot-switch',
            'windows-reboot', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat', 'animation-changer-compat'}
 MANIFEST_ADAPTERS = {'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'fan-driver',
                      'native-tdp', 'overlay', 'wifi', 'xe-dsb', 'gm7-resume',
@@ -90,6 +89,25 @@ def _allowed(relative):
 
 def _current_source(component, target):
     """Only public component source mappings; never infer research locations."""
+    if component == 'oxp3-cpu':
+        cpu_files = {
+            'var/lib/oxp3-cpu/cpu_control.py': 'cpu_control.py',
+            'var/lib/oxp3-cpu/power_control.py': 'power_control.py',
+            'var/lib/oxp3-cpu/test_cpu_control.py': 'test_cpu_control.py',
+            'var/lib/oxp3-cpu/test_power_control.py': 'test_power_control.py',
+            'var/lib/oxp3-cpu/gpu_priority.py': 'gpu_priority.py',
+            'var/lib/oxp3-cpu/gpu-priority-profile.json': 'gpu-priority-profile.json',
+            'var/lib/oxp3-cpu/test_gpu_priority.py': 'test_gpu_priority.py',
+            'var/lib/oxp3-cpu/test_cpu_gpu_ui.mjs': 'test_cpu_gpu_ui.mjs',
+            'etc/systemd/system/oxp3-gpu-priority.service': 'gpu_priority.service',
+        }
+        if target in cpu_files:
+            return 'components/controls/cpu/' + cpu_files[target]
+        for prefix in ('home/deck/homebrew/plugins/OXP3-CPU/',
+                       'var/lib/oxp3-installer/decky/runtime/plugins/OXP3-CPU/'):
+            if target.startswith(prefix) and target[len(prefix):] in ('main.py', 'dist/index.js'):
+                source = 'cpu-plugin-main.py' if target.endswith('/main.py') else 'cpu-plugin-index.js'
+                return 'components/controls/cpu/' + source
     if component == 'overlay' and target in (
             'var/lib/oxp3-overlay-telemetry/telemetry.py',
             'var/lib/oxp3-overlay-telemetry/allow-read.py'):
@@ -325,6 +343,9 @@ def prepare_payload(workspace, output, maintenance_options=None):
         report['source_inventory']['licenses/PROJECT-LICENSE'] = {'source': 'LICENSE',
             'source_sha256': hashlib.sha256(raw).hexdigest(), 'sha256': hashlib.sha256(raw).hexdigest(), 'size': len(raw)}
         requirements = {
+            'slot-switch': ['components/slot-switch/' + name for name in (
+                'boot.py', 'desktop.py', 'oxp3-switch-slot',
+                '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop')],
             'serial-console-policy': ['components/serial_console.py'],
             'split-lock': ['components/split-lock/UPSTREAM_LICENSE'],
             'oxp3-light': ['components/light/' + name for name in (

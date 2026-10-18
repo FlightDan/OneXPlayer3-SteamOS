@@ -202,6 +202,21 @@ class Controller:
         if not match: raise RuntimeError('Unrecognized boot configuration value: ' + key)
         return int(match[1])
 
+    def updater_status(self):
+        """Read-only consent preview; update_guard remains the final authority."""
+        preflight()
+        for service in ('rauc.service', 'atomupd.service'):
+            if self.run([SYSTEMCTL, 'show', service, '-p', 'Job', '--all']) != 'Job=':
+                raise RuntimeError('Updater has a queued job or unknown job state; wait and try again. / 更新服务有排队任务或任务状态未知，请稍后重试。')
+        rauc = self.run([SYSTEMCTL, 'show', 'rauc.service', '-p', 'ActiveState', '--value'])
+        if rauc not in ('inactive', 'failed'):
+            raise RuntimeError('RAUC is running or its state is unknown. Wait for the system update service to exit or use the boot recovery menu. / RAUC 正在运行或状态未知。请等待系统更新服务退出，或使用开机恢复菜单。')
+        self.idle()
+        atomupd = self.run([SYSTEMCTL, 'show', 'atomupd.service', '-p', 'ActiveState', '--value'])
+        if atomupd not in ('active', 'inactive', 'failed'):
+            raise RuntimeError('Updater is changing state or its state is unknown; wait and try again. / 更新服务状态正在变化或未知，请稍后重试。')
+        return {'atomupd_active': atomupd == 'active'}
+
     def status(self):
         preflight()
         self.idle()
@@ -316,14 +331,14 @@ def console_switch(controller, stop_updaters=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=('status', 'reboot', 'switch'))
+    parser.add_argument('action', choices=('status', 'updater-status', 'reboot', 'switch'))
     parser.add_argument('target', nargs='?')
     parser.add_argument('token', nargs='?')
     parser.add_argument('--stop-updaters', action='store_true',
                         help='Temporarily stop atomupd only when RAUC is inactive; restore it if reboot fails')
     args = parser.parse_args()
     try:
-        if args.action == 'status' and (args.target is not None or args.token is not None or args.stop_updaters):
+        if args.action in ('status', 'updater-status') and (args.target is not None or args.token is not None or args.stop_updaters):
             raise ValueError('Status takes no arguments')
         if args.action == 'reboot' and (args.target is None or args.token is None):
             raise ValueError('Target and state token required')
@@ -332,6 +347,8 @@ def main():
         controller = Controller()
         if args.action == 'status':
             data = controller.status()
+        elif args.action == 'updater-status':
+            data = controller.updater_status()
         elif args.action == 'switch':
             data = console_switch(controller, stop_updaters=args.stop_updaters)
         else:

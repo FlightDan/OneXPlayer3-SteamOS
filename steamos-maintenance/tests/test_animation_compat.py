@@ -98,7 +98,7 @@ class AnimationCompatibilityTests(unittest.TestCase):
         self.assertNotIn(ORIGINAL, files[expected_path]['data'])
         self.assertEqual(hashlib.sha256(path.read_bytes()).digest(), before)
 
-    def test_slot_switch_manifest_cannot_turn_separate_operation_into_generic_copy(self):
+    def test_slot_switch_manifest_cannot_turn_fixed_adapter_into_generic_copy(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             source, root = base / 'payload', base / 'root'
@@ -115,8 +115,7 @@ class AnimationCompatibilityTests(unittest.TestCase):
             result = build_plan(source, root, ['slot-switch'], probe)
             component = result['components']['slot-switch']
             self.assertEqual(component['status'], 'blocked')
-            self.assertTrue(component['separate_operation'])
-            self.assertIn('separate recovery operation', component['reason'])
+            self.assertIn('fixed file-only maintenance adapter', component['reason'])
             self.assertEqual(result['files'], {})
             self.assertEqual(list(root.iterdir()), [])
 

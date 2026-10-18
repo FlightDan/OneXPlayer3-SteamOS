@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from prepare_payload import PreparationError, prepare_payload, _maintenance_options
+from prepare_payload import PreparationError, prepare_payload, _current_source, _maintenance_options
 
 
 class PreparePayloadTests(unittest.TestCase):
@@ -37,6 +37,8 @@ class PreparePayloadTests(unittest.TestCase):
             'target': 'home/deck/homebrew/plugins/opti2xmx/main.py'}]}})
         self.put('cache/integration/opti2xmx/000.bin', b'old source')
         self.put('components/opti2xmx/main.py', b'current source')
+        for name in ('boot.py', 'desktop.py', 'oxp3-switch-slot', '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop'):
+            self.put('components/slot-switch/' + name, b'# slot switch fixture\n')
         self.put('cache/plugins/plugins.json', [])
         self.put('cache/plugins/third-party.json', [])
 
@@ -58,7 +60,7 @@ class PreparePayloadTests(unittest.TestCase):
         record = report['source_inventory']['integration/opti2xmx/000.bin']
         self.assertEqual(record['sha256'], hashlib.sha256(b'current source').hexdigest())
         self.assertEqual(set(report['coverage']), {'opti2xmx', 'refind', 'slot-switch'})
-        self.assertEqual(report['coverage']['slot-switch']['status'], 'excluded')
+        self.assertEqual(report['coverage']['slot-switch']['status'], 'adapter_supported')
         self.assertIn('shared-storage', report['separate_operations'])
         self.assertTrue(report['resource_complete'])
 
@@ -78,6 +80,64 @@ class PreparePayloadTests(unittest.TestCase):
             source='overlay/%03d.bin' % index
             self.assertEqual((self.output/'integration'/source).read_bytes(),b'current '+name.encode())
             self.assertEqual((self.installer/'cache/integration'/source).read_bytes(),b'old '+name.encode())
+
+    def test_slot_switch_requires_every_current_source_resource(self):
+        self.options(['slot-switch'])
+        self.put('cache/integration/manifest.json', {})
+        (self.installer / 'components/slot-switch/desktop.py').unlink()
+        report = prepare_payload(self.workspace, self.output)
+        self.assertFalse(report['resource_complete'])
+        self.assertEqual(report['coverage']['slot-switch']['status'], 'missing')
+        self.assertIn('components/slot-switch/desktop.py', report['coverage']['slot-switch']['missing'])
+
+    def test_oxp3_cpu_targets_map_to_explicit_sources_without_running_generator(self):
+        expected = {
+            'var/lib/oxp3-cpu/cpu_control.py': 'components/controls/cpu/cpu_control.py',
+            'var/lib/oxp3-cpu/power_control.py': 'components/controls/cpu/power_control.py',
+            'var/lib/oxp3-cpu/test_cpu_control.py': 'components/controls/cpu/test_cpu_control.py',
+            'var/lib/oxp3-cpu/test_power_control.py': 'components/controls/cpu/test_power_control.py',
+            'var/lib/oxp3-cpu/gpu_priority.py': 'components/controls/cpu/gpu_priority.py',
+            'var/lib/oxp3-cpu/gpu-priority-profile.json': 'components/controls/cpu/gpu-priority-profile.json',
+            'var/lib/oxp3-cpu/test_gpu_priority.py': 'components/controls/cpu/test_gpu_priority.py',
+            'var/lib/oxp3-cpu/test_cpu_gpu_ui.mjs': 'components/controls/cpu/test_cpu_gpu_ui.mjs',
+            'etc/systemd/system/oxp3-gpu-priority.service': 'components/controls/cpu/gpu_priority.service',
+            'home/deck/homebrew/plugins/OXP3-CPU/main.py': 'components/controls/cpu/cpu-plugin-main.py',
+            'home/deck/homebrew/plugins/OXP3-CPU/dist/index.js': 'components/controls/cpu/cpu-plugin-index.js',
+            'var/lib/oxp3-installer/decky/runtime/plugins/OXP3-CPU/main.py': 'components/controls/cpu/cpu-plugin-main.py',
+            'var/lib/oxp3-installer/decky/runtime/plugins/OXP3-CPU/dist/index.js': 'components/controls/cpu/cpu-plugin-index.js',
+        }
+        for target, source in expected.items():
+            with self.subTest(target=target):
+                self.assertEqual(_current_source('oxp3-cpu', target), source)
+        # The existing CPU service stays generated inline by deploy-cpu.py.
+        self.assertIsNone(_current_source('oxp3-cpu', 'etc/systemd/system/oxp3-cpu.service'))
+
+    def test_oxp3_gpu_priority_sources_refresh_stale_payload_without_generator(self):
+        self.options(['oxp3-cpu'])
+        entries = []
+        targets = (
+            ('var/lib/oxp3-cpu/gpu_priority.py', 'components/controls/cpu/gpu_priority.py', b'current controller'),
+            ('var/lib/oxp3-cpu/gpu-priority-profile.json', 'components/controls/cpu/gpu-priority-profile.json', b'{"schema":1}'),
+            ('var/lib/oxp3-cpu/test_gpu_priority.py', 'components/controls/cpu/test_gpu_priority.py', b'current test'),
+            ('etc/systemd/system/oxp3-gpu-priority.service', 'components/controls/cpu/gpu_priority.service', b'[Unit]\nPartOf=oxp3-cpu.service\n'),
+        )
+        for index, (target, current, data) in enumerate(targets):
+            source = 'oxp3-cpu/%03d.bin' % index
+            entries.append({'source': source, 'target': target})
+            self.put('cache/integration/' + source, b'stale ' + data)
+            self.put(current, data)
+        self.put('cache/integration/manifest.json', {'oxp3-cpu': {'files': entries}})
+        report = prepare_payload(self.workspace, self.output)
+        self.assertTrue(report['resource_complete'])
+        self.assertEqual(len(report['refreshed_integration']), len(targets))
+        for index, (target, current, data) in enumerate(targets):
+            source = 'oxp3-cpu/%03d.bin' % index
+            refreshed = self.output / 'integration' / source
+            if target.endswith('.json'):
+                self.assertEqual(json.loads(refreshed.read_text()), json.loads(data))
+            else:
+                self.assertEqual(refreshed.read_bytes(), data)
+            self.assertEqual((self.installer / 'cache/integration' / source).read_bytes(), b'stale ' + data)
 
     def test_only_explicit_roots_and_own_plugin_platform_are_collected(self):
         self.options(['opti2xmx', 'decky', 'hltb'])

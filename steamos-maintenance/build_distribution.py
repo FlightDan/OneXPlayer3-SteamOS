@@ -48,6 +48,10 @@ def _hash(path):
 
 def _group(name, ids):
     """Put large installers and plugin-specific binaries outside the core."""
+    if 'slot-switch' in ids and (name.startswith(('payload/components/slot-switch/',
+                                                 'payload/integration/slot-switch/'))
+                                 or name == 'payload/components/slot_switch.py'):
+        return 'repair-slot-switch', 'slot-switch'
     if name == 'payload/integration/opti2xmx/runtime.tar.gz':
         return 'runtime-opti2xmx', 'opti2xmx-runtime'
     if name.startswith('payload/integration/opti2xmx-runtime/'):

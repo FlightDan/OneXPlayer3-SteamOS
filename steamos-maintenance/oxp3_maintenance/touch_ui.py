@@ -12,7 +12,13 @@ from .display_language import detect_language
 TEXT = {
     'zh': {
         'app': 'OXP3 修复与更新', 'overview': '概览', 'repairs': '修复与插件',
-        'recovery': '恢复', 'settings': '设置', 'intro': '管理这台掌机的项目修复、插件与更新。',
+        'recovery': '恢复', 'settings': '设置', 'health': '一键体检',
+        'intro': '管理这台掌机的项目修复、插件与更新。',
+        'health_intro': '只读检查手柄与已安装组件，不会更改配置；完成后可导出报告并发回用于诊断。',
+        'health_again': '重新体检', 'health_export': '导出报告', 'health_back': '返回概览',
+        'github_network': 'GitHub 下载线路',
+        'network_auto': '自动（先直连，失败后尝试备用线路）', 'network_direct': '直连',
+        'network_hint': '自动先直连，失败后尝试备用线路；第三方线路只访问公开文件，下载仍校验签名。',
         'check': '检查项目更新', 'refresh': '刷新系统状态', 'browse': '查看最新功能',
         'import': '导入本地维护包', 'choose': '选择签名维护包', 'open': '导入', 'cancel': '取消',
         'empty': '查看最新项目功能，或导入已下载的签名维护包。',
@@ -46,7 +52,13 @@ TEXT = {
     },
     'en': {
         'app': 'OXP3 repairs & updates', 'overview': 'Overview', 'repairs': 'Repairs & plugins',
-        'recovery': 'Recovery', 'settings': 'Settings', 'intro': 'Manage project repairs, plugins and updates for this handheld.',
+        'recovery': 'Recovery', 'settings': 'Settings', 'health': 'Run health check',
+        'intro': 'Manage project repairs, plugins and updates for this handheld.',
+        'health_intro': 'Read-only checks inspect the controller and installed components without changing configuration. You can export the report and send it back for diagnosis.',
+        'health_again': 'Run health check again', 'health_export': 'Export report', 'health_back': 'Back to overview',
+        'github_network': 'GitHub download route',
+        'network_auto': 'Auto (try direct first, then fallbacks)', 'network_direct': 'Direct',
+        'network_hint': 'Auto tries direct first, then fallbacks. Third-party routes access public files only; downloads still verify signatures.',
         'check': 'Check project updates', 'refresh': 'Refresh system status', 'browse': 'Browse latest features',
         'import': 'Import local bundle', 'choose': 'Choose a signed maintenance bundle', 'open': 'Import', 'cancel': 'Cancel',
         'empty': 'Browse the latest project features, or import a signed maintenance bundle.',
@@ -130,6 +142,35 @@ def _toolkit():
     gi.require_version('Gtk', '3.0')
     from gi.repository import Gtk, Gdk, GLib, Pango
     return Gtk, Gdk, GLib, Pango
+
+
+def _github_network_choices(view, text):
+    supplied = view.get('network_options')
+    options = []
+    if isinstance(supplied, (list, tuple)):
+        seen = set()
+        for option in supplied:
+            if not isinstance(option, dict) or option.get('id') is None or option.get('name') is None:
+                continue
+            option_id, name = str(option['id']), str(option['name'])
+            if option_id and option_id not in seen:
+                options.append((option_id, name))
+                seen.add(option_id)
+    if not options:
+        options = [
+            ('auto', text['network_auto']),
+            ('direct', text['network_direct']),
+            ('gh-proxy.com', 'gh-proxy.com'),
+            ('ghfast.top', 'ghfast.top'),
+            ('ghproxy.net', 'ghproxy.net'),
+        ]
+    elif 'auto' not in {option_id for option_id, _ in options}:
+        options.insert(0, ('auto', text['network_auto']))
+    selected = str(view.get('github_network') or 'auto')
+    option_ids = {option_id for option_id, _ in options}
+    if selected not in option_ids:
+        selected = 'auto' if 'auto' in option_ids else options[0][0]
+    return options, selected
 
 
 class TouchWindow:
@@ -302,8 +343,10 @@ class TouchWindow:
         self._clear(self.footer)
         for route, button in self.nav_buttons.items():
             context = button.get_style_context()
-            context.add_class('active') if route == self.route else context.remove_class('active')
-        default_message = {'overview': 'intro', 'repairs': 'empty', 'recovery': 'recovery_intro', 'settings': 'daily_detail'}
+            active_route = 'overview' if self.route == 'health' else self.route
+            context.add_class('active') if route == active_route else context.remove_class('active')
+        default_message = {'overview': 'intro', 'repairs': 'empty', 'recovery': 'recovery_intro',
+                           'settings': 'daily_detail', 'health': 'health_intro'}
         view = self.views.get(self.route, {})
         self.heading.set_text(view.get('heading', self.text[self.route]))
         compact = self.route == 'repairs' and bool(view.get('items')) and not view.get('review')
@@ -327,13 +370,17 @@ class TouchWindow:
             box.pack_start(self._label(fact[1]), False, False, 0)
             self.page.pack_start(box, False, False, 0)
         if self.route == 'overview':
-            self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'), primary=True)
+            self.page.pack_start(self._label(self.text['health_intro'], 'muted'), False, False, 0)
+            self._action(self.toolbar, self.text['health'], self._start_health_check, primary=True)
+            self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'))
             self._action(self.toolbar, self.text['refresh'], lambda _: self.perform('status'))
             self._action(self.footer, self.text['browse'], lambda _: self.navigate('repairs'))
         elif self.route == 'repairs':
             self._render_repairs(view)
         elif self.route == 'recovery':
             self._render_recovery(view)
+        elif self.route == 'health':
+            self._render_health(view)
         else:
             self._render_settings(view)
         self.content.show_all()
@@ -416,6 +463,19 @@ class TouchWindow:
         self._action(row, self.text['rollback'], lambda _: self.protect('rollback'))
         self._action(row, self.text['recover'], lambda _: self.protect('recover'))
 
+    def _render_health(self, view):
+        self._action(self.toolbar, self.text['health_again'], self._start_health_check, primary=True)
+        self._render_items(view.get('items', []), selectable=False)
+        if view.get('report_ready'):
+            self._action(self.footer, self.text['health_export'], self._export_health_report, primary=True)
+        self._action(self.footer, self.text['health_back'], lambda _: self.navigate('overview'))
+
+    def _start_health_check(self, *_):
+        self.perform('health', route='health')
+
+    def _export_health_report(self, *_):
+        self.perform('export-health', route='health')
+
     def _render_settings(self, view):
         Gtk = self.Gtk
         self._action(self.toolbar, self.text['preferences'], lambda _: self.perform('preferences'))
@@ -434,7 +494,26 @@ class TouchWindow:
             widget.set_size_request(-1, 64)
             self.page.pack_start(widget, False, False, 0)
         (self.beta if view.get('channel') == 'beta' else self.stable).set_active(True)
-        self._action(self.footer, self.text['save'], lambda _: self.perform('settings', enabled=self.daily.get_active(), channel='beta' if self.beta.get_active() else 'stable'), primary=True)
+        self.page.pack_start(self._label(self.text['github_network'], 'section-heading'), False, False, 0)
+        network_options, selected_network = _github_network_choices(view, self.text)
+        self.github_network = Gtk.ComboBoxText()
+        for option_id, name in network_options:
+            self.github_network.append(option_id, name)
+        if not self.github_network.set_active_id(selected_network):
+            self.github_network.set_active(0)
+        self.github_network.set_size_request(-1, 52)
+        self.page.pack_start(self.github_network, False, False, 0)
+        hint = self._label(self.text['network_hint'], 'muted')
+        hint.get_style_context().add_class('detail')
+        self.page.pack_start(hint, False, False, 0)
+        self._action(self.footer, self.text['save'], self._save_settings, primary=True)
+
+    def _save_settings(self, *_):
+        self.perform(
+            'settings', enabled=self.daily.get_active(),
+            channel='beta' if self.beta.get_active() else 'stable',
+            github_network=self.github_network.get_active_id() or 'auto',
+        )
 
     def _toggle(self, button, name):
         self.selected.add(name) if button.get_active() else self.selected.discard(name)
@@ -531,7 +610,7 @@ class TouchWindow:
         for button, enabled in self.checks.values():
             button.set_sensitive(enabled and not blocked)
         if self.route == 'settings' and hasattr(self, 'daily'):
-            for widget in (self.daily, self.stable, self.beta):
+            for widget in (self.daily, self.stable, self.beta, self.github_network):
                 widget.set_sensitive(not blocked)
         if self.route == 'repairs' and hasattr(self, 'installed_switch'):
             self.installed_switch.set_sensitive(not blocked)
@@ -583,7 +662,8 @@ class TouchWindow:
             self._sensitivity()
             return False
         if action == 'settings' and self.retry_task:
-            view = dict(view, **{key: value for key, value in self.retry_task[1].items() if key in ('enabled', 'channel')})
+            view = dict(view, **{key: value for key, value in self.retry_task[1].items()
+                                 if key in ('enabled', 'channel', 'github_network')})
         if action in self.service.mutating_actions:
             self.views.pop('overview', None)
         self.retry_task = None

@@ -53,7 +53,7 @@ class CatalogFlowTests(unittest.TestCase):
         entries = {x['id']: x for x in report['components']}
         self.assertEqual(entries['future-driver']['status'], 'incompatible')
         self.assertEqual(entries['keyboard']['status'], 'requires_preflight')
-        self.assertEqual(entries['slot-switch']['status'], 'separate_operation')
+        self.assertEqual(entries['slot-switch']['status'], 'incompatible')
         self.assertIn('屏幕键盘', gui.catalog_text(report, gui.ZH))
         self.assertIn('Touch keyboard', gui.catalog_text(report, gui.EN))
 

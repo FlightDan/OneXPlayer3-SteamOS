@@ -206,7 +206,7 @@ class BootstrapBoundaryTests(unittest.TestCase):
     def test_launch_has_no_shell_or_privilege_escalation(self):
         with patch.object(boot.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
             self.assertEqual(boot.launch(Path('/private/app'), Path('/private/bundle.tar.gz')), 0)
-        self.assertEqual(run.call_args.args[0], ['/usr/bin/python3', '-I', '-B', str(Path('/private/app/entry.py')), 'gui', '--bundle', str(Path('/private/bundle.tar.gz'))])
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/python3', '-I', '-B', str(Path('/private/app/entry.py')), 'gui', '--bundle', str(Path('/private/bundle.tar.gz')), '--github-network', 'auto'])
         self.assertEqual(run.call_args.kwargs, {'check': False})
 
 

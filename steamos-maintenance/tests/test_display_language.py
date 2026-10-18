@@ -25,9 +25,20 @@ class DisplayLanguageTests(unittest.TestCase):
         self.kde()
         self.assertEqual(self.detect({'LANG': 'en_US.UTF-8'}), 'zh')
 
-    def test_session_translation_precedes_stale_kde_setting(self):
+    def test_kde_translation_precedes_stale_session_language(self):
         self.kde()
-        self.assertEqual(self.detect({'LANGUAGE': 'en_US:zh_CN'}), 'en')
+        self.assertEqual(self.detect({'LANGUAGE': 'en_US:zh_CN', 'LC_ALL': 'C'}), 'zh')
+
+    def test_kdeglobals_translation_fallback(self):
+        (self.config / 'kdeglobals').write_text('[Locale]\nLanguage=zh_CN:en_US\n', encoding='utf-8')
+        self.assertEqual(self.detect({'LANGUAGE': 'en_US', 'LANG': 'en_US.UTF-8'}), 'zh')
+        self.kde('[Translations]\nLANGUAGE=en_US\n')
+        self.assertEqual(self.detect({'LANGUAGE': 'zh_CN'}), 'en')
+
+    def test_invalid_plasma_config_does_not_hide_kdeglobals(self):
+        self.kde('[broken')
+        (self.config / 'kdeglobals').write_text('[Locale]\nLanguage=zh_CN\n', encoding='utf-8')
+        self.assertEqual(self.detect({'LANG': 'en_US.UTF-8'}), 'zh')
 
     def test_language_list_and_variants(self):
         for value in ('fr:zh_CN:en', 'zh-TW.UTF-8', 'zh_HK', 'zh'):

@@ -197,7 +197,7 @@ def prepare(payload, selected, system, store, *, tool_only=False, selected_only=
         if name in items or not isinstance(item.get('dependencies'), list) or any(not isinstance(value, str) for value in item['dependencies']):
             raise ValueError('Invalid or duplicate component catalog entry')
         items[name] = item
-    manual = {'slot-switch', 'refind', 'shared-storage'}
+    manual = {'refind', 'shared-storage'}
     explicit = set(selected)
     automatic = []
     for name in prior:

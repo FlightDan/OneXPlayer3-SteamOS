@@ -232,6 +232,38 @@ class SwitchChecks(unittest.TestCase):
         self.assertEqual(updater.states['atomupd.service'], 'inactive')
         self.assertEqual(set(updater.masks), set(updater.states))
 
+    def test_updater_preview_is_read_only_for_running_and_stopped_checks(self):
+        updater = FakeUpdater()
+        controller = boot.Controller(updater)
+        for state in ('active', 'inactive', 'failed'):
+            updater.states['atomupd.service'] = state
+            self.assertEqual(controller.updater_status(), {'atomupd_active': state == 'active'})
+        self.assertFalse(any(call[1] in ('mask', 'stop', 'unmask', 'start') for call in updater.calls))
+
+    def test_updater_preview_refuses_rauc_and_unknown_or_changing_state(self):
+        for rauc, atomupd, operation, job in (
+                ('active', 'active', 'idle', ''), ('activating', 'active', 'idle', ''),
+                ('unknown', 'active', 'idle', ''), ('inactive', 'activating', 'idle', ''),
+                ('inactive', 'unknown', 'idle', ''), ('inactive', 'active', 'installing', ''),
+                ('inactive', 'active', 'unknown', ''), ('inactive', 'active', 'idle', '123')):
+            with self.subTest(rauc=rauc, atomupd=atomupd, operation=operation, job=job):
+                updater = FakeUpdater(); updater.operation = operation
+                updater.states.update({'rauc.service': rauc, 'atomupd.service': atomupd})
+                updater.jobs['atomupd.service'] = job
+                with self.assertRaises(RuntimeError): boot.Controller(updater).updater_status()
+                self.assertFalse(any(call[1] in ('mask', 'stop', 'unmask', 'start') for call in updater.calls))
+
+    def test_updater_start_after_inactive_preview_refuses_without_consent(self):
+        updater = FakeUpdater(self.fw)
+        updater.states['atomupd.service'] = 'inactive'
+        controller = boot.Controller(updater, self.temp.name, Path(self.temp.name) / 'records')
+        state = controller.status()
+        self.assertEqual(controller.updater_status(), {'atomupd_active': False})
+        updater.states['atomupd.service'] = 'active'
+        with self.assertRaisesRegex(RuntimeError, 'Explicitly choose'):
+            controller.reboot(state['target'], state['token'])
+        self.assertFalse(any(call[1] == 'stop' or '--set' in call for call in updater.calls))
+
     def test_busy_unknown_or_active_idle_rauc_never_stopped(self):
         for operation in ('idle', 'installing', 'unknown'):
             for state in ('active', 'activating'):
@@ -425,30 +457,85 @@ class DesktopChecks(unittest.TestCase):
 
     def test_confirm_uses_reviewed_target_and_token(self):
         state = self.state()
-        with patch.object(desktop, 'helper', side_effect=[state, {}]) as helper, \
+        with patch.object(desktop, 'helper', side_effect=[state, {'atomupd_active': False}, {}]) as helper, \
              patch.object(desktop.subprocess, 'run') as run:
             run.return_value.returncode = 0
             run.return_value.stdout = ''
             self.assertEqual(desktop.main(), 0)
-            self.assertEqual(helper.call_args_list[1].args, ('reboot', 'B', state['token']))
+            self.assertEqual([call.args for call in helper.call_args_list], [
+                ('status',), ('updater-status',), ('reboot', 'B', state['token'])])
+            run.assert_called_once()
+            self.assertIn('--warningcontinuecancel', run.call_args.args[0])
+            self.assertNotIn('--checklist', run.call_args.args[0])
 
-    def test_updater_option_is_unchecked_and_explicit_choice_sets_flag(self):
+    def test_active_updater_is_confirmed_after_slot_and_explicit_choice_sets_flag(self):
         state = self.state()
-        with patch.object(desktop, 'helper', side_effect=[state, {}]) as helper, \
-             patch.object(desktop.subprocess, 'run', side_effect=[
-                 SimpleNamespace(returncode=0, stdout='"stop-updaters"\n'), SimpleNamespace(returncode=0)]) as run:
+        calls = []
+        def helper_call(*args):
+            calls.append(args)
+            return state if args[0] == 'status' else {'atomupd_active': True} if args[0] == 'updater-status' else {}
+        def dialog(*args, **kwargs):
+            calls.append(('dialog',))
+            return SimpleNamespace(returncode=0)
+        with patch.object(desktop, 'helper', side_effect=helper_call), \
+             patch.object(desktop, 'ZH', False), \
+             patch.object(desktop.subprocess, 'run', side_effect=dialog) as run:
             self.assertEqual(desktop.main(), 0)
-            self.assertEqual(run.call_args_list[0].args[0][-1], 'off')
-            self.assertIn('--checklist', run.call_args_list[0].args[0])
-            self.assertEqual(helper.call_args_list[1].args, ('reboot', 'B', state['token'], '--stop-updaters'))
-            self.assertIn('RAUC', run.call_args_list[1].args[0][-1])
+            self.assertEqual(calls, [('status',), ('dialog',), ('updater-status',), ('dialog',),
+                                     ('reboot', 'B', state['token'], '--stop-updaters')])
+            self.assertIn('Save games and files first', run.call_args_list[0].args[0][-1])
+            self.assertIn('Stop background checks and restart?', run.call_args_list[1].args[0][-1])
+            self.assertNotIn('--checklist', run.call_args_list[0].args[0])
 
-    def test_final_confirmation_cancel_after_opt_in_never_requests_reboot(self):
-        with patch.object(desktop, 'helper', return_value=self.state()) as helper, \
+    def test_updater_confirmation_cancel_never_requests_reboot(self):
+        with patch.object(desktop, 'helper', side_effect=[self.state(), {'atomupd_active': True}]) as helper, \
              patch.object(desktop.subprocess, 'run', side_effect=[
-                 SimpleNamespace(returncode=0, stdout='stop-updaters'), SimpleNamespace(returncode=1)]):
+                 SimpleNamespace(returncode=0), SimpleNamespace(returncode=1)]):
             self.assertEqual(desktop.main(), 0)
-            helper.assert_called_once_with('status')
+            self.assertEqual([call.args for call in helper.call_args_list], [('status',), ('updater-status',)])
+
+    def test_updater_preview_error_never_requests_reboot_or_stop(self):
+        with patch.object(desktop, 'helper', side_effect=[self.state(), RuntimeError('RAUC state unknown')]) as helper, \
+             patch.object(desktop.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual(desktop.main(), 1)
+            self.assertEqual([call.args for call in helper.call_args_list], [('status',), ('updater-status',)])
+            self.assertIn('--error', run.call_args.args[0])
+
+    def test_reboot_error_is_not_automatically_retried(self):
+        with patch.object(desktop, 'helper', side_effect=[self.state(), {'atomupd_active': True}, RuntimeError('stop failed')]) as helper, \
+             patch.object(desktop.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual(desktop.main(), 1)
+            self.assertEqual([call.args[0] for call in helper.call_args_list].count('reboot'), 1)
+            self.assertIn('--error', run.call_args.args[0])
+
+    def test_updater_preview_payload_requires_boolean(self):
+        for data in ({}, {'atomupd_active': 1}, {'atomupd_active': 'false'}):
+            with self.subTest(data=data), patch.object(desktop.subprocess, 'run', return_value=self.helper_result({'ok': True, 'data': data})):
+                with self.assertRaises(RuntimeError): desktop.helper('updater-status')
+
+    def test_display_language_uses_kde_translations_before_regional_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = {'LC_ALL': 'en_US.UTF-8', 'LANG': 'en_US.UTF-8', 'LANGUAGE': 'en_US'}
+            (root / 'plasma-localerc').write_text('[Formats]\nLANG=en_US.UTF-8\n[Translations]\nLANGUAGE=zh_CN:en_US\n', encoding='utf-8')
+            (root / 'kdeglobals').write_text('[Locale]\nLanguage=en_US\n', encoding='utf-8')
+            self.assertEqual(desktop.display_language(env, root), 'zh')
+            (root / 'plasma-localerc').write_text('[Translations]\nLANGUAGE=en_US:zh_CN\n', encoding='utf-8')
+            self.assertEqual(desktop.display_language({'LANG': 'zh_CN', 'LC_ALL': 'zh_CN'}, root), 'en')
+
+    def test_display_language_fallbacks_and_invalid_kde_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'plasma-localerc').write_text('not valid INI', encoding='utf-8')
+            (root / 'kdeglobals').write_text('[Locale]\nLanguage=zh_CN\n', encoding='utf-8')
+            self.assertEqual(desktop.display_language({'LANG': 'en_US'}, root), 'zh')
+            (root / 'kdeglobals').unlink()
+            for env, expected in (({'LANGUAGE': 'zh_TW:en', 'LC_MESSAGES': 'en'}, 'zh'),
+                                  ({'LC_MESSAGES': 'zh_CN', 'LANG': 'en'}, 'zh'),
+                                  ({'LC_ALL': 'en_US', 'LANG': 'zh_CN'}, 'zh'),
+                                  ({'LC_ALL': 'zh_CN', 'LANG': 'en_US'}, 'en'),
+                                  ({'LANG': 'C.UTF-8'}, 'c'), ({}, 'en')):
+                self.assertEqual(desktop.display_language(env, root), expected)
 
     def test_bilingual_copy_and_metadata_escaping(self):
         for zh in (False, True):

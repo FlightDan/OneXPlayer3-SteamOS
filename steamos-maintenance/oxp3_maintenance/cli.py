@@ -95,14 +95,18 @@ def installed_component_states(root, system, store, names, *, validated_original
     return output
 
 
-def check_updates(background=False, channel=None):
+def check_updates(background=False, channel=None, github_network=None):
     from .releases import check_releases
     release = installed_release()
     settings = Path.home() / '.config/oxp3-maintenance/settings.json'
     preferences = json.loads(settings.read_text()) if settings.is_file() else {}
     if background and not preferences.get('check_updates', True):
         return {'status': 'disabled', 'candidates': []}
-    result = check_releases(release['version'], channel or preferences.get('channel', release.get('channel', 'beta')))
+    from .network import NETWORK_MODES, NetworkPolicy
+    mode = github_network or preferences.get('github_network', 'auto')
+    mode = mode if mode in NETWORK_MODES else 'auto'
+    network = {'opener': NetworkPolicy(mode).open}
+    result = check_releases(release['version'], channel or preferences.get('channel', release.get('channel', 'beta')), **network)
     latest_project = result.get('latest_project')
     project_newer = False
     if latest_project:
@@ -131,7 +135,7 @@ def parser():
     result = argparse.ArgumentParser(description='OXP3 project repairs and updates; SteamOS base upgrades are not performed.')
     result.add_argument('action', nargs='?', default='gui', choices=(
         'gui', 'status', 'plan', 'apply', 'bootstrap', 'check-updates', 'update',
-        'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download'))
+        'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download', 'health'))
     result.add_argument('--bundle', help='Signed maintenance .tar.gz')
     result.add_argument('--bundle-dir', help='Extracted signed maintenance directory')
     result.add_argument('--select', nargs='*', default=[], help='Component IDs; dependencies are included')
@@ -145,15 +149,20 @@ def parser():
     result.add_argument('--output', help='User download directory (download action)')
     result.add_argument('--tool-only', action='store_true', help='Update only the signed maintenance engine; keep existing repairs unchanged')
     result.add_argument('--selected-only', action='store_true', help='Refresh only --select components and dependencies; keep other installed components unchanged')
+    from .network import NETWORK_MODES
+    result.add_argument('--github-network', choices=NETWORK_MODES, help='Public GitHub download route; default: automatic fallback')
     return result
 
 
 def dispatch(args):
+    if args.action == 'health':
+        from .health import collect
+        return collect()
     if args.action == 'gui':
         from .touch_ui import run
         return run(args)
     if args.action == 'check-updates':
-        return check_updates(args.background, args.channel)
+        return check_updates(args.background, args.channel, getattr(args, 'github_network', None))
     if args.action in ('catalog', 'download'):
         return online(args)
     from . import operations, probe
@@ -250,7 +259,10 @@ def online(args):
     if os.name == 'posix' and os.geteuid() == 0:
         raise RuntimeError('Browse and download as the desktop user; installation is authorized separately')
     installed = installed_release()
-    releases = check_releases(installed['version'], args.channel or installed.get('channel', 'beta'))
+    from .network import NetworkPolicy
+    mode = getattr(args, 'github_network', None) or 'auto'
+    network = {'opener': NetworkPolicy(mode).open}
+    releases = check_releases(installed['version'], args.channel or installed.get('channel', 'beta'), **network)
     choices = releases['maintenance_releases']
     if args.version:
         choices = [entry for entry in choices if entry['version'] == args.version]
@@ -261,7 +273,7 @@ def online(args):
     candidate = choices[0]
     if args.action == 'download':
         folder = Path(args.output or Path.home() / 'Downloads/OXP3')
-        result = save(candidate, folder)
+        result = save(candidate, folder, **network)
         from .distribution import describe_source, materialize
         value = describe_source(result['path'], trusted_key())
         if value and (args.select or args.all_components):
@@ -271,9 +283,9 @@ def online(args):
                 selected = [item['id'] for item in value['components']
                             if item['available'] and item['delivery'] == 'maintenance']
             return materialize(result['path'], selected, folder / ('selection-' + uuid.uuid4().hex + '.tar.gz'),
-                               trusted_key(), catalog=value, cache=folder / 'packages')
+                               trusted_key(), catalog=value, cache=folder / 'packages', **network)
         return result
-    value = fetch_catalog(candidate, trusted_key())
+    value = fetch_catalog(candidate, trusted_key(), **network)
     try:
         from .probe import live
         system = live()

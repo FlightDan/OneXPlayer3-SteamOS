@@ -134,7 +134,8 @@ class DesktopServiceTests(unittest.TestCase):
              mock.patch.object(self.service, '_backend') as backend, \
              mock.patch.object(subprocess, 'run') as run:
             view = self.service.perform('discover')
-        fetch.assert_called_once_with(candidate, Path('/trusted.pem'), progress=self.service._network_progress)
+        fetch.assert_called_once_with(candidate, Path('/trusted.pem'), progress=self.service._network_progress, opener=mock.ANY)
+        self.assertEqual(fetch.call_args.kwargs['opener'].__self__.mode, 'auto')
         describe.assert_called_once_with(value, None)
         backend.assert_not_called()
         run.assert_not_called()

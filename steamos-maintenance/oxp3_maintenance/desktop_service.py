@@ -19,6 +19,7 @@ class DesktopService:
         self.candidate = None
         self.review = None
         self.seed = self.source
+        self.health_report = None
         self.on_progress = None
         self.labels = dict(zip(
             ('input','multifunction','gyro','hdr','desktop-hdr','gamescope-env','wifi','xe-dsb','gm7-resume','manager','native-tdp','overlay','fan-driver','oxp3-fan','oxp3-cpu','charging','legacy-runtime','windows-reboot','decky','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','flathub-ustc','slot-switch','refind'),
@@ -26,6 +27,10 @@ class DesktopService:
         )) if self.zh else {}
         self.settings = Path.home() / '.config/oxp3-maintenance/settings.json'
         self.preferences = self._preferences()
+        from .network import NETWORK_MODES
+        requested_network = getattr(args, 'github_network', None)
+        if requested_network in NETWORK_MODES:
+            self.preferences['github_network'] = requested_network
         if self.zh:
             self.labels['serial-console-policy'] = '串口登录重复报错修复'
             self.labels['autoflatpaks-compat'] = 'AutoFlatpaks 电池状态兼容修复'
@@ -59,12 +64,19 @@ class DesktopService:
             self.on_progress(message + ' (%s/%s)' % (event['attempt'], event['attempts']))
 
     def _preferences(self):
+        from .network import NETWORK_MODES
         try:
             value = json.loads(self.settings.read_text())
             return {'enabled': value.get('check_updates', True) is not False,
-                    'channel': 'stable' if value.get('channel') == 'stable' else 'beta'}
+                    'channel': 'stable' if value.get('channel') == 'stable' else 'beta',
+                    'github_network': value.get('github_network') if value.get('github_network') in NETWORK_MODES else 'auto'}
         except (OSError, ValueError, TypeError, AttributeError):
-            return {'enabled': True, 'channel': cli.installed_release().get('channel', 'beta')}
+            return {'enabled': True, 'channel': cli.installed_release().get('channel', 'beta'), 'github_network': 'auto'}
+
+    def _network_kwargs(self):
+        from .network import NetworkPolicy
+        mode = self.preferences.get('github_network', 'auto')
+        return {'opener': NetworkPolicy(mode).open}
 
     def _view(self, heading, message='', **values):
         return dict(heading=heading, message=message, tone='normal', **values)
@@ -112,7 +124,7 @@ class DesktopService:
 
     def _backend(self, action, selected=(), *, all_components=False, tool_only=False,
                  expected_version=None, expected_manifest=None):
-        if action not in {'status', 'logs', 'plan', 'apply', 'rollback', 'restore', 'recover'}:
+        if action not in {'status', 'logs', 'plan', 'apply', 'rollback', 'restore', 'recover', 'health'}:
             raise ValueError('Unsupported desktop action')
         installed = Path('/usr/local/lib/oxp3-maintenance/entry.py')
         entry = installed if installed.is_file() else Path(__file__).resolve().parent.parent / 'entry.py'
@@ -136,6 +148,9 @@ class DesktopService:
             if self.on_progress and action == 'plan':
                 self.on_progress(self.t('正在检查安装条件；如出现身份验证窗口，请输入系统密码。',
                                         'Checking installation requirements; enter your system password if authentication appears.'))
+            if self.on_progress and action == 'health':
+                self.on_progress(self.t('正在只读检查；系统可能请求授权以读取安装记录。',
+                                        'Running read-only checks; authentication may be needed to read installation records.'))
             # A write is allowed to finish; closing the UI never kills a transaction.
             value = subprocess.run(command, capture_output=True, text=True,
                                    timeout=None if action in self.mutating_actions else 300)
@@ -207,6 +222,38 @@ class DesktopService:
             facts.append((self.t('恢复记录', 'Recovery record'), str(op['generation'])))
         return dict(heading=heading or self.t('操作完成', 'Completed'), message=message, tone='success', facts=facts)
 
+    def _health_view(self):
+        report = self.health_report
+        language = 'zh' if self.zh else 'en'
+        labels = {'ok': self.t('通过', 'Passed'), 'warning': self.t('需检查', 'Needs attention'),
+                  'unknown': self.t('未能判断', 'Unknown'), 'info': self.t('提示', 'Information')}
+        items = []
+        for check in report['checks']:
+            detail = check['message'][language] + '\n' + check['advice'][language]
+            evidence = check['evidence']
+            for difference in evidence.get('details', [])[:10]:
+                detail += '\n' + difference['path'] + ' — ' + difference['kind']
+                for key, values in difference.get('differences', {}).items():
+                    detail += '\n  ' + key + ': ' + self.t('预期 ', 'expected ') + str(values['expected']) + self.t('；实际 ', '; actual ') + str(values['actual'])
+            if len(evidence.get('details', [])) > 10:
+                detail += self.t('\n更多差异见导出的报告。', '\nSee the exported report for additional differences.')
+            if 'ActiveState' in evidence:
+                detail += '\n' + ' / '.join(str(evidence.get(key, '?')) for key in ('LoadState', 'ActiveState', 'SubState', 'Result'))
+            if 'devices' in evidence:
+                for device in evidence['devices']:
+                    if device['gamepad_capability']:
+                        detail += '\n' + device['name'] + ' (' + ' '.join(device['handlers']) + ')'
+            items.append({'id': check['id'], 'title': labels[check['status']] + ' · ' + check['title'][language], 'detail': detail})
+        counts = report['summary']
+        view = self._view(self.t('一键体检结果', 'Health check results'),
+                         self.t('已完成只读检查。异常和无法判断的项目优先显示；此结果不代表按键已在游戏中验证。',
+                                'Read-only checks finished. Warnings and unknowns appear first; button operation in games has not been verified.'),
+                         facts=[(self.t('检查时间', 'Checked at'), report['created_at']),
+                                (self.t('结果', 'Results'), ' · '.join(labels[k] + ' ' + str(v) for k, v in counts.items()))],
+                         items=items, report_ready=True)
+        view['tone'] = 'warning' if counts.get('warning') or counts.get('unknown') else 'normal'
+        return view
+
     def _distribution(self):
         if not self.source or not Path(self.source).is_file():
             return None
@@ -248,7 +295,8 @@ class DesktopService:
         folder = Path.home() / 'Downloads/OXP3'
         folder.mkdir(parents=True, exist_ok=True)
         result = materialize(self.source, selected, folder / ('selection-' + uuid.uuid4().hex + '.tar.gz'),
-                             trusted_key(), catalog=catalog, cache=folder / 'packages', progress=self._network_progress)
+                             trusted_key(), catalog=catalog, cache=folder / 'packages', progress=self._network_progress,
+                             **self._network_kwargs())
         self.source = result['path']
         return result
 
@@ -259,6 +307,22 @@ class DesktopService:
             raise RuntimeError(self.error_text(error)) from error
 
     def _perform(self, action, **params):
+        if action == 'health':
+            # A failed rerun must not silently export an older successful report.
+            self.health_report = None
+            result = self._backend('health')
+            if result.get('kind') != 'oxp3-health-report' or result.get('schema') != 1:
+                raise RuntimeError(self.t('体检接口不可用，请先更新维护工具。', 'Health checks are unavailable; update the maintenance tool first.'))
+            self.health_report = result
+            return self._health_view()
+        if action == 'export-health':
+            if self.health_report is None:
+                raise RuntimeError(self.t('请先完成一次体检。', 'Run a health check first.'))
+            from .health import export_report
+            path = export_report(self.health_report, Path.home() / 'Downloads/OXP3/diagnostics', 'zh' if self.zh else 'en')
+            view = self._health_view()
+            view['facts'].append((self.t('报告已保存，可将此 ZIP 发给维护者', 'Report saved; share this ZIP with the maintainer'), str(path)))
+            return view
         if action == 'overview':
             release = cli.installed_release()
             return self._view(self.t('OXP3 修复与项目更新', 'OXP3 repairs and project updates'),
@@ -267,16 +331,20 @@ class DesktopService:
                                      (self.t('更新通道', 'Update channel'), self.t('稳定版' if self.preferences['channel'] == 'stable' else '稳定版与 Beta', self.preferences['channel']))],
                               source_ready=self.has_source, source=str(self.source or ''))
         if action == 'preferences':
-            return self._view(self.t('更新设置', 'Update settings'), enabled=self.preferences['enabled'], channel=self.preferences['channel'])
+            return self._view(self.t('更新设置', 'Update settings'), **self.preferences)
         if action == 'settings':
+            from .network import NETWORK_MODES
             if type(params.get('enabled')) is not bool or params.get('channel') not in ('stable', 'beta'):
                 raise ValueError('Invalid update settings')
+            network = params.get('github_network', self.preferences.get('github_network', 'auto'))
+            if network not in NETWORK_MODES:
+                raise ValueError('Invalid GitHub network route')
             self.settings.parent.mkdir(parents=True, exist_ok=True)
-            value = {'check_updates': params['enabled'], 'channel': params['channel']}
+            value = {'check_updates': params['enabled'], 'channel': params['channel'], 'github_network': network}
             temporary = self.settings.with_suffix('.tmp')
             temporary.write_text(json.dumps(value))
             temporary.replace(self.settings)
-            self.preferences = {'enabled': params['enabled'], 'channel': params['channel']}
+            self.preferences = {'enabled': params['enabled'], 'channel': params['channel'], 'github_network': network}
             for command in (['systemctl', '--user', 'daemon-reload'],
                             ['systemctl', '--user', 'enable' if params['enabled'] else 'disable', '--now', 'oxp3-maintenance-check.timer']):
                 result = subprocess.run(command, capture_output=True, text=True, timeout=30)
@@ -312,7 +380,7 @@ class DesktopService:
             self.candidate = None
             self.seed = None
             release = cli.installed_release()
-            report = check_releases(release['version'], self.preferences['channel'], progress=self._network_progress)
+            report = check_releases(release['version'], self.preferences['channel'], progress=self._network_progress, **self._network_kwargs())
             latest = report.get('latest_project')
             facts = [(self.t('已安装项目', 'Installed project'), release['version'])]
             if latest:
@@ -323,7 +391,7 @@ class DesktopService:
                 message = self.t('已找到项目版本，但暂时无法确认维护包，请重试或导入离线包。' if unknown else '该项目版本尚未提供 Linux 维护包。可稍后重试，也可以导入离线维护包。',
                                  'Project versions found, but bundle availability is unknown. Retry or import offline.' if unknown else 'This project release has no Linux maintenance bundle yet. Retry later or import an offline bundle.')
                 return dict(heading=self.t('更新检查完成', 'Update check complete'), message=message, tone='warning', facts=facts)
-            value = fetch_catalog(candidate, trusted_key(), progress=self._network_progress)
+            value = fetch_catalog(candidate, trusted_key(), progress=self._network_progress, **self._network_kwargs())
             self.candidate = candidate
             # The newly displayed catalog owns the next selection. Never pair
             # it with an unrelated offline bundle retained from an earlier view.
@@ -358,7 +426,7 @@ class DesktopService:
             if not self.candidate:
                 raise RuntimeError(self.t('请先检查更新。', 'Check updates first.'))
             from .downloads import save
-            result = save(self.candidate, Path.home() / 'Downloads/OXP3', progress=self._network_progress)
+            result = save(self.candidate, Path.home() / 'Downloads/OXP3', progress=self._network_progress, **self._network_kwargs())
             self.source = result['path']
             self.seed = self.source
             self.review = None

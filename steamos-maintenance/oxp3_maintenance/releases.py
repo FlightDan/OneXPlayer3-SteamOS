@@ -20,6 +20,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from .bundle import MAX_ARCHIVE_BYTES
+from .network import NetworkPolicy, mode_from_env
 
 REPOSITORY = "FlightDan/OneXPlayer3-SteamOS"
 API_URL = "https://api.github.com/repos/" + REPOSITORY + "/releases"
@@ -175,7 +176,7 @@ def _request(url, opener=None, *, download=False, progress=None):
         "User-Agent": "OXP3-Maintenance/1", "Accept": "application/octet-stream" if download else "application/atom+xml" if url == ATOM_URL else "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"})
     if opener is None:
-        opener = urllib.request.build_opener(_AssetRedirect() if download else _NoRedirect()).open
+        opener = NetworkPolicy(mode_from_env()).open
     elif hasattr(opener, "open"):
         opener = opener.open
     for attempt in range(1, REQUEST_ATTEMPTS + 1):

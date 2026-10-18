@@ -139,7 +139,7 @@ class EngineFlowTests(unittest.TestCase):
             (directory / 'payload/components').mkdir(parents=True)
             (directory / 'payload/integration').mkdir()
             (directory / 'payload/components/options.json').write_text(json.dumps({
-                'schema': 1, 'repairs': [{'id': 'slot-switch', 'default': True, 'dependencies': []}],
+                'schema': 1, 'repairs': [{'id': 'refind', 'default': True, 'dependencies': []}],
                 'plugins': []}))
             (directory / 'payload/integration/manifest.json').write_text('{}')
             store = mock.Mock()
@@ -153,7 +153,7 @@ class EngineFlowTests(unittest.TestCase):
                  mock.patch.object(op.probe, 'live', return_value=system_facts()), \
                  mock.patch.object(op, 'store_for', return_value=store), \
                  mock.patch.object(op, 'authenticated', return_value=nullcontext((directory, manifest))), \
-                 mock.patch.object(op, 'current_selection', return_value=['slot-switch']), \
+                 mock.patch.object(op, 'current_selection', return_value=['refind']), \
                  mock.patch.object(op, 'PackageStore', return_value=packages), \
                  mock.patch.object(op.probe, 'verify_shared', return_value=True), \
                  mock.patch.object(op.probe, 'verify_shared_os', return_value=True), \
@@ -163,7 +163,7 @@ class EngineFlowTests(unittest.TestCase):
             self.assertTrue(result['can_apply'])
             self.assertEqual(result['selected'], [])
             self.assertEqual(result['components'], {})
-            self.assertIn('slot-switch', result['retained'])
+            self.assertIn('refind', result['retained'])
             self.assertEqual(result['manifest_digest'], 'reviewed-digest')
             adoption.assert_not_called()
             store.apply.assert_not_called()

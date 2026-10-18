@@ -20,6 +20,7 @@ import tempfile
 from .bundle import BundleError, MAX_ARCHIVE_BYTES, _regular_input, verify_bundle
 from .downloads import save
 from .releases import ReleaseError, _Version, _release_order, check_releases, fetch_catalog
+from .network import NETWORK_MODES, NetworkPolicy, mode_from_env
 
 RUNTIME = Path('/usr/local/lib/oxp3-maintenance')
 PYTHON = '/usr/bin/python3'
@@ -31,6 +32,8 @@ def parser():
         ' Download, verify and open OXP3 Maintenance; system changes require GUI confirmation.'))
     result.add_argument('--channel', choices=('stable', 'beta'), default='stable',
                         help='发行通道 / release channel (default: stable)')
+    result.add_argument('--github-network', choices=NETWORK_MODES, default=mode_from_env(),
+                        help='GitHub 下载线路 / GitHub route (default: auto; proxies handle public files only)')
     result.add_argument('--version', help='指定项目版本 / exact project version')
     result.add_argument('--bundle', type=Path, help='已有离线维护包 / local signed maintenance archive')
     result.add_argument('--download-only', action='store_true', help='仅下载和验签，不打开窗口 / verify without launching')
@@ -145,12 +148,15 @@ def _copy_archive(source, destination):
             output.write(chunk)
 
 
-def launch(app, archive):
-    return subprocess.run([PYTHON, '-I', '-B', str(app / 'entry.py'), 'gui', '--bundle', str(archive)], check=False).returncode
+def launch(app, archive, github_network='auto'):
+    return subprocess.run([PYTHON, '-I', '-B', str(app / 'entry.py'), 'gui', '--bundle', str(archive),
+                           '--github-network', github_network], check=False).returncode
 
 
 def run(args, public_key, *, opener=None):
     check_environment(args.download_only)
+    if opener is None:
+        opener = NetworkPolicy(args.github_network).open
     public_key = Path(public_key)
     fingerprint = hashlib.sha256(public_der(public_key)).hexdigest()
     installed = installed_identity(public_key)
@@ -219,7 +225,8 @@ def run(args, public_key, *, opener=None):
                 'Opening the installer. Review components and authorize changes in the native window.')
         # The original archive stays available for offline use. The private
         # extracted source survives until the entire UI/authorization flow exits.
-        return launch(app, snapshot)
+        return (launch(app, snapshot) if args.github_network == 'auto'
+                else launch(app, snapshot, github_network=args.github_network))
 
 
 def main(argv=None, *, public_key):
