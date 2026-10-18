@@ -225,6 +225,8 @@ class Manager(OptiMixin, RuntimeMixin):
             if len(shipping) == 1:
                 candidates = shipping
         executable = candidates[0] if len(candidates) == 1 else ''
+        if owned and owned['status']=='active' and owned['executable'] in candidates:
+            executable = owned['executable']
         reason = ''
         if info['external_managed']:
             reason = '此游戏已有其他 XMX 配置，需要先迁移后才能用此开关。'

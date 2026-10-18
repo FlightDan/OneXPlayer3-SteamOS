@@ -10,7 +10,7 @@ BASELINE = frozenset({
     'native-tdp', 'overlay', 'fan-driver', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light',
     'legacy-runtime', 'windows-reboot', 'decky', 'steamgriddb', 'protondb',
     'tabmaster', 'css-loader', 'autoflatpaks', 'deck-settings', 'hltb',
-    'animation-changer', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat',
+    'animation-changer', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat', 'animation-changer-compat',
 })
 
 

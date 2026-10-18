@@ -222,6 +222,8 @@ def build_distribution(payload, source, private_key, output_dir, *, previous_cat
                 adapter_names.append('serial_console.py')
             if item['id'] == 'autoflatpaks-compat':
                 adapter_names.append('autoflatpaks_compat.py')
+            if item['id'] == 'animation-changer-compat':
+                adapter_names.append('animation_changer_compat.py')
             for filename in adapter_names:
                 name = 'app/oxp3_maintenance/' + filename
                 if name in original['files']:

@@ -604,16 +604,18 @@ class Store:
             slot = self._slot(slot)
             index = self._ready(slot)
             old = index["slots"].get(slot, {}).get("current", {"paths": {}, "selected": [], "release": {}})
-            from .autoflatpaks_compat import COMPONENT as AUTO_REPAIR, validate_transaction, validate_before
+            from . import autoflatpaks_compat, animation_changer_compat
+            plugin_repairs = (autoflatpaks_compat, animation_changer_compat)
             try:
-                validate_transaction(files, self._read, slot=slot)
-                for path, spec in files.items():
-                    if spec.get('component') != AUTO_REPAIR:
-                        continue
-                    previous = old['paths'].get(path)
-                    if (previous and previous.get('component') != AUTO_REPAIR
-                            or (adopt or {}).get(path, {}).get('component') not in (None, AUTO_REPAIR)):
-                        raise ValueError('AutoFlatpaks repair cannot transfer another component recovery original')
+                for repair in plugin_repairs:
+                    repair.validate_transaction(files, self._read, slot=slot)
+                    for path, spec in files.items():
+                        if spec.get('component') != repair.COMPONENT:
+                            continue
+                        previous = old['paths'].get(path)
+                        if (previous and previous.get('component') != repair.COMPONENT
+                                or (adopt or {}).get(path, {}).get('component') not in (None, repair.COMPONENT)):
+                            raise ValueError('Installed plugin repair cannot transfer another component recovery original')
             except (ValueError, TypeError, KeyError) as error:
                 raise TransactionError(str(error)) from error
             actual, edited = self._live_checked(old)
@@ -702,7 +704,8 @@ class Store:
                 before = actual[path] if path in actual else self._read(path, user=entry["user"])
                 if path in files:
                     try:
-                        validate_before(path, files[path], before)
+                        for repair in plugin_repairs:
+                            repair.validate_before(path, files[path], before)
                     except (ValueError, TypeError, KeyError) as error:
                         raise TransactionError(str(error)) from error
                 scope = self._scope(slot, path)

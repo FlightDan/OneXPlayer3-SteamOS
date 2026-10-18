@@ -96,6 +96,8 @@ class OptiMixin:
         r = self.opti_record(info['appid'])
         active = r and r.get('status') not in ('removed', 'rolled_back')
         ini = Path(info['game']) / info['optis'][0] if len(info['optis']) == 1 else None
+        # An INI without its proxy needs a backed-up reinstall, not migration.
+        incomplete = bool(ini and not os.path.lexists(ini.parent / 'dxgi.dll'))
         c = ini_values(ini) if ini else configparser.ConfigParser()
         get = lambda s, k, d: c.get(s, k, fallback=d)
         spoof = get('Spoofing', 'Dxgi', 'auto')
@@ -105,10 +107,11 @@ class OptiMixin:
         fg_input=get('FrameGen','FGInput','upscaler').lower()
         if fg_input not in ('fsrfg30','fsrfg','dlssg','upscaler'):fg_input='upscaler'
         interpolation=get('XeFG','InterpolationCount','auto').strip()
-        multiplier={'1':'2','2':'3','3':'4'}.get(interpolation,'2')
+        multiplier='native' if fg=='native' else {'1':'2','2':'3','3':'4'}.get(interpolation,'2')
         settings_undo=(r or {}).get('settings_undo') or {}
-        return dict(managed=bool(active), installed=bool(ini), version=r.get('version', '') if active else '',
-                    injection_enabled=r.get('injection_enabled', True) if active else bool(ini),
+        return dict(managed=bool(active), installed=bool(ini), incomplete=incomplete,
+                    version=r.get('version', '') if active else '',
+                    injection_enabled=r.get('injection_enabled', True) if active else bool(ini and not incomplete),
                     status=r.get('status', '') if r else '', rollback=bool(r and r.get('undo')),
                     pending=r.get('pending') if r else None,
                     settings_rollback=bool(active and settings_undo.get('status') in ('saved','applying','restoring')),
@@ -244,7 +247,7 @@ class OptiMixin:
         if previous: previous.pop('settings_undo',None)
         rollback_launch = previous['launch'] if previous and previous['status']=='active' else actual
         r = dict(appid=appid, executable=executable, version=version, status='applying',
-                 injection_enabled=previous.get('injection_enabled', True) if previous else True,
+                 injection_enabled=previous.get('injection_enabled', True) if previous and previous['status']=='active' else True,
                  launch=launch, old_launch=previous['old_launch'] if previous else actual,
                  files=base, undo=dict(folder=str(folder),files=files,previous=previous,launch=rollback_launch),
                  pending=dict(expected=actual,target=launch,kind=kind))
@@ -274,15 +277,28 @@ class OptiMixin:
 
     def _opti_install(self, appid, executable, actual, version, source, operation_id):
         info, folder, prefix, r = self.opti_context(appid,executable,actual)
-        if r and not r.get('injection_enabled', True):
+        if r and r['status']=='active' and not r.get('injection_enabled', True):
             raise RuntimeError('请先开启 Opti 注入，再更换版本')
-        if info['optis'] and not (r and r['status']=='active'):
-            raise RuntimeError('已存在 Opti，请先迁移现有安装')
+        def check_unmanaged_install():
+            if r and r['status']=='active': return
+            # Removed/rolled-back journals do not authorize replacing a proxy.
+            proxies = ('dxgi.dll', 'nvapi64.dll', 'nvngx.dll') if info['optis'] else ('dxgi.dll',)
+            for name in proxies:
+                if os.path.lexists(folder/name):
+                    raise RuntimeError('游戏已有注入文件，请先迁移或处理冲突：' + name)
+            if info['optis']:
+                ini=folder/'OptiScaler.ini'
+                self.runtime().no_symlink_parents(ini)
+                if (len(info['optis'])!=1 or Path(info['game'])/info['optis'][0]!=ini
+                        or not ini.is_file() or ini.is_symlink()):
+                    raise RuntimeError('已存在 Opti，请先迁移现有安装')
+        check_unmanaged_install()
         payload=self.opti_package(version,source,operation_id=operation_id)
         self.progress.update(operation_id, 'installing')
         from manager import ini_set
         with self.runtime().prefix_lock(prefix):
             self.runtime().game_idle(prefix,Path(executable).name)
+            check_unmanaged_install()
             base=copy.deepcopy(r['files']) if r and r['status']=='active' else []
             self.opti_check_files(base)
             changes={}
@@ -292,8 +308,6 @@ class OptiMixin:
                 if relative not in ASSETS:continue
                 name={'OptiScaler.dll':'dxgi.dll','fakenvapi.dll':'nvapi64.dll'}.get(relative,relative)
                 target=folder/name
-                if name=='dxgi.dll' and target.exists() and not r:
-                    raise RuntimeError('游戏已有 dxgi.dll，不能覆盖其他注入器')
                 data=p.read_bytes()
                 if name=='OptiScaler.ini':
                     text=data.decode('utf-8-sig')
@@ -304,7 +318,7 @@ class OptiMixin:
                     for section,key,value in [('Spoofing','Dxgi','false'),('Spoofing','StreamlineSpoofing','false'),
                                                ('FrameGen','Enabled','false'),('FrameGen','FGInput','nofg'),
                                                 ('FrameGen','FGOutput','nofg'),('FrameGen','FGType','nofg'),('OptiFG','Enabled','false'),
-                                                ('XeFG','InterpolationCount','1')]:
+                                                ('XeFG','InterpolationCount','auto')]:
                         text=ini_set(text,section,key,value)
                     data=text.encode()
                 changes[str(target)]=data
@@ -628,10 +642,14 @@ class OptiMixin:
         prefix=Path(info['prefix']);rt=self.runtime()
         allowed={'sr':{'xess','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
                  'fg_input':{'fsrfg30','fsrfg','dlssg','upscaler'},'spoof':{'real','nvidia','amd','intel'},
-                 'fg_multiplier':{'2','3','4'}}
+                 'fg_multiplier':{'native','2','3','4'}}
         settings=dict(settings)
         settings.setdefault('fg_multiplier',fg_multiplier)
         if set(settings)!=set(allowed) or any(settings[k] not in v for k,v in allowed.items()):raise ValueError('不支持的设置值')
+        # Opti's "auto" interpolation count still defaults to 2x. Relinquish
+        # FG interception for game control instead of presenting auto as native.
+        if settings['fg']=='xefg' and settings['fg_multiplier']=='native':
+            settings['fg']='native'
         with rt.prefix_lock(prefix):
             rt.game_idle(prefix,Path(r['executable']).name)
             r,info,ini,targets=self._settings_context(appid)
@@ -649,7 +667,7 @@ class OptiMixin:
                                 'real':('auto','auto','auto')}[spoof]
             updates=[('Upscalers','Dx12Upscaler',settings['sr']),('FrameGen','Enabled','false' if fg=='native' else 'true'),
                      ('FrameGen','FGInput','nofg' if fg=='native' else settings['fg_input']),('FrameGen','FGOutput','nofg' if fg=='native' else fg),
-                     ('XeFG','InterpolationCount',str(int(settings['fg_multiplier'])-1)),
+                     ('XeFG','InterpolationCount','auto' if settings['fg_multiplier']=='native' else str(int(settings['fg_multiplier'])-1)),
                      ('Spoofing','Dxgi','false' if spoof=='real' else 'true'),('Spoofing','StreamlineSpoofing','false'),
                      ('Spoofing','SpoofedVendorId',vendor),('Spoofing','SpoofedDeviceId',device),('Spoofing','SpoofedGPUName',name)]
             for section,key,value in updates:text=ini_set(text,section,key,value)

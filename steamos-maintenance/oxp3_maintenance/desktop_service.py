@@ -29,6 +29,7 @@ class DesktopService:
         if self.zh:
             self.labels['serial-console-policy'] = '串口登录重复报错修复'
             self.labels['autoflatpaks-compat'] = 'AutoFlatpaks 电池状态兼容修复'
+            self.labels['animation-changer-compat'] = 'Animation Changer 已安装版本路径兼容修复'
             self.labels['opti2xmx'] = 'Opti2XMX 游戏图像增强'
             self.labels['oxp3-light'] = '原生灯效控制插件'
             self.labels['split-lock'] = 'Split-lock 报告洪泛修复'

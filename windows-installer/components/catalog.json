@@ -159,11 +159,14 @@
     {
       "id": "oxp3-light",
       "name": "OXP3 Light · 原生灯效控制",
-      "dependencies": ["decky"],
+      "dependencies": [
+        "decky"
+      ],
       "state": "offline_integrated_hardware_pending",
       "default": true,
-      "reason": "独立 Decky 插件使用原生 LED 接口；无接口时显示不支持，默认不改灯效。安装适配继续限定精确 SteamOS 3.10 / 内核 7.2.4 基线，实体灯效及休眠恢复待验收。",
-      "source": "windows-installer/components/light/README.md"
+      "reason": "独立 Decky 插件；精确 SteamOS 3.10 / 内核 7.2.4 基线使用已验证 HID 灯光接口，其他系统须具备完整原生 LED 接口。滑块调整结束后自动应用，预设和开关立即生效；自定义 RGB 选择在 Steam 菜单切换后保留。加载及唤醒不重放设置，实体颜色和休眠恢复不作已验收承诺。",
+      "source": "windows-installer/components/light/README.md",
+      "version": "0.1.1"
     },
     {
       "id": "desktop-hdr",
@@ -181,7 +184,9 @@
       "version": "0.1.2",
       "state": "boot_manager_added_live_validation_pending",
       "default": true,
-      "dependencies": ["decky"],
+      "dependencies": [
+        "decky"
+      ],
       "source": "windows-installer/docs/WINDOWS_REBOOT.md"
     },
     {

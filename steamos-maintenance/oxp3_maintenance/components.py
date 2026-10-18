@@ -32,7 +32,7 @@ PLUGIN_NAMES = {'steamgriddb': 'SteamGridDB', 'protondb': 'ProtonDB Badges',
                 'autoflatpaks': 'AutoFlatpaks', 'deck-settings': 'Deck Settings',
                 'hltb': 'HLTB for Deck', 'animation-changer': 'Animation Changer'}
 RESTART = {'hdr', 'desktop-hdr', 'keyboard', 'input', 'multifunction', 'gyro',
-           'gamescope-env', 'wifi', 'xe-dsb', 'gm7-resume', 'split-lock', 'serial-console-policy', 'autoflatpaks-compat', 'waydroid', 'overlay'}
+           'gamescope-env', 'wifi', 'xe-dsb', 'gm7-resume', 'split-lock', 'serial-console-policy', 'autoflatpaks-compat', 'animation-changer-compat', 'waydroid', 'overlay'}
 MAX_FILE = 256 * 1024 * 1024
 MAX_ARCHIVE = 1024 * 1024 * 1024
 
@@ -408,6 +408,9 @@ def _materialize(name, payload, root, metadata, planned, probe, owned):
     if name == 'autoflatpaks-compat':
         from .autoflatpaks_compat import build_files
         return build_files(root)
+    if name == 'animation-changer-compat':
+        from .animation_changer_compat import build_files
+        return build_files(root)
     files = {}
     for item in metadata.get('files', []):
         target = _relative(item['target'])
@@ -659,9 +662,9 @@ def build_plan(payload: Path, root: Path, selected: list[str], probe: dict, mana
                     raise ValueError('Component target is not a regular file: ' + relative)
                 if relative.startswith(PLUGIN_ROOT + '/'):
                     folders.add(relative[len(PLUGIN_ROOT) + 1:].split('/')[0])
-                    repair_existing = name == 'autoflatpaks-compat'
+                    repair_existing = name in ('autoflatpaks-compat', 'animation-changer-compat')
                     if repair_existing and records.get(relative, {}).get('component') not in (None, name):
-                        raise ValueError('AutoFlatpaks repair cannot take ownership from another component; preserve its original recovery records')
+                        raise ValueError('Installed plugin repair cannot take ownership from another component; preserve its original recovery records')
                     if os.path.lexists(target) and relative not in own and not repair_existing:
                         raise ValueError('Unmanaged plugin file conflict; adopt or remove explicitly: ' + relative)
                 if name == 'decky' and os.path.lexists(target) and relative != 'home/deck/.local/share/Steam/.cef-enable-remote-debugging' and relative not in own:
@@ -688,7 +691,7 @@ def build_plan(payload: Path, root: Path, selected: list[str], probe: dict, mana
                     raise ValueError('Conflicting selected component target: ' + relative)
                 normalized[relative] = entry
             for folder in folders:
-                if name == 'autoflatpaks-compat':
+                if name in ('autoflatpaks-compat', 'animation-changer-compat'):
                     # The fixed adapter validates an existing canonical plugin;
                     # it never installs a directory or changes legacy aliases.
                     continue

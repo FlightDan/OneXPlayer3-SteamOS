@@ -10,9 +10,9 @@ Exit the game. Use managed OptiScaler 0.9.4, choose **XeSS Frame Generation (exp
 
 退出游戏，使用已管理的 OptiScaler 0.9.4，在高级设置选择 **XeSS 帧生成（实验）**、倍率和游戏实际支持的输入，保存后重启。无原生 FG 时，可在受支持的游戏中尝试既有“超分输入”路线；OptiScaler 0.9.4 本身尚未实现 XeFG 输入。XMX 仍需要兼容的 Intel 硬件和独立运行环境，不绕过自检或失败回退。
 
-`[XeFG] InterpolationCount=1/2/3` requests 2x/3x/4x. The runtime can reject or limit the request. A saved setting, loaded DLL, or FPS overlay alone does not establish the effective multiplier. The plugin does not claim live FG status. New Opti installations keep FG interception off; changing Opti versions resets the request to 2x.
+The four-notch slider offers **Game controlled / 2x / 3x / 4x**. Game controlled disables Opti FG interception; the other notches select XeSS FG output and `[XeFG] InterpolationCount=1/2/3`. Save settings after changing the slider. The runtime can reject or limit the request. A saved setting, loaded DLL, or FPS overlay alone does not establish the effective multiplier. New Opti installations and version changes return to game-controlled FG.
 
-配置中的 `[XeFG] InterpolationCount=1/2/3` 分别请求 2x/3x/4x；运行时可能拒绝或限制倍率。设置保存、DLL 加载或 FPS 叠加层均不能单独证明实际倍率。插件不把配置值当作实时 FG 状态。新安装默认不接管 FG，更换 Opti 版本后倍率重置为 2x。
+四档滑块依次为 **游戏原生控制／2x／3x／4x**。最左档关闭 Opti 的 FG 接管；其余档位选择 XeSS FG 输出，并将 `[XeFG] InterpolationCount` 设为 1／2／3。调整后点击“保存设置”。运行时可能拒绝或限制倍率；设置保存、DLL 加载或 FPS 叠加层均不能单独证明实际倍率。新安装和更换 Opti 版本后均回到游戏控制。
 
 ## Recovery / 恢复
 

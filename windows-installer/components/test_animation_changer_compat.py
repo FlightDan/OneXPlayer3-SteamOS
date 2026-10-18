@@ -35,6 +35,8 @@ PREFIX = 'plugins/SDH-AnimationChanger/'
 # Decky invokes this block. The real ZIP check below also exercises its own AST.
 BACKEND = b'''import os
 OVERRIDE_PATH = os.path.expanduser('~/.steam/root/config/uioverrides/movies')
+def apply_animation(video, anim_id):
+    override_path = f'{OVERRIDE_PATH}/{video}'
 class Plugin:
     async def _main(self):
         try:
@@ -58,16 +60,17 @@ def payload(source=BACKEND):
 
 def run_startup_directories(source, home):
     tree = ast.parse(source)
-    assignment = next(node for node in tree.body if isinstance(node, ast.Assign)
-                      and any(isinstance(target, ast.Name) and target.id == 'OVERRIDE_PATH'
-                              for target in node.targets))
+    resolver = [node for node in tree.body if
+                isinstance(node, ast.FunctionDef) and node.name == 'get_override_path' or
+                isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'OVERRIDE_PATH'
+                                                     for target in node.targets)]
     plugin = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'Plugin')
     main = next(node for node in plugin.body if isinstance(node, ast.AsyncFunctionDef) and node.name == '_main')
     directories = next(node for node in main.body if isinstance(node, ast.Try))
     # Execute the original startup block, preserving its real makedirs calls.
     main.body = [directories]
     plugin.body = [main]
-    isolated = ast.Module(body=[assignment, plugin], type_ignores=[])
+    isolated = ast.Module(body=[*resolver, plugin], type_ignores=[])
     namespace = {
         'os': os,
         'ANIMATIONS_PATH': str(home / 'homebrew/data/animations'),
@@ -131,6 +134,45 @@ class SteamBootstrapChecks(unittest.TestCase):
         self.verify_source(files[PREFIX + 'main.py']['data'])
         self.assertEqual(archive.read_bytes(), original_zip)
 
+    def test_existing_custom_directory_and_live_or_dangling_symlinks_are_preserved(self):
+        source = patch_animation_changer(payload(), PREFIX)[PREFIX + 'main.py']['data']
+        for kind in ('directory', 'live', 'dangling'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                root = home / '.steam/root'
+                root.parent.mkdir()
+                custom = home / 'custom-steam'
+                if kind == 'directory':
+                    root.mkdir()
+                    expected = root
+                else:
+                    if kind == 'live': custom.mkdir()
+                    root.symlink_to(custom, target_is_directory=True)
+                    expected = custom
+                run_startup_directories(source, home)
+                self.assertEqual(root.is_symlink(), kind != 'directory')
+                self.assertTrue((expected / 'config/uioverrides/movies').is_dir())
+                self.assertFalse((home / '.local/share/Steam').exists())
+
+    def test_apply_resolves_steam_root_again_after_startup(self):
+        source = patch_animation_changer(payload(), PREFIX)[PREFIX + 'main.py']['data']
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            run_startup_directories(source, home)
+            root = home / '.steam/root'
+            root.parent.mkdir(exist_ok=True)
+            custom = home / 'new-steam'
+            root.symlink_to(custom, target_is_directory=True)
+            tree = ast.parse(source)
+            isolated = ast.Module(body=[node for node in tree.body if isinstance(node, ast.FunctionDef)
+                                        and node.name in ('get_override_path', 'apply_animation')], type_ignores=[])
+            namespace = {'os': os}
+            with patch.dict(os.environ, {'HOME': str(home)}):
+                exec(compile(isolated, 'deployed-main.py', 'exec'), namespace)
+                namespace['apply_animation']('deck_startup.webm', '')
+            self.assertTrue(root.is_symlink())
+            self.assertTrue((custom / 'config/uioverrides/movies').is_dir())
+
 
 class CompatibilityGuardChecks(unittest.TestCase):
     def test_only_backend_bytes_change_and_file_metadata_is_preserved(self):
@@ -142,7 +184,16 @@ class CompatibilityGuardChecks(unittest.TestCase):
         self.assertIs(changed[PREFIX + 'main.py']['user'], False)
         for name in files:
             if name != PREFIX + 'main.py': self.assertEqual(changed[name], files[name])
-        self.assertEqual(changed[PREFIX + 'main.py']['data'].splitlines()[2:], BACKEND.splitlines()[2:])
+        source = changed[PREFIX + 'main.py']['data']
+        self.assertNotIn(b'OVERRIDE_PATH', source)
+        self.assertIn(b'os.path.lexists(steam_root)', source)
+        self.assertIn(b'os.path.realpath(steam_root)', source)
+
+    def test_prior_canonical_patch_updates_to_the_same_resolver(self):
+        prior = BACKEND.replace(b'~/.steam/root/config/uioverrides/movies',
+                                b'~/.local/share/Steam/config/uioverrides/movies')
+        self.assertEqual(patch_animation_changer(payload(prior), PREFIX)[PREFIX + 'main.py']['data'],
+                         patch_animation_changer(payload(), PREFIX)[PREFIX + 'main.py']['data'])
 
     def test_unsupported_identity_version_and_source_are_refused_before_mutation(self):
         variants = [

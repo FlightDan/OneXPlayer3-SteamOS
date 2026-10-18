@@ -47,8 +47,12 @@ def patch_animation_changer(files, prefix):
 
     Decky can initialize before Steam creates ~/.steam/root. Creating movies
     below that future symlink makes it a directory, breaking Steam's ln -sfn.
-    Use Steam's canonical data directory for Animation Changer 1.3.2 instead.
+    Resolve an existing root (including custom/dangling symlinks) each time;
+    before Steam creates it, use Steam's canonical data directory.
     The caller deploys these bytes through its existing file transaction.
+    Original backend: Justin Marentette / SteamDeckHomebrew, BSD-3-Clause,
+    https://github.com/TheLogicMaster/SDH-AnimationChanger. Preserve its LICENSE
+    and metadata. The maintenance adapter carries the full original notice.
     """
     try:
         plugin = json.loads(files[prefix + 'plugin.json']['data'])
@@ -61,11 +65,30 @@ def patch_animation_changer(files, prefix):
             package.get('name') != 'decky-animation-changer' or package.get('version') != '1.3.2'):
         raise RuntimeError('Unsupported Animation Changer identity or version for compatibility patch')
     original = b"OVERRIDE_PATH = os.path.expanduser('~/.steam/root/config/uioverrides/movies')"
-    replacement = b"OVERRIDE_PATH = os.path.expanduser('~/.local/share/Steam/config/uioverrides/movies')"
-    if not isinstance(source, bytes) or source.splitlines().count(original) != 1 or source.count(original) != 1:
+    canonical = b"OVERRIDE_PATH = os.path.expanduser('~/.local/share/Steam/config/uioverrides/movies')"
+    replacement = b'''\n\ndef get_override_path():
+    steam_root = os.path.expanduser('~/.steam/root')
+    # Preserve existing installations, including custom and dangling symlinks.
+    # Never create the compatibility root as a directory before Steam does.
+    if os.path.lexists(steam_root):
+        steam_root = os.path.realpath(steam_root)
+    else:
+        steam_root = os.path.expanduser('~/.local/share/Steam')
+    return os.path.join(steam_root, 'config', 'uioverrides', 'movies')'''
+    assignment = original if isinstance(source, bytes) and original in source else canonical
+    if (not isinstance(source, bytes) or source.splitlines().count(assignment) != 1
+            or source.count(assignment) != 1 or b'get_override_path' in source):
         raise RuntimeError('Unsupported Animation Changer override path for compatibility patch')
+    apply = b"    override_path = f'{OVERRIDE_PATH}/{video}'"
+    startup = b'            os.makedirs(OVERRIDE_PATH, exist_ok=True)'
+    if source.count(apply) != 1 or source.count(startup) != 1 or source.count(b'OVERRIDE_PATH') != 3:
+        raise RuntimeError('Unsupported Animation Changer override path uses for compatibility patch')
+    result = source.replace(assignment, replacement, 1).replace(apply, b'''    override_directory = get_override_path()
+    os.makedirs(override_directory, exist_ok=True)
+    override_path = os.path.join(override_directory, video)''', 1).replace(
+        startup, b'            os.makedirs(get_override_path(), exist_ok=True)', 1)
     changed = dict(files)
-    changed[prefix + 'main.py'] = dict(files[prefix + 'main.py'], data=source.replace(original, replacement, 1))
+    changed[prefix + 'main.py'] = dict(files[prefix + 'main.py'], data=result)
     return changed
 
 

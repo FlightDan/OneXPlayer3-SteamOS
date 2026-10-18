@@ -6,7 +6,7 @@
 
 SteamOS support for the ONEXPLAYER 3 handheld, covering Game Mode, the KDE desktop, controller input and hardware controls, with Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game).
 
-The current main-branch integration release is OXP3 SteamOS 1.0.5, targeting SteamOS 3.10; check GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) for available installer assets. Script-based maintenance tools are also available for handhelds running other SteamOS versions.
+The current main-branch integration release is OXP3 SteamOS 1.0.6, targeting SteamOS 3.10; check GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) for available installer assets. Script-based maintenance tools are also available for handhelds running other SteamOS versions.
 
 Report bugs by email at **[dan@devdan.cc](mailto:dan@devdan.cc)** or through [GitHub Issues](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues).
 
@@ -136,7 +136,7 @@ Windows / SteamOS boot menu screenshot. D-pad and A/B are now working during boo
 
 ### Install a dual-boot system from Windows
 
-Download the complete Windows x64 installer ZIP from [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases). The current main-branch integration release is **1.0.5 stable**; read the [1.0.5 release notes](windows-installer/docs/RELEASE_1.0.5.md) before use.
+Download the complete Windows x64 installer ZIP from [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases). The current main-branch integration release is **1.0.6 stable**; read the [1.0.6 release notes](windows-installer/docs/RELEASE_1.0.6.md) before use.
 
 1. Download the Windows installer ZIP from Releases, extract it completely and keep the accompanying files together.
 2. Back up your data. If BitLocker or device encryption is enabled, save and verify the recovery key, suspend protection, then disable Secure Boot in BIOS / UEFI. Restore protection after confirming Windows starts normally.
@@ -147,7 +147,7 @@ Download the complete Windows x64 installer ZIP from [Releases](https://github.c
 
 System images are not included. Preparing SteamOS 3.10 and initializing some components requires an internet connection. See the [installation guide](windows-installer/docs/INSTALLATION_GUIDE.md) for full instructions.
 
-Version 1.0.5 provides the project's OXP3 control plugins and Opti2XMX; install third-party Decky plugins separately. New images include desktop and application-menu shortcuts for OXP3 Repairs and Project Updates.
+Version 1.0.6 provides the project's OXP3 control plugins and Opti2XMX; install third-party Decky plugins separately. New images include desktop and application-menu shortcuts for OXP3 Repairs and Project Updates.
 
 ### Update this project or install repairs from SteamOS
 
@@ -158,11 +158,11 @@ Open a terminal in SteamOS KDE Desktop Mode and run the following as the regular
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.5/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 
-Select the repairs or plugins you need; components download on demand. Version 1.0.5 provides signed maintenance packages and a Bash installer. See the [maintenance instructions](steamos-maintenance/README.md) and [validation record](steamos-maintenance/VALIDATION.md) for tested coverage and remaining checks.
+Select the repairs or plugins you need; components download on demand. Version 1.0.6 provides signed maintenance packages and a Bash installer. See the [maintenance instructions](steamos-maintenance/README.md) and [validation record](steamos-maintenance/VALIDATION.md) for tested coverage and remaining checks.
 
 The maintenance tool targets ONEXPLAYER 3 and checks compatibility per component. Native drivers, HDR, Decky and plugin runtimes still require SteamOS 3.10 / build 20260924.1000 / kernel 7.2.4. Other SteamOS versions currently have adapters for settings such as the on-screen keyboard and Flathub; incompatible items show the reason.
 
@@ -172,7 +172,7 @@ This updates the OXP3 project only; it does not upgrade SteamOS or change the of
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** is a Decky plugin developed for this adaptation. It provides native **XeSS XMX acceleration and XeSS frame generation** directly for compatible games, and **OptiScaler with XeSS frame-generation support** for other compatible games.
 
-OXP3 SteamOS 1.0.5 integrates Opti2XMX **0.2.4**. Its XeSS FG 2x / 3x / 4x controls remain experimental; see the [frame-generation notes](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md) for compatibility and test coverage.
+OXP3 SteamOS 1.0.6 integrates Opti2XMX **0.2.4**. Its XeSS FG 2x / 3x / 4x controls remain experimental; see the [frame-generation notes](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md) for compatibility and test coverage.
 
 - Configure XMX directly for native XeSS games, or use OptiScaler in other compatible games.
 - Control XMX acceleration and Opti injection independently, with installation, version switching, rollback and uninstall support.
