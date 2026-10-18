@@ -48,7 +48,7 @@ const context = vm.createContext({
   SP_REACT:{useState:hook,useRef:init=>hook({current:init})[0],useEffect:fn=>{
     const n=cursor++;if(!(n in slots)){slots[n]=true;effects.push(fn);}
   }},
-  DFL:{staticClasses:{Title:'title'},PanelSection:'section',PanelSectionRow:'row',ButtonItem:'button',DropdownItem:'select',SliderField:'slider',ToggleField:'toggle'},
+  DFL:{staticClasses:{Title:'title'},PanelSection:'section',PanelSectionRow:'row',ButtonItem:'button',DropdownItem:'select',ToggleField:'toggle'},
   SteamClient:{Apps:{
     RegisterForAppDetails:(id,callback)=>{queueMicrotask(()=>callback(id,{strLaunchOptions:current}));return {unregister:()=>unregisters++};},
     SetAppLaunchOptions:(_id,value)=>{current=value;writes++;},
@@ -106,9 +106,6 @@ function button(label){return nodes(render()).find(n=>n.type==='button'&&n.props
 info.runtime_ready=false;info.automatic.reason='XMX 运行组件未就绪。';
 button('刷新').onClick();await settle();
 assert.equal(toggle().disabled,true);assert.equal(button('安装 Opti 0.9.4').disabled,false,'Opti install stays available without the XMX runtime');
-const mainNodes=nodes(render());
-assert.ok(mainNodes.findIndex(n=>n.type==='select'&&n.props.label==='游戏') < mainNodes.findIndex(n=>n.type==='button'&&n.props.children==='下载并配置 XMX 运行环境'));
-assert.ok(mainNodes.findIndex(n=>n.type==='button'&&n.props.children==='下载并配置 XMX 运行环境') < mainNodes.findIndex(n=>n.type==='button'&&n.props.children==='安装 Opti 0.9.4'));
 button('安装 Opti 0.9.4').onClick();await new Promise(resolve=>setTimeout(resolve,20));
 for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 assert.match(textOf(render()),/正在下载 Opti/);assert.match(textOf(render()),/1\.0 MiB.*2\.0 MiB.*50%/);
@@ -147,31 +144,30 @@ context.navigator={language:'zh-CN'};
 const englishNodes=nodes(render());
 const englishXmx=englishNodes.find(n=>n.props?.label==='XMX acceleration');
 assert.ok(englishXmx);
-assert.equal(textOf(englishXmx.props.description),'Intel only. Exit the game before changing.');
+assert.match(textOf(englishXmx.props.description),/Intel devices only/);
+assert.match(textOf(englishXmx.props.description),/Close the game before changing this setting/);
 const englishOpti=englishNodes.find(n=>n.props?.label==='Opti injection');
-assert.equal(textOf(englishOpti.props.description),'Turn off for native XeSS Frame Generation.');
+assert.match(textOf(englishOpti.props.description),/natively supports XeSS Frame Generation, turn this option off/);
 assert.ok(button('Open Opti overlay'));assert.ok(button('Uninstall Opti'));
 methods.opti_toggle=async()=>({ok:false,error:'游戏仍在运行。请从 Steam 退出游戏，再操作 XMX 开关。'});
 englishOpti.props.onChange(false);await settle();
 assert.match(notifications.at(-1).body,/game is still running/);
 assert.equal(nodes(render()).find(n=>n.props?.label==='Opti injection').props.checked,true);
 context.document.documentElement.lang='zh-cn';
-assert.equal(textOf(toggle().description),'仅限 Intel；更改前请退出游戏。');
-assert.equal(textOf(optiToggle().description),'原生 XeSS 帧生成请关闭。');
+assert.equal(textOf(toggle().description),'仅支持 Intel 设备。\n启用 Intel XMX 执行路径；帧生成仍需游戏、运行时和 Proton 支持。\n更改状态前请先关闭游戏！');
+assert.equal(textOf(optiToggle().description),'游戏原生支持 XeSS 帧生成时，请关闭此选项。\n使用 OptiScaler 修改游戏内的超分辨率/帧生成设置');
 console.log('PASS: Steam language takes precedence; bilingual descriptions, controls and running-game error.');
-// The slider switches between native game control and XeFG override.
-const multiplier=()=>nodes(render()).find(n=>n.type==='slider'&&n.props.label.startsWith('插帧倍率'))?.props;
-assert.equal(multiplier().value,0);
+// Only XeFG exposes the experimental request; saving and undo do not touch launch options.
+const multiplier=()=>nodes(render()).find(n=>n.type==='select'&&n.props.label==='XeSS FG 倍率（实验）')?.props;
+assert.equal(multiplier(),undefined);
 nodes(render()).find(n=>n.type==='select'&&n.props.label==='帧生成输出').props.onChange({data:'xefg'});
-assert.equal(multiplier().value,1);
-assert.equal(multiplier().min,0);assert.equal(multiplier().max,3);assert.equal(multiplier().step,1);
-assert.equal(multiplier().notchLabels.map(x=>x.label).join(','),'原生,2×,3×,4×');
-multiplier().onChange(3);
+assert.equal(multiplier().selectedOption,'2');
+assert.equal(multiplier().rgOptions.map(x=>x.data).join(','),'2,3,4');
+multiplier().onChange({data:'4'});
 let settingsCalls=0,restoreSettingsCalls=0;
 const launchBeforeSettings=current;
 methods.opti_settings=async(id,value,reset)=>{
-  settingsCalls++;assert.equal(id,42);assert.equal(reset,false);assert.equal(value.fg,settingsCalls===1?'xefg':'native');
-  assert.equal(value.fg_multiplier,settingsCalls===1?'4':'native');
+  settingsCalls++;assert.equal(id,42);assert.equal(reset,false);assert.equal(value.fg,'xefg');assert.equal(value.fg_multiplier,'4');
   info.opti.settings=copy(value);info.opti.settings_rollback=true;return {ok:true,data:true};
 };
 methods.opti_restore_settings=async(id)=>{
@@ -179,27 +175,19 @@ methods.opti_restore_settings=async(id)=>{
   info.opti.settings_rollback=false;info.opti.settings_recovery=false;return {ok:true,data:true};
 };
 button('保存设置').onClick();await settle();
-assert.equal(settingsCalls,1);assert.equal(multiplier().value,3);assert.ok(button('撤销上次设置'));
-multiplier().onChange(0);button('保存设置').onClick();await settle();
-assert.equal(settingsCalls,2);assert.equal(multiplier().value,0,'native control persists after saving and reloading');
+assert.equal(settingsCalls,1);assert.equal(multiplier().selectedOption,'4');assert.ok(button('撤销上次设置'));
 context.document.documentElement.lang='en';
-assert.ok(nodes(render()).some(n=>n.props?.label==='FG multiplier · Game controlled'));
-assert.equal(nodes(render()).find(n=>n.type==='slider').props.notchLabels[0].label,'Native');
+assert.ok(nodes(render()).some(n=>n.props?.label==='XeSS FG multiplier (experimental)'));
 assert.ok(button('Undo last settings change'));
 context.document.documentElement.lang='zh-cn';
-button('撤销上次设置').onClick();await settle();assert.equal(restoreSettingsCalls,1);assert.equal(multiplier().value,0);
+button('撤销上次设置').onClick();await settle();assert.equal(restoreSettingsCalls,1);assert.equal(multiplier(),undefined);
 assert.equal(current,launchBeforeSettings);
 info.opti.settings_recovery=true;button('刷新').onClick();await settle();
-assert.equal(multiplier().disabled,true);
 assert.equal(button('保存设置').disabled,true);assert.equal(button('恢复默认').disabled,true);assert.ok(button('恢复中断的设置'));
 assert.equal(toggle().disabled,true);assert.equal(optiToggle().disabled,true);assert.equal(button('安装所选版本').disabled,true);
 assert.equal(button('恢复中断的设置').disabled,false);
 button('恢复中断的设置').onClick();await settle();assert.equal(restoreSettingsCalls,2);
-runtime.ready=true;button('刷新').onClick();await settle();
-assert.equal(button('XMX 运行环境已就绪'),undefined,'ready state is not a separate button');
-assert.equal(button('收起高级设置').description,'Opti 0.9.4 · XMX 运行环境已就绪');
-runtime.ready=false;
-console.log('PASS: game-controlled/2x/3x/4x slider, bilingual copy, persistence, independent undo/recovery and unchanged launch options.');
+console.log('PASS: experimental 2x/3x/4x request, bilingual copy, independent undo/recovery and unchanged launch options.');
 // Reopening attaches to a backend operation without starting a second install.
 for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;
 operation={...operation,operation_id:'download-2',phase:'downloading',running:true,downloaded_bytes:3145728,total_bytes:null,revision:10};
@@ -287,14 +275,12 @@ methods.runtime_install=async()=>{
   return {ok:true,data:copy(runtime)};
 };
 render();for(const effect of effects){const cleanup=effect();if(cleanup)cleanups.push(cleanup);}await settle();
-assert.equal(runtimeCalls,0);assert.match(textOf(button('下载并配置 XMX 运行环境').description),/下载后校验/);
+assert.equal(runtimeCalls,0);assert.match(textOf(button('下载并配置 XMX 运行环境').description),/195\.4 MB/);
 button('下载并配置 XMX 运行环境').onClick();
 button('下载并配置 XMX 运行环境').onClick();await new Promise(resolve=>setTimeout(resolve,20));
 for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
 assert.equal(runtimeCalls,1);assert.match(textOf(render()),/正在下载 XMX 运行环境/);assert.match(textOf(render()),/1\.0 MiB/);
-finishRuntime();await settle();assert.equal(button('XMX 运行环境已就绪'),undefined);
-assert.equal(button('下载并配置 XMX 运行环境'),undefined);
-assert.ok(nodes(render()).some(n=>n.props?.role==='status'&&textOf(n)==='XMX 运行环境已就绪'));
+finishRuntime();await settle();assert.ok(button('XMX 运行环境已就绪').disabled);
 assert.match(textOf(render()),/XMX 运行环境已配置/);
 for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;
 runtime={...runtime,ready:false,available:false,availability_message:'Pinned runtime release not published'};

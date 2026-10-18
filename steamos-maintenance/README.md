@@ -2,11 +2,11 @@
 
 面向已经安装旧版项目或其他版本 SteamOS 的 ONEXPLAYER 3：发现最新项目能力，按需下载维护包，选择安装修复和插件。提供桌面原生触屏窗口及同一套命令行后端。
 
-0.1.4 开发分支已将本工具的必要程序代码接入 Windows 安装器镜像准备，并提供 KDE 桌面及应用菜单入口。该入口直接打开现有 GTK 窗口，组件资源继续按需下载；正式镜像需预置发行公钥。详见[集成说明](../windows-installer/docs/MAINTENANCE_TOOL.md)。
+1.0.5 开发分支已将本工具的必要程序代码接入 Windows 安装器镜像准备，并提供 KDE 桌面及应用菜单入口。该入口直接打开现有 GTK 窗口，组件资源继续按需下载；正式镜像需预置发行公钥。详见[集成说明](../windows-installer/docs/MAINTENANCE_TOOL.md)。
 
 **这里的更新仅指本项目。工具不会升级 SteamOS，不改变 Valve 官方系统更新的现有设置。** SteamOS 新版本的适配、升级和迁移不在本工具首版范围内。
 
-0.1.4 提供正式签名维护包与 Bash 安装入口。已测范围与待测项见 [验证记录](VALIDATION.md)。源码目录不是可直接用于修复设备的发行包；不要把开发目录作为可信安装包提权运行。
+1.0.5 提供正式签名维护包与 Bash 安装入口。已测范围与待测项见 [验证记录](VALIDATION.md)。源码目录不是可直接用于修复设备的发行包；不要把开发目录作为可信安装包提权运行。
 
 ## 支持范围
 
@@ -24,12 +24,12 @@
 
 ### 轻量一键入口
 
-在 OXP3 的 SteamOS **桌面模式**下载并运行最新维护渠道的 `install-oxp3-maintenance.sh`。维护渠道使用独立 `maintenance-v` Tag，Windows 安装器仍保持 Latest。发布者会提供固定公钥指纹；首次使用需从可信项目来源取得脚本并核对该指纹。以下为 0.1.4 下载入口：
+在 OXP3 的 SteamOS **桌面模式**下载并运行最新维护渠道的 `install-oxp3-maintenance.sh`。维护渠道使用独立 `maintenance-v` Tag，Windows 安装器仍保持 Latest。发布者会提供固定公钥指纹；首次使用需从可信项目来源取得脚本并核对该指纹。以下为 1.0.5 下载入口：
 
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v0.1.4+maintenance.5/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.5/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 
@@ -111,14 +111,14 @@ systemctl --user enable --now oxp3-maintenance-check.timer
 
 ## 构建与验证
 
-推荐使用模块打包模式，生成小型核心入口、完整签名目录、独立组件附件、轻量安装脚本、公钥及校验清单，无需构建 Windows 安装器。0.1.4 的版本声明与独立 Opti 插件准备步骤见 [0.1.4 发布准备](docs/RELEASE-0.1.4.md)：
+推荐使用模块打包模式，生成小型核心入口、完整签名目录、独立组件附件、轻量安装脚本、公钥及校验清单，无需构建 Windows 安装器。1.0.5 的版本声明与独立 Opti 插件准备步骤见 [1.0.5 发布准备](docs/RELEASE-1.0.5.md)：
 
 ```bash
-python3 package_release.py --modular --payload /path/to/prepared-0.1.4 \
+python3 package_release.py --modular --payload /path/to/prepared-1.0.5 \
   --public-key /secure/publisher-public.pem \
   --private-key /secure/publisher-private.pem \
-  --output-dir /releases/maintenance-0.1.4 \
-  --tag maintenance-v0.1.4 --opti-tag maintenance-assets-v0.1.4
+  --output-dir /releases/maintenance-1.0.5 \
+  --tag maintenance-v1.0.5 --opti-tag maintenance-assets-v1.0.5
 ```
 
 输出目录须尚不存在且位于源码、载荷目录之外；父目录须已存在。流程不改源码目录的公钥，不生成生产密钥，失败不保留半成品发行目录，也不上传或发布。`maintenance/` 面向本项目维护 Tag，`opti2xmx/` 面向独立 Opti2XMX 仓库，`release-plan.json` 列出新附件与复用地址。传入 `--previous-catalog`、`--previous-signature` 可沿用已签发目录中内容完全相同的旧附件。完整流程见 [独立打包说明](docs/PACKAGING.md) 和 [模块分发协议](docs/modular-distribution.md)。省略 `--modular` 保留传统完整离线包模式；下面的 `build_bundle.py` 是底层单包入口。
