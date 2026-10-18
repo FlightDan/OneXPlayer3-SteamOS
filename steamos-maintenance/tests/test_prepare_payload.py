@@ -16,6 +16,8 @@ class PreparePayloadTests(unittest.TestCase):
         self.assertEqual(merged['repairs'][0]['id'], 'serial-console-policy')
         self.assertEqual(merged['plugins'][0]['id'], 'autoflatpaks-compat')
         self.assertFalse(merged['plugins'][0]['default'])
+        self.assertEqual(merged['plugins'][1]['id'], 'animation-changer-compat')
+        self.assertFalse(merged['plugins'][1]['default'])
         with self.assertRaises(PreparationError):
             _maintenance_options(merged, config)
 

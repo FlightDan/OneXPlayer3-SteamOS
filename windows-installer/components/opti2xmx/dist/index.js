@@ -115,6 +115,11 @@ const english = {
     '未找到该游戏的可见窗口，请回到游戏后重试': 'No visible window found for this game. Return to the game and try again.',
     '此游戏已有其他 XMX 配置，需要先迁移后才能用此开关。': 'This game has another XMX setup. Migrate it before using this switch.',
     'XMX 运行组件未就绪。': 'XMX runtime components are not ready.',
+    '请先选择要运行的游戏程序。': 'Select the game executable first.',
+    '选择与 Steam 启动选项一致的版本。': 'Choose the version used by your Steam launch option.',
+    '修复安装 Opti 0.9.4': 'Repair Opti 0.9.4 installation',
+    '缺少注入文件；备份现有文件后重新安装，可回退。': 'Injector missing. Back up existing files and reinstall; rollback is available.',
+    '游戏已有注入文件，请先迁移或处理冲突：': 'An injector already exists. Migrate it or resolve the conflict first: ',
     '请先从 Steam 用 Proton 启动游戏一次，退出后点击刷新。': 'Launch this game once with Proton, exit, then refresh.',
     '尚未发现 XeSS。请先为此游戏安装 OptiScaler 并运行一次，再刷新。': 'XeSS was not found. Install OptiScaler for this game, run it once, then refresh.',
     '未识别到可接入的游戏程序，请检查游戏安装。': 'No compatible executable found. Check the game installation.',
@@ -162,6 +167,18 @@ const definePlugin = (fn) => {
     };
 };
 
+let selection = { appid: 0, executables: {} };
+const selectionListeners = new Set();
+const selectionSnapshot = () => selection;
+function subscribeSelection(listener) {
+    selectionListeners.add(listener);
+    return () => { selectionListeners.delete(listener); };
+}
+function updateSelection(next) {
+    selection = next;
+    for (const listener of selectionListeners)
+        listener();
+}
 const inventory = callable('inventory');
 const inspect = callable('inspect_game');
 const enable = callable('enable');
@@ -237,6 +254,7 @@ function Content() {
     const acceptedRequest = SP_REACT.useRef(0);
     const refreshNeeded = SP_REACT.useRef(null);
     const [runtime, setRuntime] = SP_REACT.useState(null);
+    const session = SP_REACT.useSyncExternalStore(subscribeSelection, selectionSnapshot);
     const busy = localBusy || operation?.running === true;
     function acceptOperation(value) {
         if (!mounted.current || value.schema !== 1 || !Number.isSafeInteger(value.revision)
@@ -276,9 +294,16 @@ function Content() {
         const [data, launch] = await Promise.all([inspect(id).then(unwrap), readLaunch(id)]);
         if (!mounted.current || selected.current !== id || sequence !== loadSequence.current)
             return data;
+        const remembered = selection.executables[id] || '';
+        const valid = data.automatic.candidates.includes(remembered) && data.executables.includes(remembered);
+        if (remembered && !valid) {
+            const executables = { ...selection.executables };
+            delete executables[id];
+            updateSelection({ ...selection, executables });
+        }
         setInfo(data);
         setActualLaunch(launch);
-        setManualExe('');
+        setManualExe(valid ? remembered : '');
         if (data.opti)
             setSettings(data.opti.settings);
         setRemoveConfirm(false);
@@ -306,6 +331,13 @@ function Content() {
         }
     }
     async function select(id) {
+        if (!games.some(game => game.appid === id))
+            return;
+        localStorage.setItem('opti2xmx-selected', String(id));
+        if (selection.appid !== id)
+            updateSelection({ ...selection, appid: id });
+        if (!mounted.current)
+            return;
         await task(t('正在检查这个游戏…'), async () => {
             setAppid(id);
             setInfo(null);
@@ -313,9 +345,12 @@ function Content() {
             selected.current = id;
             await load(id);
             setMessage('');
-            localStorage.setItem('opti2xmx-selected', String(id));
         });
     }
+    SP_REACT.useEffect(() => {
+        if (!busy && session.appid && selected.current !== session.appid && games.some(g => g.appid === session.appid))
+            void select(session.appid);
+    }, [session.appid, games, busy]);
     SP_REACT.useEffect(() => {
         mounted.current = true;
         let alive = true, polling = false;
@@ -364,13 +399,14 @@ function Content() {
             if (!mounted.current)
                 return;
             setGames(list);
-            const previous = Number(localStorage.getItem('opti2xmx-selected'));
+            const previous = Number(localStorage.getItem('opti2xmx-selected')) || selection.appid;
             const attached = latestOperation.current;
             const attach = attached?.running || attached?.phase === 'awaiting-launch';
             const id = (attach ? list.find(g => g.appid === attached?.appid)?.appid : undefined) || list.find(g => g.appid === previous)?.appid || list[0]?.appid;
             if (id) {
                 selected.current = id;
                 setAppid(id);
+                updateSelection({ ...selection, appid: id });
                 await load(id);
                 setMessage('');
             }
@@ -388,11 +424,13 @@ function Content() {
     }
     const state = info?.state;
     const active = state?.status === 'active' && actualLaunch === state.launch;
-    const managed = !!state && state.status !== 'restored';
+    const managed = !!state && !['restored', 'failed'].includes(state.status);
     const pending = managed && state?.status !== 'active';
-    const executable = manualExe || info?.automatic.executable || '';
+    const rememberedExe = session.executables[appid] || manualExe;
+    const validManualExe = info?.executables.includes(rememberedExe) && info.automatic.candidates.includes(rememberedExe) ? rememberedExe : '';
+    const executable = info?.automatic.executable || validManualExe;
     const needsChoice = !!info && !info.automatic.executable && info.automatic.candidates.length > 1;
-    const reason = needsChoice && manualExe && info?.automatic.reason === '发现多个游戏程序，请在下面确认一次。'
+    const reason = needsChoice && validManualExe && info?.automatic.reason === '发现多个游戏程序，请在下面确认一次。'
         ? '' : info?.automatic.reason || '';
     const blocked = !managed && (!!reason || !executable);
     async function toggle(want) {
@@ -420,6 +458,10 @@ function Content() {
         });
     }
     const opti = info?.opti;
+    const migrateOpti = !!opti?.installed && !opti.incomplete;
+    const installReason = !info?.prefix_ready ? '请先从 Steam 用 Proton 启动游戏一次，退出后点击刷新。'
+        : !executable ? '请先选择要运行的游戏程序。'
+            : !migrateOpti && managed ? '请先关闭 XMX，再安装、回退或卸载 Opti' : '';
     const optiPending = !!opti?.pending;
     const configBlocked = optiPending || !!opti?.settings_recovery;
     async function toggleOpti(want) {
@@ -485,11 +527,18 @@ function Content() {
                     await load(appid);
             }
         }), children: t('下载并配置 XMX 运行环境') });
-    return SP_JSX.jsxs(DFL.PanelSection, { children: [progressDisconnected && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", children: t('进度连接暂不可用，正在重试。') }) }), SP_JSX.jsx(DFL.DropdownItem, { label: t('游戏'), layout: "below", disabled: busy, selectedOption: appid, strDefaultLabel: t('选择游戏'), rgOptions: games.map(g => ({ data: g.appid, label: g.name })), onChange: v => void select(Number(v.data)) }), info ? SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.ToggleField, { label: t('XMX 加速'), checked: active, disabled: busy || blocked || pending || configBlocked, description: t('仅限 Intel；更改前请退出游戏。'), onChange: want => void toggle(want) }), opti?.managed && SP_JSX.jsx(DFL.ToggleField, { label: t('Opti 注入'), checked: opti.injection_enabled, disabled: busy || pending || configBlocked, description: t('原生 XeSS 帧生成请关闭。'), onChange: want => void toggleOpti(want) }), opti?.installed && opti.injection_enabled !== false && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || configBlocked, onClick: () => task(t('正在打开 Opti 面板…'), async () => {
+    return SP_JSX.jsxs(DFL.PanelSection, { children: [progressDisconnected && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", children: t('进度连接暂不可用，正在重试。') }) }), SP_JSX.jsx(DFL.DropdownItem, { label: t('游戏'), layout: "below", disabled: busy, selectedOption: appid, strDefaultLabel: t('选择游戏'), rgOptions: games.map(g => ({ data: g.appid, label: g.name })), onChange: v => void select(Number(v.data)) }), info ? SP_JSX.jsxs(SP_JSX.Fragment, { children: [needsChoice && !managed && SP_JSX.jsx(DFL.DropdownItem, { label: t('确认游戏程序'), layout: "below", selectedOption: validManualExe, description: t('选择与 Steam 启动选项一致的版本。'), disabled: busy, strDefaultLabel: t('请选择要运行的版本'), rgOptions: info.automatic.candidates.map(p => ({ data: p, label: p })), onChange: v => {
+                            const value = String(v.data), id = info.appid;
+                            if (selection.appid !== id || !info.executables.includes(value) || !info.automatic.candidates.includes(value))
+                                return;
+                            updateSelection({ ...selection, executables: { ...selection.executables, [id]: value } });
+                            if (mounted.current)
+                                setManualExe(value);
+                        } }), SP_JSX.jsx(DFL.ToggleField, { label: t('XMX 加速'), checked: active, disabled: busy || blocked || pending || configBlocked, description: t(blocked ? reason || '请先选择要运行的游戏程序。' : '仅限 Intel；更改前请退出游戏。'), onChange: want => void toggle(want) }), opti?.managed && SP_JSX.jsx(DFL.ToggleField, { label: t('Opti 注入'), checked: opti.injection_enabled, disabled: busy || pending || configBlocked, description: t('原生 XeSS 帧生成请关闭。'), onChange: want => void toggleOpti(want) }), opti?.installed && !opti.incomplete && opti.injection_enabled !== false && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || configBlocked, onClick: () => task(t('正在打开 Opti 面板…'), async () => {
                             DFL.Navigation.CloseSideMenus();
                             unwrap(await optiPanel(appid));
                             setMessage(t('已发送面板快捷键。'));
-                        }), children: t('打开 Opti 面板') }), runtimeControl, opti && !opti.managed && !optiPending && SP_JSX.jsxs(SP_JSX.Fragment, { children: [!opti.installed && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), selectedOption: source, disabled: busy, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !executable || (!opti.installed && managed), description: opti.installed ? t('保留文件并建立回退备份。') : undefined, onClick: () => optiAction(opti.installed ? 'migrate' : 'install'), children: opti.installed ? t('迁移现有 Opti') : t('安装 Opti 0.9.4') })] }), optiPending && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || opti?.status === 'recovery_required', onClick: () => optiAction('finish'), children: t('完成 Opti 启动设置') }), needsChoice && !managed && SP_JSX.jsx(DFL.DropdownItem, { label: t('确认游戏程序'), layout: "below", selectedOption: manualExe, description: t('检测到多个版本，只需确认一次。'), disabled: busy, strDefaultLabel: t('请选择要运行的版本'), rgOptions: info.automatic.candidates.map(p => ({ data: p, label: p })), onChange: v => setManualExe(String(v.data)) }), pending && state?.status === 'pending_launch' && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(true), children: t('继续开启') }), managed && (!active || pending) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(false), children: t('恢复原配置') }), (opti?.managed || opti?.rollback) && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, description: [opti.version ? 'Opti ' + opti.version : '', runtimeReady].filter(Boolean).join(' · '), onClick: () => setAdvanced(!advanced), children: advanced ? t('收起高级设置') : t('高级设置') }), advanced && SP_JSX.jsxs(SP_JSX.Fragment, { children: [opti.managed && opti.version.startsWith('0.9') && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('超分输出'), disabled: busy || active || configBlocked, selectedOption: settings.sr, description: active ? t('XMX 开启时使用 XeSS。') : undefined, rgOptions: options([['xess', 'XeSS'], ['fsr31', 'FSR 3.1'], ['fsr22', 'FSR 2.2'], ['dlss', t('DLSS（需要支持的显卡）')]]), onChange: v => setSettings({ ...settings, sr: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('帧生成输出'), disabled: busy || configBlocked, selectedOption: settings.fg, description: opti.injection_enabled ? undefined : t('开启 Opti 注入后生效。'), rgOptions: options([['native', t('游戏原生（不接管）')], ['fsrfg', t('FSR 帧生成')], ['xefg', t('XeSS 帧生成（实验）')]]), onChange: v => setSettings({ ...settings, fg: String(v.data), fg_multiplier: v.data === 'native' ? 'native' : settings.fg_multiplier === 'native' ? '2' : settings.fg_multiplier || '2' }) }), settings.fg !== 'fsrfg' && SP_JSX.jsx(DFL.SliderField, { label: t('插帧倍率') + (settings.fg === 'native' ? ' · ' + t('游戏原生控制') : ''), disabled: busy || configBlocked, value: settings.fg === 'native' ? 0 : Math.max(1, multipliers.indexOf(settings.fg_multiplier || '2')), min: 0, max: 3, step: 1, validValues: "steps", notchCount: 4, notchTicksVisible: true, showValue: false, notchLabels: [t('原生'), '2×', '3×', '4×'].map((label, notchIndex) => ({ label, notchIndex })), onChange: value => setSettings({ ...settings, fg: value === 0 ? 'native' : 'xefg', fg_multiplier: multipliers[value] }) }), settings.fg !== 'native' && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('游戏 FG 类型'), disabled: busy || configBlocked, selectedOption: settings.fg_input, description: t('选择游戏支持的帧生成类型。'), rgOptions: options([['fsrfg30', 'FSR 3.0 FG'], ['fsrfg', 'FSR 3.1 FG'], ['dlssg', 'DLSS FG'], ['upscaler', t('无原生 FG：使用超分输入')]]), onChange: v => setSettings({ ...settings, fg_input: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('显卡伪装'), disabled: busy || active || configBlocked, selectedOption: settings.spoof, description: active ? t('XMX 开启时保留真实 Intel 身份。') : t('实验兼容选项；改身份不保证解锁功能。'), rgOptions: options([['real', t('真实显卡（推荐）')], ['nvidia', 'NVIDIA'], ['amd', 'AMD'], ['intel', 'Intel Arc']]), onChange: v => setSettings({ ...settings, spoof: String(v.data) }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, onClick: () => saveSettings(), children: t('保存设置') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, description: t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。'), onClick: () => saveSettings(true), children: t('恢复默认') }), (opti.settings_rollback || opti.settings_recovery) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending, description: t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。'), onClick: () => task(t('正在撤销上次设置…'), async () => { unwrap(await optiRestoreSettings(appid)); await load(appid); setMessage(t('已恢复上次保存前的设置，下次启动生效。')); }), children: opti.settings_recovery ? t('恢复中断的设置') : t('撤销上次设置') })] }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('Opti 版本'), disabled: busy || configBlocked, selectedOption: version, rgOptions: options([['0.9.4', t('0.9.4（当前稳定版）')], ['0.7.9', t('0.7.9（兼容旧版）')]]), onChange: v => setVersion(String(v.data)) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), disabled: busy || configBlocked, selectedOption: source, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.injection_enabled, description: managed ? t('先关闭 XMX，再更换 Opti 版本。') : t('开启 Opti 注入后可更换版本；保留回退备份。'), onClick: () => optiAction('install'), children: t('安装所选版本') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.rollback, description: t('撤销上次安装、迁移或卸载；需先关闭 XMX。'), onClick: () => optiAction('rollback'), children: t('回退上次操作') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.managed, description: t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。'), onClick: () => removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true), children: removeConfirm ? t('确认卸载 Opti') : t('卸载 Opti') })] })] }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: error ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }) : SP_JSX.jsxs(SP_JSX.Fragment, { children: [runtimeControl, SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }), operation?.operation_id && (operation.appid === appid || operation.running || operation.kind === 'runtime_install') && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { role: operation.phase === 'failed' ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: [t((operation.kind === 'runtime_install' ? { started: '正在准备 XMX 运行环境…', downloading: '正在下载 XMX 运行环境…', extracting: '正在解压 XMX 运行环境…', installing: '正在验证并配置 XMX 运行环境…', completed: 'XMX 运行环境配置完成。', failed: 'XMX 运行环境配置未完成。' } : { started: '正在准备 Opti…', downloading: '正在下载 Opti…', 'cache-hit': '正在复用 Opti 缓存…', extracting: '正在解压 Opti…', installing: '正在安装 Opti…', 'awaiting-launch': 'Opti 已准备，等待确认启动设置。', completed: 'Opti 操作已完成。', failed: 'Opti 操作未完成。' })[operation.phase] || '正在处理 Opti 配置…'), operation.downloaded_bytes > 0 && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", (operation.downloaded_bytes / 1048576).toFixed(1), " MiB", operation.total_bytes !== null && operation.total_bytes > 0 && operation.downloaded_bytes <= operation.total_bytes
+                        }), children: t('打开 Opti 面板') }), runtimeControl, opti && !opti.managed && !optiPending && SP_JSX.jsxs(SP_JSX.Fragment, { children: [!migrateOpti && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), selectedOption: source, disabled: busy, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !!installReason, description: installReason ? t(installReason) : opti.incomplete ? t('缺少注入文件；备份现有文件后重新安装，可回退。') : migrateOpti ? t('保留文件并建立回退备份。') : undefined, onClick: () => optiAction(migrateOpti ? 'migrate' : 'install'), children: opti.incomplete ? t('修复安装 Opti 0.9.4') : migrateOpti ? t('迁移现有 Opti') : t('安装 Opti 0.9.4') })] }), optiPending && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || opti?.status === 'recovery_required', onClick: () => optiAction('finish'), children: t('完成 Opti 启动设置') }), pending && state?.status === 'pending_launch' && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(true), children: t('继续开启') }), managed && (!active || pending) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(false), children: t('恢复原配置') }), (opti?.managed || opti?.rollback) && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, description: [opti.version ? 'Opti ' + opti.version : '', runtimeReady].filter(Boolean).join(' · '), onClick: () => setAdvanced(!advanced), children: advanced ? t('收起高级设置') : t('高级设置') }), advanced && SP_JSX.jsxs(SP_JSX.Fragment, { children: [opti.managed && opti.version.startsWith('0.9') && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('超分输出'), disabled: busy || active || configBlocked, selectedOption: settings.sr, description: active ? t('XMX 开启时使用 XeSS。') : undefined, rgOptions: options([['xess', 'XeSS'], ['fsr31', 'FSR 3.1'], ['fsr22', 'FSR 2.2'], ['dlss', t('DLSS（需要支持的显卡）')]]), onChange: v => setSettings({ ...settings, sr: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('帧生成输出'), disabled: busy || configBlocked, selectedOption: settings.fg, description: opti.injection_enabled ? undefined : t('开启 Opti 注入后生效。'), rgOptions: options([['native', t('游戏原生（不接管）')], ['fsrfg', t('FSR 帧生成')], ['xefg', t('XeSS 帧生成（实验）')]]), onChange: v => setSettings({ ...settings, fg: String(v.data), fg_multiplier: v.data === 'native' ? 'native' : settings.fg_multiplier === 'native' ? '2' : settings.fg_multiplier || '2' }) }), settings.fg !== 'fsrfg' && SP_JSX.jsx(DFL.SliderField, { label: t('插帧倍率') + (settings.fg === 'native' ? ' · ' + t('游戏原生控制') : ''), disabled: busy || configBlocked, value: settings.fg === 'native' ? 0 : Math.max(1, multipliers.indexOf(settings.fg_multiplier || '2')), min: 0, max: 3, step: 1, validValues: "steps", notchCount: 4, notchTicksVisible: true, showValue: false, notchLabels: [t('原生'), '2×', '3×', '4×'].map((label, notchIndex) => ({ label, notchIndex })), onChange: value => setSettings({ ...settings, fg: value === 0 ? 'native' : 'xefg', fg_multiplier: multipliers[value] }) }), settings.fg !== 'native' && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('游戏 FG 类型'), disabled: busy || configBlocked, selectedOption: settings.fg_input, description: t('选择游戏支持的帧生成类型。'), rgOptions: options([['fsrfg30', 'FSR 3.0 FG'], ['fsrfg', 'FSR 3.1 FG'], ['dlssg', 'DLSS FG'], ['upscaler', t('无原生 FG：使用超分输入')]]), onChange: v => setSettings({ ...settings, fg_input: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('显卡伪装'), disabled: busy || active || configBlocked, selectedOption: settings.spoof, description: active ? t('XMX 开启时保留真实 Intel 身份。') : t('实验兼容选项；改身份不保证解锁功能。'), rgOptions: options([['real', t('真实显卡（推荐）')], ['nvidia', 'NVIDIA'], ['amd', 'AMD'], ['intel', 'Intel Arc']]), onChange: v => setSettings({ ...settings, spoof: String(v.data) }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, onClick: () => saveSettings(), children: t('保存设置') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, description: t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。'), onClick: () => saveSettings(true), children: t('恢复默认') }), (opti.settings_rollback || opti.settings_recovery) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending, description: t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。'), onClick: () => task(t('正在撤销上次设置…'), async () => { unwrap(await optiRestoreSettings(appid)); await load(appid); setMessage(t('已恢复上次保存前的设置，下次启动生效。')); }), children: opti.settings_recovery ? t('恢复中断的设置') : t('撤销上次设置') })] }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('Opti 版本'), disabled: busy || configBlocked, selectedOption: version, rgOptions: options([['0.9.4', t('0.9.4（当前稳定版）')], ['0.7.9', t('0.7.9（兼容旧版）')]]), onChange: v => setVersion(String(v.data)) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), disabled: busy || configBlocked, selectedOption: source, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.injection_enabled, description: managed ? t('先关闭 XMX，再更换 Opti 版本。') : t('开启 Opti 注入后可更换版本；保留回退备份。'), onClick: () => optiAction('install'), children: t('安装所选版本') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.rollback, description: t('撤销上次安装、迁移或卸载；需先关闭 XMX。'), onClick: () => optiAction('rollback'), children: t('回退上次操作') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.managed, description: t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。'), onClick: () => removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true), children: removeConfirm ? t('确认卸载 Opti') : t('卸载 Opti') })] })] }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: error ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }) : SP_JSX.jsxs(SP_JSX.Fragment, { children: [runtimeControl, SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }), operation?.operation_id && (operation.appid === appid || operation.running || operation.kind === 'runtime_install') && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { role: operation.phase === 'failed' ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: [t((operation.kind === 'runtime_install' ? { started: '正在准备 XMX 运行环境…', downloading: '正在下载 XMX 运行环境…', extracting: '正在解压 XMX 运行环境…', installing: '正在验证并配置 XMX 运行环境…', completed: 'XMX 运行环境配置完成。', failed: 'XMX 运行环境配置未完成。' } : { started: '正在准备 Opti…', downloading: '正在下载 Opti…', 'cache-hit': '正在复用 Opti 缓存…', extracting: '正在解压 Opti…', installing: '正在安装 Opti…', 'awaiting-launch': 'Opti 已准备，等待确认启动设置。', completed: 'Opti 操作已完成。', failed: 'Opti 操作未完成。' })[operation.phase] || '正在处理 Opti 配置…'), operation.downloaded_bytes > 0 && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", (operation.downloaded_bytes / 1048576).toFixed(1), " MiB", operation.total_bytes !== null && operation.total_bytes > 0 && operation.downloaded_bytes <= operation.total_bytes
                                     && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" / ", (operation.total_bytes / 1048576).toFixed(1), " MiB \u00B7 ", (operation.downloaded_bytes * 100 / operation.total_bytes).toFixed(0), "%"] })] }), operation.error && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", t(operation.error)] })] }) }), runtimeReady && !(opti?.managed || opti?.rollback) && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", children: runtimeReady }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => task(t('正在刷新…'), async () => {
                     setRuntime(unwrap(await runtimeStatus()));
                     setGames(unwrap(await inventory()));

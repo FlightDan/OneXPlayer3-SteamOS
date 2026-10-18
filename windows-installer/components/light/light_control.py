@@ -251,7 +251,7 @@ class LightController:
         except (OSError, RuntimeError, ValueError) as exc:
             backend, available, error = None, False, str(exc)
         return {"available": available, "backend": backend, "zones": copy.deepcopy(self._applied),
-                "error": error, "readback": False, "version": "0.1.0"}
+                "error": error, "readback": False, "version": "0.1.1"}
 
     def status(self):
         with self._lock: return self._status()

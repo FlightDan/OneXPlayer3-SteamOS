@@ -17,7 +17,7 @@ class DistributionTests(unittest.TestCase):
     _openssl_adapter = test_bundle.BundleTests._openssl_adapter
     _sign = test_bundle.BundleTests._sign
 
-    def _build(self, output='distribution', previous=None):
+    def _build(self, output='distribution', previous=None, extra_plugins=()):
         # The fixture source stays unexecuted. Bootstrap builder only needs files.
         from build_installer import BOOTSTRAP_FILES
         for name in BOOTSTRAP_FILES:
@@ -26,6 +26,7 @@ class DistributionTests(unittest.TestCase):
             {'id': 'wifi', 'en': 'WiFi', 'zh': 'WiFi', 'default': True, 'dependencies': []},
             {'id': 'opti2xmx', 'en': 'Opti', 'zh': 'Opti', 'default': True, 'dependencies': ['decky']}],
             'plugins': [{'id': 'decky', 'en': 'Decky', 'zh': 'Decky', 'default': True, 'dependencies': []}]}
+        options['plugins'].extend(extra_plugins)
         (self.payload / 'components/options.json').write_text(json.dumps(options))
         (self.payload / 'components/common.txt').write_bytes(b'common helper')
         integration = self.payload / 'integration'
@@ -83,6 +84,24 @@ class DistributionTests(unittest.TestCase):
                 self.assertEqual(builder._group('payload/' + tree + '/' + component + '/000.bin', {component}), ('core', None))
         self.assertEqual(builder._group('payload/integration/wifi/000.bin', {'wifi'}), ('runtime-wifi', 'wifi'))
         self.assertEqual(builder._group('payload/integration/oxp3-fan/000.bin', {'oxp3-fan'}), ('plugin-oxp3-fan', 'oxp3-fan'))
+
+    def test_animation_repair_is_optional_core_only_and_tracks_its_adapter_revision(self):
+        option = {'id': 'animation-changer-compat', 'en': 'Animation Changer path repair',
+                  'zh': 'Animation Changer 路径修复', 'default': False, 'dependencies': []}
+        adapter = self.source / 'oxp3_maintenance/animation_changer_compat.py'
+        adapter.write_bytes(b'# narrow installed-plugin adapter version one\n')
+        first = self._build('animation-first', extra_plugins=[option])
+        adapter.write_bytes(b'# narrow installed-plugin adapter version two\n')
+        second = self._build('animation-second', extra_plugins=[option])
+        first_item = next(x for x in first['catalog']['components'] if x['id'] == option['id'])
+        second_item = next(x for x in second['catalog']['components'] if x['id'] == option['id'])
+        self.assertFalse(first_item['default'])
+        self.assertTrue(first_item['available'])
+        self.assertEqual(first['catalog']['component_packages'][option['id']], ['core'])
+        self.assertNotEqual(first_item['revision'], second_item['revision'])
+        seed = bundle.inspect_bundle(self._seed(first), self.public, openssl=self.openssl)
+        self.assertIn('app/oxp3_maintenance/animation_changer_compat.py', seed['files'])
+        self.assertFalse(any(name.endswith('.zip') for name in seed['files']))
 
     def test_dependency_closure_downloads_only_required_groups_and_cache_reuses(self):
         result, requests = self._build(), []

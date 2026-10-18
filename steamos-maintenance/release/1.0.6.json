@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "同步 OXP3 Light 0.1.1、Opti2XMX 0.2.6 与已安装 Animation Changer 1.3.2 路径兼容修复。CPU、原生功耗组件和研究代码保持排除新改动。"
+}

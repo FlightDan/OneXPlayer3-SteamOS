@@ -32,7 +32,7 @@ EXCLUDED = {
     'shared-storage': 'Separate shared-storage and mount-layout operation.',
 }
 SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-lock',
-           'windows-reboot', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat'}
+           'windows-reboot', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat', 'animation-changer-compat'}
 MANIFEST_ADAPTERS = {'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'fan-driver',
                      'native-tdp', 'overlay', 'wifi', 'xe-dsb', 'gm7-resume',
                      'gamescope-env', 'input', 'gyro', 'legacy-runtime', 'manager',
@@ -122,11 +122,11 @@ def _maintenance_options(options, additions):
         raise PreparationError('Invalid maintenance-only options')
     existing = {item['id'] for group in ('repairs', 'plugins') for item in result[group]}
     for group in ('repairs', 'plugins'):
-        expected = 'serial-console-policy' if group == 'repairs' else 'autoflatpaks-compat'
+        expected = {'serial-console-policy'} if group == 'repairs' else {'autoflatpaks-compat', 'animation-changer-compat'}
         for item in additions[group]:
             if not isinstance(item, dict) or item.get('id') in existing:
                 raise PreparationError('Duplicate maintenance-only option')
-            if item.get('id') != expected:
+            if item.get('id') not in expected:
                 raise PreparationError('Unreviewed maintenance-only adapter/category')
             if item.get('default') is not (group == 'repairs') or item.get('dependencies') != []:
                 raise PreparationError('Invalid maintenance-only defaults/dependencies')

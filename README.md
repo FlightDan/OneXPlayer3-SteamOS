@@ -7,7 +7,7 @@
 
 为 ONEXPLAYER 3 掌机提供 SteamOS 支持，适配游戏模式、KDE 桌面、手柄与硬件控制，并支持 Intel XeSS XMX 加速与 XeSS 帧生成（如游戏支持）。
 
-当前 main 分支整合版为 OXP3 SteamOS 1.0.5，目标为 SteamOS 3.10；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。同时为使用其他版本 SteamOS 的掌机提供脚本维护工具。
+当前 main 分支整合版为 OXP3 SteamOS 1.0.6，目标为 SteamOS 3.10；完整安装包的下载状态见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)。同时为使用其他版本 SteamOS 的掌机提供脚本维护工具。
 
 发现问题，请发送邮件至 **[dan@devdan.cc](mailto:dan@devdan.cc)**，或提交 [GitHub Issue](https://github.com/FlightDan/OneXPlayer3-SteamOS/issues)。
 
@@ -137,7 +137,7 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 ### 在 Windows 中使用安装器安装双系统
 
-完整 Windows x64 安装应用 ZIP 通过 [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。当前 main 分支整合版为 **1.0.5 stable**；使用前请阅读 [1.0.5 发布说明](windows-installer/docs/RELEASE_1.0.5.md)。
+完整 Windows x64 安装应用 ZIP 通过 [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 提供。当前 main 分支整合版为 **1.0.6 stable**；使用前请阅读 [1.0.6 发布说明](windows-installer/docs/RELEASE_1.0.6.md)。
 
 1. 从 Releases 下载 Windows 安装应用 ZIP，完整解压并保留同目录文件。
 2. 备份现有数据；如启用 BitLocker / 设备加密，保存并确认恢复密钥可用，暂停保护后进入 BIOS / UEFI 关闭安全启动（Secure Boot）。安装后确认 Windows 正常启动，再恢复保护。
@@ -148,7 +148,7 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 
 安装包不含系统镜像，准备 SteamOS 3.10 及部分组件初始化需要联网。完整步骤见[安装指南](windows-installer/docs/INSTALLATION_GUIDE.md)。
 
-1.0.5 提供本项目的 OXP3 控制插件与 Opti2XMX；第三方 Decky 插件由用户自行安装。新镜像内置“OXP3 修复与项目更新”桌面及应用菜单入口。
+1.0.6 提供本项目的 OXP3 控制插件与 Opti2XMX；第三方 Decky 插件由用户自行安装。新镜像内置“OXP3 修复与项目更新”桌面及应用菜单入口。
 
 ### 在 SteamOS 中更新本项目或安装修复
 
@@ -159,11 +159,11 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.5/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 
-按窗口提示选择需要的修复或插件，所需组件会按选择下载。1.0.5 提供正式签名维护包与 Bash 安装入口；使用说明见[维护工具文档](steamos-maintenance/README.md)，已测范围与待测项见[验证记录](steamos-maintenance/VALIDATION.md)。
+按窗口提示选择需要的修复或插件，所需组件会按选择下载。1.0.6 提供正式签名维护包与 Bash 安装入口；使用说明见[维护工具文档](steamos-maintenance/README.md)，已测范围与待测项见[验证记录](steamos-maintenance/VALIDATION.md)。
 
 维护工具面向 ONEXPLAYER 3，按组件检查兼容性。原生驱动、HDR、Decky 与插件运行库仍要求 SteamOS 3.10 / build 20260924.1000 / 内核 7.2.4；其他 SteamOS 版本目前提供屏幕键盘、Flathub 等已适配设置，不兼容项会显示原因。
 
@@ -173,7 +173,7 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** 是为这套适配开发的 Decky 插件，可为兼容的游戏直接提供原生的 **XeSS XMX 加速与 XeSS 帧生成**，并为其他兼容游戏提供支持 **XeSS 帧生成的 OptiScaler**。
 
-1.0.5 整合 Opti2XMX **0.2.4**；其 XeSS FG 2x / 3x / 4x 控件仍标为实验性，兼容性与测试范围见[帧生成说明](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md)。
+1.0.6 整合 Opti2XMX **0.2.4**；其 XeSS FG 2x / 3x / 4x 控件仍标为实验性，兼容性与测试范围见[帧生成说明](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md)。
 
 - 原生 XeSS 游戏可直接配置 XMX；其他兼容游戏可通过 OptiScaler 接入。
 - XMX 加速与 Opti 注入独立开关，支持安装、版本切换、回退和卸载。

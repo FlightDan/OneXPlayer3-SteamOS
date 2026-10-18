@@ -16,6 +16,13 @@
       "en": "AutoFlatpaks · battery-state repair for an installed version",
       "default": false,
       "dependencies": []
+    },
+    {
+      "id": "animation-changer-compat",
+      "zh": "Animation Changer · 已安装版本路径兼容修复",
+      "en": "Animation Changer · path repair for an installed version",
+      "default": false,
+      "dependencies": []
     }
   ]
 }

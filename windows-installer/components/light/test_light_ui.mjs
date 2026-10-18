@@ -25,115 +25,133 @@ function harness({language="en-US",status=async()=>goodStatus(),write=async()=>g
   const text=node=>typeof node==="string"?node:(node?.children||[]).map(text).join(" ");
   const section=title=>all().find(n=>n.type==="PanelSection"&&n.props.title===title);
   const controls=(title,type)=>all(section(title)).filter(n=>n.type===type);
-  const unmount=()=>{for(const cleanup of effects)if(typeof cleanup==="function")cleanup();};
+  const unmount=()=>{for(const cleanup of effects)if(typeof cleanup==="function")cleanup();mounted=false;states=[];refs=[];effects=[];};
   render();
   return{render,all,text,section,controls,calls,changed,unmount,plugin};
 }
 
-test("mount and draft edits never write; apply affects only the selected zone",async()=>{
+
+const rings="Paired joystick rings",xbox="Xbox button",slogan="Top slogan";
+const slider=(ui,title,index=0)=>ui.controls(title,"SliderField")[index].props;
+const dropdown=(ui,title)=>ui.controls(title,"DropdownItem")[0].props;
+
+test("native completion applies the latest drag once, without an Apply button",async()=>{
   const ui=harness();await settle();ui.render();
   assert.equal(ui.calls.length,0);
-  assert.equal(ui.section("Lighting"),undefined);
-  assert.doesNotMatch(ui.text(ui.render()),/Refresh status|drafts, not hardware readback/);
-  for(const title of ["Paired joystick rings","Xbox button","Rear slogan"]){
-    assert.equal(ui.controls(title,"SliderField").length,1);
-    assert.equal(ui.controls(title,"ToggleField").length,1);
-  }
-  ui.controls("Xbox button","DropdownItem")[0].props.onChange({data:"custom"});ui.render();
-  ui.controls("Xbox button","SliderField")[0].props.onChange(17);ui.render();
-  ui.controls("Xbox button","SliderField")[3].props.onChange(42);ui.render();
+  assert.equal(ui.all().filter(n=>n.type==="ButtonItem").length,0);
+  const control=slider(ui,xbox);
+  control.onChange(20);control.onChange(39);control.onChange(42);
   assert.equal(ui.calls.length,0);
-  await ui.controls("Xbox button","ButtonItem")[0].props.onClick();ui.render();
+  await control.onChangeComplete(42);ui.render();
+  assert.deepEqual(ui.calls,[["xbox",{enabled:true,color:[255,80,0],brightness:42}]]);
+  await slider(ui,xbox).onChangeComplete(42);
   assert.equal(ui.calls.length,1);
-  assert.equal(ui.calls[0][0],"xbox");
-  assert.deepEqual(ui.calls[0][1],{enabled:true,color:[17,80,0],brightness:42});
-  assert.equal(ui.text(ui.controls("Xbox button","ButtonItem")[0]),"Applied");
-  ui.unmount();assert.equal(ui.calls.length,1);
+  ui.unmount();ui.render();await settle();ui.render();
+  assert.equal(slider(ui,xbox).value,42);
+  assert.equal(ui.calls.length,1);ui.unmount();
 });
 
-test("custom RGB expands per zone and stays expanded when its values match a preset",async()=>{
+test("Custom RGB selection survives Steam unmounting Quick Access for the menu",async()=>{
   const ui=harness();await settle();ui.render();
-  const title="Xbox button";
-  ui.controls(title,"DropdownItem")[0].props.onChange({data:"custom"});ui.render();
-  assert.equal(ui.controls(title,"SliderField").length,4);
-  assert.equal(ui.controls("Rear slogan","SliderField").length,1);
-  assert.equal(ui.controls(title,"DropdownItem")[0].props.selectedOption,"custom");
-  ui.controls(title,"SliderField")[1].props.onChange(0);ui.render();
-  assert.equal(ui.controls(title,"DropdownItem")[0].props.selectedOption,"custom");
-  assert.equal(ui.controls(title,"SliderField").length,4);
-  ui.controls(title,"DropdownItem")[0].props.onChange({data:"blue"});ui.render();
-  assert.equal(ui.controls(title,"SliderField").length,1);
-  assert.equal(ui.controls(title,"DropdownItem")[0].props.selectedOption,"blue");
-  ui.controls(title,"DropdownItem")[0].props.onChange({data:"custom"});ui.render();
-  assert.deepEqual(ui.controls(title,"SliderField").slice(0,3).map(n=>n.props.value),[0,80,255]);
+  const menu=dropdown(ui,xbox);
+  ui.unmount();menu.onChange({data:"custom"});ui.render();await settle();ui.render();
+  assert.equal(dropdown(ui,xbox).selectedOption,"custom");
+  assert.equal(ui.controls(xbox,"SliderField").length,4);
+  assert.equal(ui.controls(slogan,"SliderField").length,1);
   assert.equal(ui.calls.length,0);
-  await ui.controls(title,"ButtonItem")[0].props.onClick();ui.render();
-  assert.deepEqual(ui.calls[0],["xbox",{enabled:true,color:[0,80,255],brightness:60}]);
-  ui.unmount();
+  const [red,green]=ui.controls(xbox,"SliderField").map(n=>n.props);
+  red.onChange(17);green.onChange(0);
+  await green.onChangeComplete(0);ui.render();
+  assert.deepEqual(ui.calls[0],["xbox",{enabled:true,color:[17,0,0],brightness:60}]);
+  await slider(ui,xbox).onChangeComplete(255);ui.render();
+  assert.equal(dropdown(ui,xbox).selectedOption,"custom");
+  assert.equal(ui.controls(xbox,"SliderField").length,4);ui.unmount();
 });
 
-test("Chinese locale exposes all three clear zone names and apply actions",async()=>{
+test("presets selected while the panel is unmounted apply and persist; custom only opens controls",async()=>{
+  const ui=harness();await settle();ui.render();
+  const menu=dropdown(ui,rings);ui.unmount();
+  await menu.onChange({data:"blue"});ui.render();await settle();ui.render();
+  assert.equal(dropdown(ui,rings).selectedOption,"blue");
+  assert.deepEqual(ui.calls,[["rings",{enabled:true,color:[0,80,255],brightness:60}]]);
+  dropdown(ui,rings).onChange({data:"custom"});ui.render();
+  assert.deepEqual(ui.controls(rings,"SliderField").slice(0,3).map(n=>n.props.value),[0,80,255]);
+  assert.equal(ui.calls.length,1);
+  await ui.controls(rings,"ToggleField")[0].props.onChange(false);
+  assert.equal(ui.calls[1][1].enabled,false);ui.unmount();
+});
+
+test("Chinese controls have no explicit apply action",async()=>{
   const ui=harness({language:"zh-CN"});await settle();ui.render();
-  for(const title of ["左右摇杆灯环","Xbox 按钮灯","背部标语灯"]){
-    assert.ok(ui.section(title));
-    assert.match(ui.text(ui.controls(title,"ButtonItem")[0]),/应用此区域/);
-  }
-  assert.equal(ui.section("灯光"),undefined);
+  for(const title of ["左右摇杆灯环","Xbox 按钮灯","顶部标语灯"]){assert.ok(ui.section(title));assert.equal(ui.controls(title,"ButtonItem").length,0);}
+  assert.doesNotMatch(ui.text(ui.render()),/应用此区域|待应用/);
   assert.equal(ui.calls.length,0);ui.unmount();
 });
 
-test("unavailable backend disables zone edits and apply, leaving status retry usable",async()=>{
-  const ui=harness({status:async()=>({...goodStatus(),available:false,error:"Unexpected controller"})});
-  await settle();ui.render();
+test("unavailable backend disables controls and guards stale edit callbacks",async()=>{
+  const ui=harness({status:async()=>({...goodStatus(),available:false,error:"Unexpected controller"})});await settle();ui.render();
   for(const node of ui.all().filter(n=>["SliderField","ToggleField","DropdownItem"].includes(n.type)))assert.equal(node.props.disabled,true);
-  for(const title of ["Paired joystick rings","Xbox button","Rear slogan"])assert.equal(ui.controls(title,"ButtonItem")[0].props.disabled,true);
-  assert.equal(ui.controls("Lighting","ButtonItem")[0].props.disabled,false);
-  assert.match(ui.text(ui.section("Lighting")),/Unexpected controller/);
-  ui.unmount();
+  await slider(ui,xbox).onChangeComplete(20);
+  await dropdown(ui,rings).onChange({data:"red"});
+  assert.equal(ui.calls.length,0);
+  assert.equal(ui.controls("Lighting","ButtonItem")[0].props.disabled,false);ui.unmount();
 });
 
-test("write failure displays unknown-state recovery and allows retry",async()=>{
-  let fail=true;
-  const ui=harness({write:async()=>{if(fail)throw Error("short HID write");return goodStatus();}});
-  await settle();ui.render();
-  await ui.controls("Rear slogan","ButtonItem")[0].props.onClick();ui.render();
-  assert.match(ui.text(ui.section("Lighting")),/partially changed.*short HID write/);
-  assert.equal(ui.controls("Rear slogan","ButtonItem")[0].props.disabled,false);
-  fail=false;await ui.controls("Rear slogan","ButtonItem")[0].props.onClick();ui.render();
-  assert.doesNotMatch(ui.text(ui.section("Lighting")),/short HID write/);
-  assert.equal(ui.calls.length,2);ui.unmount();
-});
-
-test("rapid apply clicks serialize in UI and unmount suppresses stale updates",async()=>{
-  let release;
-  const ui=harness({write:()=>new Promise(resolve=>release=resolve)});await settle();ui.render();
-  const click=ui.controls("Paired joystick rings","ButtonItem")[0].props.onClick;
-  const first=click();await click();ui.render();
+test("write failure offers scoped retry, persists across panel reopen, and clears on success",async()=>{
+  let fail=true;const ui=harness({write:async()=>{if(fail)throw Error("short HID write");return goodStatus();}});
+  await settle();ui.render();await slider(ui,slogan).onChangeComplete(21);ui.render();
+  assert.match(ui.text(ui.section(slogan)),/partially changed.*short HID write/);
+  ui.unmount();ui.render();await settle();ui.render();
+  assert.match(ui.text(ui.section(slogan)),/short HID write/);
   assert.equal(ui.calls.length,1);
-  assert.equal(ui.controls("Xbox button","SliderField")[0].props.disabled,true);
-  ui.unmount();const changes=ui.changed.length;release(goodStatus());await first;
-  assert.equal(ui.changed.length,changes);
+  fail=false;await ui.controls(slogan,"ButtonItem")[0].props.onClick();ui.render();
+  assert.doesNotMatch(ui.text(ui.section(slogan)),/short HID write/);
+  assert.equal(ui.controls(slogan,"ButtonItem").length,0);
+  assert.deepEqual(ui.calls[1],ui.calls[0]);ui.unmount();
 });
 
-test("status read failure is recoverable without writing lights",async()=>{
-  let fail=true;
-  const ui=harness({status:async()=>{if(fail)throw Error("Decky bridge offline");return goodStatus();}});
-  await settle();ui.render();assert.match(ui.text(ui.section("Lighting")),/Retry below.*Decky bridge offline/);
+test("writes serialize, coalesce completed values, and preserve independent zones",async()=>{
+  const releases=[];const ui=harness({write:()=>new Promise(resolve=>releases.push(resolve))});await settle();ui.render();
+  const first=slider(ui,rings).onChangeComplete(20);ui.render();
+  await slider(ui,rings).onChangeComplete(30);ui.render();
+  await slider(ui,rings).onChangeComplete(40);ui.render();
+  await slider(ui,xbox).onChangeComplete(50);ui.render();
+  assert.equal(ui.calls.length,1);
+  assert.equal(slider(ui,xbox).disabled,false);
+  // A new drag is not committed just because an older write finishes.
+  slider(ui,rings).onChange(75);
+  releases.shift()(goodStatus());await settle();
+  assert.equal(ui.calls[1][1].brightness,40);
+  releases.shift()(goodStatus());await settle();
+  assert.deepEqual(ui.calls[2],["xbox",{enabled:true,color:[255,80,0],brightness:50}]);
+  releases.shift()(goodStatus());await first;ui.render();
+  assert.equal(slider(ui,rings).value,75);
+  const last=slider(ui,rings).onChangeComplete(75);
+  releases.shift()(goodStatus());await last;assert.equal(ui.calls[3][1].brightness,75);ui.unmount();
+});
+
+test("panel unmount suppresses React updates; plugin unload cancels queued work",async()=>{
+  let release;const ui=harness({write:()=>new Promise(resolve=>release=resolve)});await settle();ui.render();
+  const first=slider(ui,rings).onChangeComplete(20);
+  await slider(ui,xbox).onChangeComplete(30);
+  const stale=dropdown(ui,slogan);ui.unmount();const count=ui.changed.length;
+  ui.plugin.onDismount();release(goodStatus());await first;
+  await stale.onChange({data:"red"});
+  assert.equal(ui.calls.length,1);assert.equal(ui.changed.length,count);
+});
+
+test("status read errors recover without lighting writes",async()=>{
+  let fail=true;const ui=harness({status:async()=>{if(fail)throw Error("Decky bridge offline");return goodStatus();}});await settle();ui.render();
+  assert.match(ui.text(ui.section("Lighting")),/Retry below.*Decky bridge offline/);
   fail=false;await ui.controls("Lighting","ButtonItem")[0].props.onClick();ui.render();
-  assert.doesNotMatch(ui.text(ui.section("Lighting")),/Decky bridge offline/);
-  assert.equal(ui.controls("Xbox button","ButtonItem")[0].props.disabled,false);
+  assert.equal(ui.section("Lighting"),undefined);assert.equal(slider(ui,xbox).disabled,false);
   assert.equal(ui.calls.length,0);ui.unmount();
 });
 
-test("status started before apply cannot replace the newer write result",async()=>{
-  let reads=0,release;
-  const ui=harness({status:()=>++reads===1?Promise.resolve({...goodStatus(),error:"Discovery warning"}):new Promise(resolve=>release=resolve)});
-  await settle();ui.render();
-  const refresh=ui.controls("Lighting","ButtonItem")[0].props.onClick();
-  await ui.controls("Xbox button","ButtonItem")[0].props.onClick();ui.render();
-  release({...goodStatus(),available:false,error:"stale discovery"});await refresh;ui.render();
-  assert.equal(ui.controls("Xbox button","ButtonItem")[0].props.disabled,false);
-  assert.doesNotMatch(ui.text(ui.section("Lighting")),/stale discovery/);
-  assert.equal(ui.section("Lighting"),undefined);
-  assert.equal(ui.text(ui.controls("Xbox button","ButtonItem")[0]),"Applied");ui.unmount();
+test("status read started before a write cannot replace the newer result",async()=>{
+  let reads=0,release;const ui=harness({status:()=>++reads===1?Promise.resolve({...goodStatus(),error:"Discovery warning"}):new Promise(resolve=>release=resolve)});await settle();ui.render();
+  const read=ui.controls("Lighting","ButtonItem")[0].props.onClick();
+  await slider(ui,xbox).onChangeComplete(41);ui.render();
+  release({...goodStatus(),available:false,error:"stale discovery"});await read;ui.render();
+  assert.equal(slider(ui,xbox).disabled,false);assert.equal(ui.section("Lighting"),undefined);ui.unmount();
 });

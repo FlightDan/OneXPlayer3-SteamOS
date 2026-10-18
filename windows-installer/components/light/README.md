@@ -1,8 +1,8 @@
-# OXP3 Light 0.1.0
+# OXP3 Light 0.1.1
 
 Decky lighting controls for ONEXPLAYER 3. Uses native Steam/Decky UI, matching OXP3 CPU, Fan and Battery. Browser Chinese locales select Chinese; other locales use English.
 
-Three independent solid-color zones: **paired joystick rings** (both rings together), **Xbox button**, and **rear slogan**. Each has an on/off switch, RGB color controls and brightness 0–100%. Draft edits never write hardware. **Apply this zone** sends only the selected zone. The color presets are solid RGB conveniences, not firmware animations.
+Three independent solid-color zones: **paired joystick rings** (both rings together), **Xbox button**, and **top slogan**. Each has an on/off switch, RGB color controls and brightness 0–100%. Draft edits never write hardware. **Apply this zone** sends only the selected zone. The color presets are solid RGB conveniences, not firmware animations.
 
 ## Installation package
 
