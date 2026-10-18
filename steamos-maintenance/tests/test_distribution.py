@@ -102,6 +102,29 @@ class DistributionTests(unittest.TestCase):
         self.assertFalse(any(name.startswith('payload/components/slot-switch/')
                              or name == 'payload/components/slot_switch.py' for name in seed['files']))
 
+    def test_partition_mount_has_complete_separate_package(self):
+        option = {'id': 'partition-mount', 'en': 'Partition Mounts', 'zh': '分区自动挂载',
+                  'default': True, 'dependencies': []}
+        directory = self.payload / 'components/partition-mount'
+        directory.mkdir(parents=True)
+        names = ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop')
+        for name in names:
+            (directory / name).write_bytes(b'fixture ' + name.encode())
+        (self.payload / 'components/partition_mount.py').write_bytes(b'installer data only')
+        result = self._build('partition-mount-distribution', extra_plugins=[option])
+        self.assertEqual(result['catalog']['component_packages']['partition-mount'], ['core', 'repair-partition-mount'])
+        item = next(x for x in result['catalog']['components'] if x['id'] == 'partition-mount')
+        self.assertEqual(item['delivery'], 'maintenance')
+        self.assertTrue(item['available'])
+        seed = bundle.inspect_bundle(self._seed(result), self.public, openssl=self.openssl)
+        self.assertFalse(any(name.startswith('payload/components/partition-mount/')
+                             or name == 'payload/components/partition_mount.py' for name in seed['files']))
+        expected = {'payload/components/partition_mount.py'} | {'payload/components/partition-mount/' + name for name in names}
+        packages = list(Path(result['path']).rglob('oxp3-package-repair-partition-mount-*.tar.gz'))
+        self.assertEqual(len(packages), 1)
+        with tarfile.open(packages[0], 'r:gz') as archive:
+            self.assertEqual(set(archive.getnames()), expected)
+
     def test_animation_repair_is_optional_core_only_and_tracks_its_adapter_revision(self):
         option = {'id': 'animation-changer-compat', 'en': 'Animation Changer path repair',
                   'zh': 'Animation Changer 路径修复', 'default': False, 'dependencies': []}

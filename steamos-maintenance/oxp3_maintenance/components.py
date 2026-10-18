@@ -380,6 +380,40 @@ def _slot_switch(payload, root, metadata, owned):
     return files
 
 
+def _partition_mount(payload, root, metadata, owned):
+    """Update the KDE mount helper without touching its independent fstab state."""
+    if metadata.get('files') or metadata.get('runtime_archive') or metadata.get('units'):
+        raise ValueError('Partition mount requires its fixed file-only maintenance adapter')
+    for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape'):
+        try:
+            _trusted_executable(root, 'usr/bin/' + tool)
+        except FileNotFoundError as error:
+            raise ValueError('Partition mount dependency missing: /usr/bin/' + tool) from error
+    source = payload / 'components/partition-mount'
+    files = {'home/.oxp3-partition-mount/' + name:
+             _entry(_read(source, name), 0o755 if name == 'oxp3-partition-mount' else 0o644)
+             for name in ('mounts.py', 'desktop.py', 'oxp3-partition-mount')}
+    for target in ('home/deck/Desktop/oxp3-partition-mount.desktop',
+                   'home/deck/.local/share/applications/oxp3-partition-mount.desktop'):
+        files[target] = _entry(_read(source, 'oxp3-partition-mount.desktop'), 0o755, user=True)
+    for relative, entry in files.items():
+        target = _safe(root, relative)
+        if os.path.lexists(target) and relative not in owned:
+            raise ValueError('Unmanaged partition mount conflict; adopt the existing installation explicitly: ' + relative)
+        if entry['user']:
+            continue
+        for path in (target, *target.parents):
+            if not path.is_relative_to(root):
+                break
+            if not os.path.lexists(path):
+                continue
+            info = path.lstat()
+            if (not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
+                    or os.name == 'posix' and (info.st_uid != 0 or info.st_mode & 0o022)):
+                raise ValueError('Untrusted partition mount code path: ' + relative)
+    return files
+
+
 def _flathub(payload, root):
     _trusted_executable(root, 'usr/bin/flatpak')
     parser = configparser.ConfigParser(interpolation=None)
@@ -438,6 +472,8 @@ WantedBy=multi-user.target
 def _materialize(name, payload, root, metadata, planned, probe, owned):
     if name == 'slot-switch':
         return _slot_switch(payload, root, metadata, owned)
+    if name == 'partition-mount':
+        return _partition_mount(payload, root, metadata, owned)
     if name == 'serial-console-policy':
         from .serial_console import DROPIN, files
         return files(_existing(root, DROPIN))

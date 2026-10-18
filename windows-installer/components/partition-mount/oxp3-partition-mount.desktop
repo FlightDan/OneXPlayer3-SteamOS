@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SteamOS Partition Mounts
+Name[zh_CN]=SteamOS 分区自动挂载
+Name[zh_TW]=SteamOS 分割區自動掛載
+Comment=Mount data partitions now and keep them available after restart
+Comment[zh_CN]=挂载数据分区，并保存重启后自动挂载配置
+Exec=/usr/bin/python3 -I -B /home/.oxp3-partition-mount/desktop.py
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Filesystem;

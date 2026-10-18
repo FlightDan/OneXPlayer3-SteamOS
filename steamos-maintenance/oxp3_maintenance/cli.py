@@ -1,11 +1,65 @@
-"""Command line and native desktop entry for project releases only."""
+"""Command line for project maintenance and native desktop utilities."""
 import argparse
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+
+PARTITION_MOUNT_HOME = Path('/home/.oxp3-partition-mount')
+
+
+def _trusted_partition_mount_scripts(missing_message=None):
+    """Return the installed desktop entry after checking its whole code path."""
+    files = {
+        'desktop.py': PARTITION_MOUNT_HOME / 'desktop.py',
+        'mounts.py': PARTITION_MOUNT_HOME / 'mounts.py',
+        'oxp3-partition-mount': PARTITION_MOUNT_HOME / 'oxp3-partition-mount',
+    }
+    targets = {path: name for name, path in files.items()}
+    chain = []
+    for path in files.values():
+        chain.extend(reversed((path, *path.parents)))
+    seen = set()
+    for path in chain:
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            info = path.lstat()
+        except FileNotFoundError as error:
+            raise RuntimeError(missing_message or (
+                'Partition Mount is not installed. Open OXP3 Maintenance → Repairs & plugins, '
+                'install KDE graphical persistent partition mounts, then retry.')) from error
+        if (stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022):
+            raise RuntimeError('Untrusted Partition Mount program path; reinstall the component: ' + str(path))
+        if path in targets:
+            if not stat.S_ISREG(info.st_mode):
+                raise RuntimeError('Untrusted Partition Mount program file: ' + str(path))
+            if targets[path] == 'oxp3-partition-mount' and not info.st_mode & 0o111:
+                raise RuntimeError('Partition Mount helper is not executable; reinstall the component.')
+        elif not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError('Untrusted Partition Mount program directory: ' + str(path))
+    return files
+
+
+def launch_partition_mount(*, missing_message=None):
+    """Open the unprivileged KDE utility and wait for its window to close."""
+    if os.name != 'posix' or not hasattr(os, 'geteuid'):
+        raise RuntimeError('Partition Mount is available from a SteamOS desktop session.')
+    if os.geteuid() == 0:
+        raise RuntimeError('Open Partition Mount as the desktop user; only saving a mount asks for administrator authorization.')
+    files = _trusted_partition_mount_scripts(missing_message)
+    result = subprocess.run(['/usr/bin/python3', '-I', '-B', str(files['desktop.py'])],
+                            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if result.returncode:
+        detail = (result.stderr or '').strip()
+        suffix = ('\n' + detail[:1500]) if detail else ''
+        raise RuntimeError('Partition Mount closed with an error (exit %d).%s' % (result.returncode, suffix))
+    return {'status': 'partition_mount_closed'}
 
 
 def installed_release():
@@ -315,7 +369,7 @@ def parser():
     result.add_argument('action', nargs='?', default='gui', choices=(
         'gui', 'status', 'plan', 'apply', 'bootstrap', 'check-updates', 'update',
         'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download', 'health',
-        'installation-status', 'session-service'))
+        'partition-mount', 'installation-status', 'session-service'))
     result.add_argument('--bundle', help='Signed maintenance .tar.gz')
     result.add_argument('--bundle-dir', help='Extracted signed maintenance directory')
     result.add_argument('--select', nargs='*', default=[], help='Component IDs; dependencies are included')
@@ -341,6 +395,8 @@ def dispatch(args):
         if vars(args) != defaults:
             raise ValueError('Maintenance session service accepts no command-line parameters')
         return serve()
+    if args.action == 'partition-mount':
+        return launch_partition_mount()
     if args.action == 'health':
         from .health import collect
         return collect()

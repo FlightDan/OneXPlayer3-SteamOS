@@ -447,9 +447,9 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         try:
             missing=[d for d in items[name]['dependencies'] if reports.get(d,{}).get('status')!='files_installed']
             if missing: raise RuntimeError('Dependency not installed: '+', '.join(missing))
-            if name in options['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc') and not compatible: raise RuntimeError('Requires SteamOS 3.10 build 20260924.1000 and exact 7.2.4 kernel')
+            if name in options['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc','partition-mount') and not compatible: raise RuntimeError('Requires SteamOS 3.10 build 20260924.1000 and exact 7.2.4 kernel')
             files={}; metadata=manifests.get(name,{})
-            if name in options['repairs'] and name not in ('slot-switch','keyboard','gamescope-env','flathub-ustc','hdr','gm7-resume','split-lock','multifunction') and name not in manifests:
+            if name in options['repairs'] and name not in ('slot-switch','keyboard','gamescope-env','flathub-ustc','hdr','gm7-resume','split-lock','multifunction','partition-mount') and name not in manifests:
                 raise RuntimeError('Component resource manifest is missing: '+name)
             for package,version in metadata.get('packages',{}).items():
                 if package_version(root,package)!=version: raise RuntimeError('Incompatible package: '+package+' '+version)
@@ -535,6 +535,9 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             elif name=='slot-switch':
                 from slot_switch import files as slot_switch_files
                 files=slot_switch_files(root,payload/'components')
+            elif name=='partition-mount':
+                from partition_mount import files as partition_mount_files
+                files=partition_mount_files(root,payload/'components')
             elif name=='waydroid':
                 if not compatible: raise RuntimeError('Waydroid r2 requires the accepted SteamOS 3.10 build')
                 profile=json.loads((payload/'waydroid/profile.json').read_text())
@@ -732,7 +735,7 @@ def restore(root,slot,name,_boot_group=False):
         if (root/'opt/oxp3-opti2xmx/.installer-state/state.json').exists():LogicalDirectory(root,name).rollback()
     if name=='desktop-hdr' and (root/'opt/oxp3-desktop-gamma22/.installer-state/state.json').exists():
         LogicalDirectory(root).rollback()
-    if name in ('windows-reboot','slot-switch','shared-storage'):
+    if name in ('windows-reboot','slot-switch','shared-storage','partition-mount'):
         # Keep each component's configuration, helpers and entry points together
         # when an administrator has edited any journal-owned file.
         for group in (slot,'shared'):

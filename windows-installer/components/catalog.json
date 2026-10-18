@@ -11,6 +11,15 @@
       "source": "windows-installer/docs/SLOT_SWITCH.md"
     },
     {
+      "id": "partition-mount",
+      "name": "KDE 图形分区持久挂载",
+      "default": true,
+      "dependencies": [],
+      "state": "device_loop_ext4_exfat_reboot_passed_release_pending",
+      "reason": "新装和维护仅安装工具；维护概览可直接打开，显示未挂载状态及不可选原因。支持 NTFS、exFAT、FAT32/vfat、ext4 普通分区。旧候选已在 OXP3 SteamOS 3.10 验证私有 loop ext4/exFAT 挂载及重启；本次 FAT32、入口与诊断改动仍需掌机验收，NTFS、新装及签名维护升级未验收，未发布。",
+      "source": "windows-installer/docs/PARTITION_MOUNT.md"
+    },
+    {
       "id": "refind",
       "name": "rEFInd · 双系统图形启动菜单",
       "state": "separate_boot_phase_implemented",

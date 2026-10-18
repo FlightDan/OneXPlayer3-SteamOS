@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const task = process.argv[2] || 'smoke';
-if (!['smoke', 'inspect', 'boot-tools', 'verify', 'partition-test', 'deployment-test', 'component-tests'].includes(task)) throw Error('Unknown guest task');
+if (!['smoke', 'inspect', 'boot-tools', 'verify', 'partition-test', 'deployment-test', 'component-tests', 'partition-mount-tests'].includes(task)) throw Error('Unknown guest task');
 const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${task}`;
 const work = path.join(root, 'work', id);
 await mkdir(work, { recursive: true });
@@ -18,7 +18,21 @@ for (const packageInfo of packages) {
   await copyFile(path.join(root, 'runtime/payload/apks', filename), path.join(payload, 'apks', filename));
 }
 const { readdir } = await import('node:fs/promises');
-for (const filename of await readdir(path.join(root, 'guest'))) await copyFile(path.join(root, 'guest', filename), path.join(payload, 'tasks', filename));
+for (const filename of (await readdir(path.join(root, 'guest'))).filter(name => name.endsWith('.sh'))) await copyFile(path.join(root, 'guest', filename), path.join(payload, 'tasks', filename));
+if (task === 'partition-mount-tests') {
+  const { cp } = await import('node:fs/promises');
+  await mkdir(path.join(payload, 'components'), { recursive: true });
+  for (const filename of ['test_partition_mount.py', 'test_partition_mount_integration.py', 'partition_mount.py', 'slot_switch.py']) {
+    await copyFile(path.join(root, 'components', filename), path.join(payload, 'components', filename));
+  }
+  await cp(path.join(root, 'components/partition-mount'), path.join(payload, 'components/partition-mount'), { recursive: true });
+  await cp(path.join(root, '../steamos-maintenance/oxp3_maintenance'), path.join(payload, 'maintenance/oxp3_maintenance'), {
+    recursive: true, filter: source => !source.includes('__pycache__') && !source.endsWith('.pyc')
+  });
+  await mkdir(path.join(payload, 'maintenance/tests'), { recursive: true });
+  await copyFile(path.join(root, '../steamos-maintenance/tests/test_components.py'), path.join(payload, 'maintenance/tests/test_components.py'));
+  await copyFile(path.join(root, '../steamos-maintenance/tests/test_partition_mount_entry.py'), path.join(payload, 'maintenance/tests/test_partition_mount_entry.py'));
+}
 if (task === 'component-tests') {
   const { cp } = await import('node:fs/promises');
   await cp(path.join(root, 'components'), path.join(payload, 'components'), { recursive: true });

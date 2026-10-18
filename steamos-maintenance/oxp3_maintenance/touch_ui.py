@@ -14,6 +14,8 @@ TEXT = {
         'app': 'OXP3 修复与更新', 'overview': '概览', 'repairs': '修复与插件',
         'recovery': '恢复', 'settings': '设置', 'health': '一键体检',
         'intro': '管理这台掌机的项目修复、插件与更新。',
+        'partition_mount': '打开分区挂载工具',
+        'partition_mount_hint': '只打开工具窗口；保存挂载设置时会另行请求管理员授权。',
         'health_intro': '只读检查手柄、Wi-Fi 状态与近期错误、已安装组件；完成后可导出诊断报告。',
         'health_again': '重新体检', 'health_export': '导出报告', 'health_back': '返回修复与插件',
         'github_network': 'GitHub 下载线路',
@@ -55,6 +57,8 @@ TEXT = {
         'app': 'OXP3 repairs & updates', 'overview': 'Overview', 'repairs': 'Repairs & plugins',
         'recovery': 'Recovery', 'settings': 'Settings', 'health': 'Run health check',
         'intro': 'Manage project repairs, plugins and updates for this handheld.',
+        'partition_mount': 'Open partition mount utility',
+        'partition_mount_hint': 'This opens the utility only. Saving mount settings asks for administrator authorization separately.',
         'health_intro': 'Read-only checks cover controllers, Wi-Fi status and recent errors, and installed components. Export the report for diagnosis.',
         'health_again': 'Run health check again', 'health_export': 'Export report', 'health_back': 'Back to repairs & plugins',
         'github_network': 'GitHub download route',
@@ -376,6 +380,8 @@ class TouchWindow:
             box.pack_start(self._label(fact[1]), False, False, 0)
             self.page.pack_start(box, False, False, 0)
         if self.route == 'overview':
+            self._action(self.page, self.text['partition_mount'], self._start_partition_mount)
+            self.page.pack_start(self._label(self.text['partition_mount_hint'], 'muted'), False, False, 0)
             self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'), primary=True)
             self._action(self.toolbar, self.text['refresh'], lambda _: self.perform('status'))
             self._action(self.footer, self.text['browse'], lambda _: self.navigate('repairs'))
@@ -478,6 +484,9 @@ class TouchWindow:
 
     def _start_health_check(self, *_):
         self.perform('health', route='health')
+
+    def _start_partition_mount(self, *_):
+        self.perform('partition-mount', route='overview')
 
     def _export_health_report(self, *_):
         self.perform('export-health', route='health')

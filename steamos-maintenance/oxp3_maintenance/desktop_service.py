@@ -26,8 +26,8 @@ class DesktopService:
         self.on_progress = None
         self.authorization = auth_session.Client()
         self.labels = dict(zip(
-            ('input','multifunction','gyro','hdr','desktop-hdr','gamescope-env','wifi','xe-dsb','gm7-resume','manager','native-tdp','overlay','fan-driver','oxp3-fan','oxp3-cpu','charging','legacy-runtime','windows-reboot','decky','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','flathub-ustc','slot-switch','refind'),
-            ('背键驱动','多功能键','陀螺仪','游戏模式 HDR','桌面 HDR','游戏模式启动环境','无线与蓝牙固件','显示兼容配置','GM7 休眠恢复','SteamOS 管理器','原生功耗控制','性能叠加层','风扇与充电驱动','风扇控制插件','CPU 控制插件','充电控制插件','音量与电量修复','重启进入 Windows','Decky 插件环境','SteamGridDB 游戏封面','ProtonDB 兼容性标记','TabMaster 游戏库分页','CSS Loader 界面主题','AutoFlatpaks 应用更新','Deck Settings 游戏设置','HLTB 游戏时长','Animation Changer 启动画面','Waydroid 安卓环境','Flathub 应用源','系统槽位切换','rEFInd 启动菜单')
+            ('input','multifunction','gyro','hdr','desktop-hdr','gamescope-env','wifi','xe-dsb','gm7-resume','manager','native-tdp','overlay','fan-driver','oxp3-fan','oxp3-cpu','charging','legacy-runtime','windows-reboot','decky','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','flathub-ustc','slot-switch','refind','partition-mount'),
+            ('背键驱动','多功能键','陀螺仪','游戏模式 HDR','桌面 HDR','游戏模式启动环境','无线与蓝牙固件','显示兼容配置','GM7 休眠恢复','SteamOS 管理器','原生功耗控制','性能叠加层','风扇与充电驱动','风扇控制插件','CPU 控制插件','充电控制插件','音量与电量修复','重启进入 Windows','Decky 插件环境','SteamGridDB 游戏封面','ProtonDB 兼容性标记','TabMaster 游戏库分页','CSS Loader 界面主题','AutoFlatpaks 应用更新','Deck Settings 游戏设置','HLTB 游戏时长','Animation Changer 启动画面','Waydroid 安卓环境','Flathub 应用源','系统槽位切换','rEFInd 启动菜单','KDE 分区持久挂载')
         )) if self.zh else {}
         self.settings = Path.home() / '.config/oxp3-maintenance/settings.json'
         self.preferences = self._preferences()
@@ -433,6 +433,11 @@ class DesktopService:
                                        'Maintenance actions in this window reuse this authorization. Closing the window ends it.'),
                         authorized=True)
             return view
+        if action == 'partition-mount':
+            cli.launch_partition_mount(missing_message=self.t(
+                '分区挂载工具未安装。打开“修复与插件”，安装“KDE 图形分区持久挂载”，然后重试。',
+                'Partition Mount is not installed. Open “Repairs & plugins”, install “KDE graphical persistent partition mounts”, then retry.'))
+            return self._perform('overview')
         if action == 'health':
             # A failed rerun must not silently export an older successful report.
             self.health_report = None

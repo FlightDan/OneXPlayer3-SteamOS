@@ -3,7 +3,7 @@
 BASE = {'ID': 'steamos', 'VERSION_ID': '3.10', 'BUILD_ID': '20260924.1000'}
 KERNEL = '7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'
 DEVICE = {'sys_vendor': 'ONE-NETBOOK', 'product_name': 'ONEXPLAYER 3'}
-PORTABLE = frozenset({'keyboard', 'flathub-ustc'})
+PORTABLE = frozenset({'keyboard', 'flathub-ustc', 'partition-mount'})
 BASELINE = frozenset({
     'slot-switch', 'refind', 'opti2xmx', 'opti2xmx-runtime', 'gamescope-env', 'hdr', 'desktop-hdr',
     'input', 'multifunction', 'gyro', 'xe-dsb', 'gm7-resume', 'split-lock', 'wifi', 'manager',
@@ -42,6 +42,8 @@ def evaluate(name, system, metadata=None):
     if portable:
         requirements['resources'] = (
             ['usr/share/applications/org.kde.plasma.keyboard.desktop'] if name == 'keyboard'
+            else ['usr/bin/' + tool for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape')]
+            if name == 'partition-mount'
             else ['usr/bin/flatpak'])
     else:
         requirements['kernel'] = KERNEL

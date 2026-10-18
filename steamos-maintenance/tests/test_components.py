@@ -131,6 +131,53 @@ class PlannerTests(unittest.TestCase):
         self.assert_ready(plan, 'flathub-ustc')
         self.assertEqual(set(plan['files']), {'etc/flatpak/remotes.d/flathub.flatpakrepo'})
 
+    def test_partition_mount_is_portable_file_only_adapter_and_keeps_fstab_outside_transaction(self):
+        self.component('partition-mount')
+        names = ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop')
+        for name in names:
+            self.write(self.payload, 'components/partition-mount/' + name, ('fixture ' + name).encode())
+        tools = ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape')
+        for tool in tools:
+            executable = self.write(self.root, 'usr/bin/' + tool, b'fixture executable')
+            executable.chmod(0o755)
+        fstab = self.write(self.root, 'etc/fstab', b'# user entries remain independent\n')
+        self.probe.update(kernel='older-kernel', shared_compatible=False, shared_os_compatible=True)
+        self.probe['os'].update(VERSION_ID='3.7', BUILD_ID='older')
+
+        plan = self.plan(['partition-mount'])
+
+        self.assert_ready(plan, 'partition-mount')
+        self.assertEqual(plan['components']['partition-mount']['compatibility']['profile'], 'portable-settings-v1')
+        self.assertEqual(set(plan['files']), {
+            'home/.oxp3-partition-mount/mounts.py',
+            'home/.oxp3-partition-mount/desktop.py',
+            'home/.oxp3-partition-mount/oxp3-partition-mount',
+            'home/deck/Desktop/oxp3-partition-mount.desktop',
+            'home/deck/.local/share/applications/oxp3-partition-mount.desktop',
+        })
+        self.assertNotIn('etc/fstab', plan['files'])
+        self.assertFalse(any('polkit' in path for path in plan['files']))
+        self.assertEqual(fstab.read_bytes(), b'# user entries remain independent\n')
+
+    def test_partition_mount_blocks_missing_dependency_and_unmanaged_helper(self):
+        self.component('partition-mount')
+        for name in ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop'):
+            self.write(self.payload, 'components/partition-mount/' + name, ('fixture ' + name).encode())
+        missing = self.plan(['partition-mount'])['components']['partition-mount']
+        self.assertEqual(missing['status'], 'blocked')
+        self.assertIn('python3', missing['reason'])
+        self.assertEqual(self.plan(['partition-mount'])['files'], {})
+
+        for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape'):
+            executable = self.write(self.root, 'usr/bin/' + tool, b'fixture executable')
+            executable.chmod(0o755)
+        target = self.write(self.root, 'home/.oxp3-partition-mount/mounts.py', b'user-owned helper')
+        blocked = self.plan(['partition-mount'])['components']['partition-mount']
+        self.assertEqual(blocked['status'], 'blocked')
+        self.assertIn('Unmanaged partition mount conflict', blocked['reason'])
+        self.assertEqual(target.read_bytes(), b'user-owned helper')
+        self.assertEqual(self.plan(['partition-mount'])['files'], {})
+
     def test_new_catalog_item_is_visible_but_has_no_implicit_file_adapter(self):
         self.component('future-driver', {'usr/bin/unreviewed': b'native'})
         plan = self.plan(['future-driver'])

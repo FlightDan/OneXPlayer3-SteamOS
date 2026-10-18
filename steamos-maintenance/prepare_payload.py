@@ -30,7 +30,7 @@ EXCLUDED = {
     'refind': 'Separate EFI boot-manager operation; maintenance does not deploy it.',
     'shared-storage': 'Separate shared-storage and mount-layout operation.',
 }
-SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-lock', 'slot-switch',
+SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-lock', 'slot-switch', 'partition-mount',
            'windows-reboot', 'waydroid', 'serial-console-policy', 'autoflatpaks-compat', 'animation-changer-compat'}
 MANIFEST_ADAPTERS = {'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'fan-driver',
                      'native-tdp', 'overlay', 'wifi', 'xe-dsb', 'gm7-resume',
@@ -346,6 +346,9 @@ def prepare_payload(workspace, output, maintenance_options=None):
             'slot-switch': ['components/slot-switch/' + name for name in (
                 'boot.py', 'desktop.py', 'oxp3-switch-slot',
                 '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop')],
+            'partition-mount': ['components/partition_mount.py'] + [
+                'components/partition-mount/' + name for name in (
+                    'mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop')],
             'serial-console-policy': ['components/serial_console.py'],
             'split-lock': ['components/split-lock/UPSTREAM_LICENSE'],
             'oxp3-light': ['components/light/' + name for name in (

@@ -52,6 +52,9 @@ def _group(name, ids):
                                                  'payload/integration/slot-switch/'))
                                  or name == 'payload/components/slot_switch.py'):
         return 'repair-slot-switch', 'slot-switch'
+    if 'partition-mount' in ids and (name.startswith('payload/components/partition-mount/')
+                                     or name == 'payload/components/partition_mount.py'):
+        return 'repair-partition-mount', 'partition-mount'
     if name == 'payload/integration/opti2xmx/runtime.tar.gz':
         return 'runtime-opti2xmx', 'opti2xmx-runtime'
     if name.startswith('payload/integration/opti2xmx-runtime/'):

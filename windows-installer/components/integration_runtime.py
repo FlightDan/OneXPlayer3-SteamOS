@@ -68,7 +68,7 @@ def execute():
             # Activation must neither require nor recreate updater masks.
             if name=='system-update-policy': continue
             try:
-                if name in result['options']['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc'): device_guard()
+                if name in result['options']['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc','partition-mount'): device_guard()
                 if name=='input': run('depmod','-a',KERNEL) # No live HID unbind; next boot uses the installed module.
                 if name=='gyro':
                     if Path('/sys/class/dmi/id/bios_version').read_text().strip()!='5.09': raise RuntimeError('Gyro requires the accepted BIOS 5.09')
