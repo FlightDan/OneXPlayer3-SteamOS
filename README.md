@@ -159,7 +159,7 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.1/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.2/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 

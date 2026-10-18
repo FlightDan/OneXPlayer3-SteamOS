@@ -30,6 +30,7 @@ import stat
 import threading
 import uuid
 
+from . import state_io
 from .opti_migration import (PLUGIN as OPTI_PLUGIN, RUNTIME as OPTI_RUNTIME,
                              RUNTIME_CONFIG as OPTI_RUNTIME_CONFIG, runtime_path,
                              retain_legacy_runtime, transfer_allowed)
@@ -196,9 +197,9 @@ class Store:
                 raise TransactionError(f"Unsafe state file: {name}")
             if self.enforce_owner and (info.st_uid != 0 or info.st_mode & 0o077):
                 raise TransactionError(f"Untrusted state file: {name}")
-            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            with os.fdopen(fd, "rb") as stream:
                 fd = None
-                return json.load(stream)
+                return state_io.load(stream)
         except (ValueError, UnicodeError) as exc:
             raise TransactionError(f"Corrupt state file: {name}") from exc
         finally:
@@ -218,7 +219,7 @@ class Store:
         try:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "wb") as stream:
-                stream.write(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+                state_io.dump(value, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, self.state / name)

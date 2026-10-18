@@ -17,13 +17,15 @@ import uuid
 import zipfile
 
 from . import inventory
+from . import state_io
 from .adoption import _MUTABLE_SETTINGS
 from .transactions import Store
 
 STATE = 'home/.oxp3-maintenance'
 MAX_STATE = 256 * 1024 * 1024
-MAX_FILE = 64 * 1024 * 1024
-MAX_TOTAL = 512 * 1024 * 1024
+MAX_INDEX = 8 * 1024 * 1024 * 1024
+MAX_FILE = 256 * 1024 * 1024
+MAX_TOTAL = 2 * 1024 * 1024 * 1024
 MAX_PATHS = 20000
 MAX_DETAILS = 100
 UNITS = ('inputplumber.service', 'oxp3-gyro.service')
@@ -41,10 +43,15 @@ def clean(value, limit=160):
 
 
 @contextmanager
-def regular(root, relative, *, trusted=False):
+def regular(root, relative, *, trusted=False, verify_name=False):
     """Pin each ancestor; do not follow links or open special files for reading."""
     parts = inventory._parts(relative)
     with inventory._directory(root, '/'.join(parts[:-1]), trusted=trusted) as (parent, _):
+        def named_info():
+            if os.name == 'posix':
+                return os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)
+            return (parent / parts[-1]).lstat()
+
         if os.name == 'posix':
             fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
         else:
@@ -58,7 +65,19 @@ def regular(root, relative, *, trusted=False):
                 raise ValueError('unsafe_file')
             if trusted and not inventory._protected(info):
                 raise ValueError('untrusted_metadata')
+            if verify_name:
+                named = named_info()
+                if (inventory._linked(named) or not stat.S_ISREG(named.st_mode)
+                        or named.st_nlink != 1 or (named.st_dev, named.st_ino) != (info.st_dev, info.st_ino)):
+                    raise ValueError('changed_during_check')
             yield stream, info
+            if verify_name:
+                after = os.fstat(stream.fileno())
+                named = named_info()
+                if (stamp(info) != stamp(after) or inventory._linked(named)
+                        or not stat.S_ISREG(named.st_mode) or named.st_nlink != 1
+                        or (named.st_dev, named.st_ino) != (info.st_dev, info.st_ino)):
+                    raise ValueError('changed_during_check')
 
 
 def stamp(info):
@@ -76,6 +95,31 @@ def read_json(root, relative, maximum=8 * 1024 * 1024):
     if not isinstance(value, dict):
         raise ValueError('invalid_record')
     return value
+
+
+def read_index(root, slot, maximum=None):
+    """Read only the active slot projection from a bounded, pinned index stream."""
+    maximum = MAX_INDEX if maximum is None else maximum
+    path = Path(root) / STATE / 'index.json'
+    try:
+        path.lstat()
+        existed_before_open = True
+    except FileNotFoundError:
+        existed_before_open = False
+    try:
+        with regular(root, STATE + '/index.json', trusted=True, verify_name=True) as (stream, before):
+            if before.st_size > maximum:
+                raise ValueError(f'index_size_limit:{before.st_size}:{maximum}')
+            value = state_io.load(stream, slot=slot, max_bytes=maximum)
+            if not isinstance(value, dict):
+                raise ValueError('invalid_index')
+            if stamp(before) != stamp(os.fstat(stream.fileno())):
+                raise ValueError('index_changed_during_check')
+        return value
+    except FileNotFoundError as error:
+        if existed_before_open:
+            raise ValueError('index_changed_during_check') from error
+        raise
 
 
 def fingerprint(root, relative, budget):
@@ -105,10 +149,16 @@ def expected_snapshot(value):
     if not value['exists']:
         return {'exists': False}
     blob = value.get('data')
-    if not isinstance(blob, str) or len(blob) > (MAX_FILE + 2) // 3 * 4:
-        raise ValueError('size_limit')
-    raw = base64.b64decode(blob, validate=True)
-    result = {'exists': True, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
+    if isinstance(blob, state_io.DataDigest):
+        if (type(blob.size) is not int or blob.size < 0 or blob.size > MAX_FILE
+                or not isinstance(blob.sha256, str) or not re.fullmatch(r'[0-9a-f]{64}', blob.sha256)):
+            raise ValueError('invalid_snapshot_digest')
+        result = {'exists': True, 'sha256': blob.sha256, 'bytes': blob.size}
+    else:
+        if not isinstance(blob, str) or len(blob) > (MAX_FILE + 2) // 3 * 4:
+            raise ValueError('size_limit')
+        raw = base64.b64decode(blob, validate=True)
+        result = {'exists': True, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
     for key in ('mode', 'uid', 'gid'):
         if type(value.get(key)) is not int or value[key] < 0:
             raise ValueError('invalid_metadata')
@@ -189,11 +239,41 @@ class Report:
         self.checks.append(dict(id=identifier, status=status, title=title, message=message,
                                 advice=advice, evidence=evidence))
 
-    def unknown(self, identifier, title, error):
+    def unknown(self, identifier, title, error, message=None):
         self.add(identifier, 'unknown', title,
-                 words('此项未能完成，不能据此判断正常。', 'This check could not finish; health is unknown.'),
+                 message or words('此项未能完成，不能据此判断正常。', 'This check could not finish; health is unknown.'),
                  words('重新体检；若仍无法读取，请导出报告反馈。', 'Run the check again. Export the report if it remains unavailable.'),
                  reason=type(error).__name__)
+
+    @staticmethod
+    def _index_error_message(error):
+        code = error.args[0] if error.args and isinstance(error.args[0], str) else ''
+        if isinstance(error, BlockingIOError):
+            return words('维护操作正在进行，索引锁暂不可用；请稍后重新体检。',
+                         'A maintenance operation is holding the index lock. Run the check again later.')
+        if isinstance(error, PermissionError):
+            return words('没有权限读取维护索引或锁文件。',
+                         'Permission was denied while reading the maintenance index or lock file.')
+        match = re.fullmatch(r'index_size_limit:(\d+):(\d+)', code)
+        if match:
+            actual, limit = map(int, match.groups())
+            return words(f'维护索引大小为 {actual} 字节，超过体检上限 {limit} 字节。',
+                         f'The maintenance index is {actual} bytes, above the {limit}-byte health-check limit.')
+        if code in ('changed_during_check', 'index_changed_during_check',
+                    'size_limit_or_changed_during_check'):
+            return words('读取期间维护索引发生变化；请稍后重新体检。',
+                         'The maintenance index changed while being read. Run the check again.')
+        if code in ('size_limit', 'JSON byte limit exceeded'):
+            return words('维护索引超过体检读取上限；请稍后重新体检。',
+                         'The maintenance index exceeded the health-check read limit. Run the check again.')
+        if code == 'Snapshot size limit exceeded':
+            return words(f'维护索引中的单个文件快照超过 {MAX_FILE} 字节上限。',
+                         f'A file snapshot in the maintenance index exceeds the {MAX_FILE}-byte limit.')
+        if code == 'JSON metadata limit exceeded':
+            return words('维护索引的元数据量超过体检上限；请稍后重新体检。',
+                         'The maintenance index metadata exceeded the health-check limit. Run the check again.')
+        return words('维护索引无法安全读取；请重新体检，若持续出现请导出报告反馈。',
+                     'The maintenance index could not be read safely. Retry, and export the report if this persists.')
 
     def interrupted(self):
         # A first transaction writes pending before index. Inspect markers even
@@ -262,12 +342,14 @@ class Report:
                 if os.name == 'posix':
                     import fcntl
                     fcntl.flock(lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
-                index = read_json(self.root, STATE + '/index.json', MAX_STATE)
+                if self.interrupted():
+                    return selected, None
+                slot = system.get('slot', {}).get('id')
+                if not isinstance(slot, str) or not slot:
+                    raise ValueError('unknown_active_slot')
+                index = read_index(self.root, slot)
                 if index.get('format') != 1 or not isinstance(index.get('slots'), dict):
                     raise ValueError('invalid_index')
-                slot = system.get('slot', {}).get('id')
-                if not slot:
-                    raise ValueError('unknown_active_slot')
                 slot_record = index['slots'].get(slot, {})
                 if not isinstance(slot_record, dict):
                     raise ValueError('invalid_slot_record')
@@ -316,7 +398,7 @@ class Report:
                      words('未找到完整的维护记录，将尝试旧安装记录。', 'No complete maintenance record; checking legacy installer records.'),
                      words('首次使用或尚未接管的旧安装可能出现此结果。', 'This can occur on first use or an installation not yet adopted.'))
         except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
-            self.unknown('maintenance.state', title, error)
+            self.unknown('maintenance.state', title, error, self._index_error_message(error))
             # An unreadable current index must never revive stale legacy records.
             return selected, None
         return selected, authoritative

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.2",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "优化大维护记录的流式读取、重复快照内存复用与分块持久化写入；修复大记录导致配置体检无法完成，保留旧版备份恢复与回滚格式兼容。"
+}

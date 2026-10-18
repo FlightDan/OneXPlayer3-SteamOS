@@ -1,6 +1,7 @@
 """Read-only diagnostics on incomplete, customized and damaged installations."""
 import base64
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -104,6 +105,131 @@ class HealthTests(unittest.TestCase):
                        'PRIVATE-PHYS', 'PRIVATE-UNIQ', 'PRIVATE-SERIAL', 'secret-package', 'partuuid-test'):
             self.assertNotIn(secret, serialized)
 
+    def test_index_projection_uses_active_current_and_ignores_old_generations(self):
+        self.managed()
+        old = copy.deepcopy(self.entry)
+        old_path = 'etc/inputplumber/previous.yaml'
+        self.index['slots']['partuuid-test']['previous'] = {
+            'selected': ['old-component'], 'paths': {old_path: old}}
+        self.index['slots']['other-slot'] = {
+            'current': {'selected': ['other-component'], 'paths': {old_path: old}},
+            'previous': {'selected': [], 'paths': {}}}
+        # This larger-than-metadata-cap fixture must be walked but never retained
+        # in the health projection. A few MiB keeps the test practical while
+        # exercising chunked string parsing and the old-state-limit bypass.
+        large = base64.b64encode(b'x' * (2 * 1024 * 1024)).decode()
+        self.index['originals'] = {'shared:home/deck/private': {
+            'exists': True, 'data': large, 'mode': 0o600, 'uid': 1000, 'gid': 1000}}
+        self.save_index()
+        with mock.patch.object(health, 'MAX_STATE', 1024):
+            projected = health.read_index(self.root, 'partuuid-test')
+            report = self.collect()
+        current = projected['slots']['partuuid-test']['current']
+        self.assertEqual(current['selected'], ['input'])
+        self.assertEqual(set(current['paths']), {'etc/inputplumber/example.yaml'})
+        self.assertNotIn('originals', projected)
+        self.assertNotIn('previous', projected['slots']['partuuid-test'])
+        self.assertNotIn('other-slot', projected['slots'])
+        self.assertEqual(current['paths']['etc/inputplumber/example.yaml']['snapshot']['data'].size,
+                         len(b'expected'))
+        self.assertEqual(self.finding(report, 'maintenance.state')['status'], 'ok')
+        self.assertEqual(self.finding(report, 'files.input')['status'], 'ok')
+
+    def test_projected_snapshot_digest_matches_original_base64(self):
+        contents = b'a managed runtime file\x00with binary data'
+        self.managed(contents)
+        projected = health.read_index(self.root, 'partuuid-test')
+        snapshot = projected['slots']['partuuid-test']['current']['paths'][
+            'etc/inputplumber/example.yaml']['snapshot']
+        expected = health.expected_snapshot(snapshot)
+        self.assertEqual(expected['sha256'], hashlib.sha256(contents).hexdigest())
+        self.assertEqual(expected['bytes'], len(contents))
+
+    def test_snapshot_digest_accepts_large_runtime_below_health_file_limit(self):
+        digest = health.state_io.DataDigest('a' * 64, 195 * 1024 * 1024)
+        snapshot = {'exists': True, 'data': digest, 'mode': 0o644, 'uid': 0, 'gid': 0}
+        expected = health.expected_snapshot(snapshot)
+        self.assertEqual(expected['bytes'], 195 * 1024 * 1024)
+        with mock.patch.object(health, 'MAX_FILE', 64 * 1024 * 1024):
+            with self.assertRaisesRegex(ValueError, 'invalid_snapshot_digest'):
+                health.expected_snapshot(snapshot)
+
+    def test_index_over_health_cap_is_unknown_with_size_and_limit(self):
+        self.managed()
+        path = self.root / health.STATE / 'index.json'
+        limit = path.stat().st_size - 1
+        with mock.patch.object(health, 'MAX_INDEX', limit):
+            report = self.collect()
+        check = self.finding(report, 'maintenance.state')
+        self.assertEqual(check['status'], 'unknown')
+        self.assertIn(str(path.stat().st_size), check['message']['en'])
+        self.assertIn(str(limit), check['message']['en'])
+
+    def test_controlled_index_errors_have_safe_specific_messages(self):
+        busy = health.Report._index_error_message(BlockingIOError(11, 'busy'))
+        denied = health.Report._index_error_message(PermissionError(13, 'denied'))
+        changed = health.Report._index_error_message(ValueError('index_changed_during_check'))
+        limited = health.Report._index_error_message(ValueError('index_size_limit:1234:1000'))
+        self.assertIn('lock', busy['en'].lower())
+        self.assertIn('permission', denied['en'].lower())
+        self.assertNotIn('holding the index lock', denied['en'].lower())
+        self.assertIn('changed', changed['en'].lower())
+        self.assertIn('1234', limited['en'])
+        self.assertIn('1000', limited['en'])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX metadata symlink safety')
+    def test_index_symlink_is_rejected_without_legacy_fallback(self):
+        self.managed()
+        path = self.root / health.STATE / 'index.json'
+        target = self.root / health.STATE / 'private-index.json'
+        path.rename(target)
+        path.symlink_to(target)
+        with mock.patch.object(inventory, 'inspect') as inspect:
+            report = self.collect()
+        inspect.assert_not_called()
+        self.assertEqual(self.finding(report, 'maintenance.state')['status'], 'unknown')
+        self.assertNotIn('files.input', [item['id'] for item in report['checks']])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX atomic replacement while open')
+    def test_atomic_index_replacement_during_parse_is_unknown(self):
+        self.managed()
+        path = self.root / health.STATE / 'index.json'
+        original_load = health.state_io.load
+
+        def replace_after_load(stream, **kwargs):
+            value = original_load(stream, **kwargs)
+            replacement = path.with_name('index.replacement')
+            replacement.write_bytes(path.read_bytes())
+            os.replace(replacement, path)
+            return value
+
+        with mock.patch.object(health.state_io, 'load', side_effect=replace_after_load):
+            report = self.collect()
+        check = self.finding(report, 'maintenance.state')
+        self.assertEqual(check['status'], 'unknown')
+        self.assertIn('changed', check['message']['en'].lower())
+
+    def test_pending_marker_appearing_before_shared_lock_skips_comparison(self):
+        self.managed()
+        calls = 0
+        original_interrupted = health.Report.interrupted
+
+        def interrupted_with_race(report):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                result = original_interrupted(report)
+                self.write(health.STATE + '/pending.json', {'private': 'not exported'})
+                return result
+            return original_interrupted(report)
+
+        with mock.patch.object(health.Report, 'interrupted', interrupted_with_race), \
+                mock.patch.object(health.Report, 'compare') as compare:
+            report = self.collect()
+        self.assertEqual(calls, 2)
+        compare.assert_not_called()
+        self.assertEqual(self.finding(report, 'maintenance.operation')['status'], 'warning')
+
     def test_changed_immutable_file_has_expected_actual_hash_and_path(self):
         path = self.managed()
         path.write_bytes(b'changed')
@@ -185,6 +311,15 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.finding(report, 'maintenance.state')['status'], 'unknown')
         self.assertIn('input.devices', [c['id'] for c in report['checks']])
 
+    def test_non_object_index_roots_are_unknown_without_crashing(self):
+        self.managed()
+        for raw in (b'[]', b'null', b'"root"'):
+            with self.subTest(raw=raw):
+                self.write(health.STATE + '/index.json', raw)
+                report = self.collect()
+                self.assertEqual(self.finding(report, 'maintenance.state')['status'], 'unknown')
+                self.assertIn('input.devices', [item['id'] for item in report['checks']])
+
     def test_structurally_invalid_state_does_not_abort_device_checks(self):
         self.managed()
         pristine = copy.deepcopy(self.index)
@@ -259,7 +394,9 @@ class HealthTests(unittest.TestCase):
         with (self.root / health.STATE / 'lock').open('rb') as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             report = self.collect()
-        self.assertEqual(self.finding(report, 'maintenance.state')['status'], 'unknown')
+        check = self.finding(report, 'maintenance.state')
+        self.assertEqual(check['status'], 'unknown')
+        self.assertIn('lock', check['message']['en'].lower())
 
 
 class HealthDesktopTests(unittest.TestCase):
