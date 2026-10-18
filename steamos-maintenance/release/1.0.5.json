@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.5",
+  "display_version": "1.0.5",
+  "channel": "stable",
+  "notes": "同步 1.0.5 项目版本与维护入口。沿用已发布 maintenance.5 的维护运行代码和组件载荷；Windows 安装器修复非关键校验中断安装的问题。"
+}

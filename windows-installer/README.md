@@ -2,9 +2,9 @@
 
 在 Windows 中准备 SteamOS，安装到选定的 GPT 未分配空间。支持内置盘与 Windows 共存、外部 SD / SSD 完整系统、OXP3 设备适配与插件预装，以及可选的 rEFInd 双系统启动菜单。
 
-0.1.4 的镜像准备已集成 GTK 修复与项目更新工具本体，并创建 KDE 桌面及应用菜单快捷方式；资源按需下载。构建与公钥要求见[维护工具集成](docs/MAINTENANCE_TOOL.md)。
+1.0.5 的镜像准备已集成 GTK 修复与项目更新工具本体，并创建 KDE 桌面及应用菜单快捷方式；资源按需下载。构建与公钥要求见[维护工具集成](docs/MAINTENANCE_TOOL.md)。
 
-当前整合版为 **OXP3 SteamOS 0.1.4 stable**（`0.1.4`，渠道 `stable`），目标系统为 **SteamOS 3.10 / build 20260924.1000**；可用安装包见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)，具体构建编号以包内 `build-info.json` 为准。stable 是本项目的整合版渠道标签，不代表所有设备流程或硬件均已验收。挂载选择已隐藏；新安装选择组件后直接进入“确认方案”。0.1.4 新增 OXP3 Light、split-lock 修复及 CPU 独立 PL1/PL2 控制，并整合 Opti2XMX 0.2.4。第三方 Decky 插件由用户自行安装。完整无人值守全新安装尚未验收。详见[0.1.4 发布说明](docs/RELEASE_0.1.4.md)。
+当前整合版为 **OXP3 SteamOS 1.0.5 stable**（`1.0.5`，渠道 `stable`），目标系统为 **SteamOS 3.10 / build 20260924.1000**；可用安装包见 GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases)，具体构建编号以包内 `build-info.json` 为准。stable 是本项目的整合版渠道标签，不代表所有设备流程或硬件均已验收。挂载选择已隐藏；新安装选择组件后直接进入“确认方案”。0.1.4 新增 OXP3 Light、split-lock 修复及 CPU 独立 PL1/PL2 控制，并整合 Opti2XMX 0.2.4。第三方 Decky 插件由用户自行安装。完整无人值守全新安装尚未验收。详见[1.0.5 发布说明](docs/RELEASE_1.0.5.md)。
 
 Valve 官方 SteamOS 3.10 镜像的更新分支仍为 `stable`；这与本项目整合版的 `stable` 渠道相互独立。自 0.1.3 起，新准备镜像让 `atomupd` 更新器保持运行并指向必需的私有本地空更新源；正常运行时没有 SteamOS 更新候选，安装器不提供暂停／恢复此策略的 UI。此行为只影响新准备的镜像，不会修改已安装的 SteamOS。若恢复更新或执行官方 SteamOS 系统更新，系统可能从 3.10 回滚到 3.8，并可能覆盖全部 OXP3 适配，包括 Wi-Fi 与手柄支持。旧暂停记录及恢复入口保留为历史／救援资料，见 [首次启动与更新保护](docs/FIRSTBOOT_INPUT_DECKY.md)。
 
@@ -62,9 +62,9 @@ Valve 官方 SteamOS 3.10 镜像的更新分支仍为 `stable`；这与本项目
 
 固件写入前保存 `firmware-before.json`，读回核对后保存 `firmware-result.json`；失败时仅在固件状态仍匹配本次写入的情况下恢复原顺序。真实固件重启和 Windows / BitLocker 行为待实机验收。当前源码和新构建包含此改动，已有 ZIP 不会更新。
 
-## 当前 0.1.4 stable 运行包
+## 当前 1.0.5 stable 运行包
 
-GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 是 Windows 安装应用 ZIP 的下载入口。此前的 **0.1.3 stable**、**0.1.2 stable**、**0.1.1 stable**、**0.1.0 Beta** 与 development ZIP 均为历史构建，不会因源码或文档更新而改变。完整解压后从根目录运行 `SteamOSInstaller.exe`。重新打包不会自动修复已安装的系统；旧准备镜像须从官方原始下载重新准备才能采用当前的新安装行为。stable 渠道标签不表示完整 OOBE 或所有硬件均已验收；自动跨版本适配尚未实现，Waydroid 仍保留独立依赖问题。功能变更与验证范围见[0.1.4 发布说明](docs/RELEASE_0.1.4.md)；历史 Beta 包说明仍保留在 [0.1.0 Beta 发布说明](docs/RELEASE_0.1.0_BETA.md)。安装器不会修改已安装系统；新装镜像让 `atomupd` 更新器保持运行并指向私有空更新源。已有 SteamOS 的项目修复与更新使用[维护工具](../steamos-maintenance/README.md)，兼容性按组件检查。
+GitHub [Releases](https://github.com/FlightDan/OneXPlayer3-SteamOS/releases) 是 Windows 安装应用 ZIP 的下载入口。此前的 **0.1.3 stable**、**0.1.2 stable**、**0.1.1 stable**、**0.1.0 Beta** 与 development ZIP 均为历史构建，不会因源码或文档更新而改变。完整解压后从根目录运行 `SteamOSInstaller.exe`。重新打包不会自动修复已安装的系统；旧准备镜像须从官方原始下载重新准备才能采用当前的新安装行为。stable 渠道标签不表示完整 OOBE 或所有硬件均已验收；自动跨版本适配尚未实现，Waydroid 仍保留独立依赖问题。功能变更与验证范围见[1.0.5 发布说明](docs/RELEASE_1.0.5.md)；历史 Beta 包说明仍保留在 [0.1.0 Beta 发布说明](docs/RELEASE_0.1.0_BETA.md)。安装器不会修改已安装系统；新装镜像让 `atomupd` 更新器保持运行并指向私有空更新源。已有 SteamOS 的项目修复与更新使用[维护工具](../steamos-maintenance/README.md)，兼容性按组件检查。
 
 当前源码包含工作空间与容量选择、剩余空间 NTFS 格式化、受保护的 Linux／未识别分区删除、详细日志导出、整合版标记，以及下表修复。源代码、最新 Release 附件和实机验收状态应分别核对；每个新安装包的构建编号见 `build-info.json`。
 
