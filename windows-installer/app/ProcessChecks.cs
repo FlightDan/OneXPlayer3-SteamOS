@@ -15,6 +15,7 @@ internal static class ProcessChecks
         await File.WriteAllTextAsync(child, """
             [IO.File]::WriteAllText($args[1], [string]$PID)
             if ($args[0] -eq 'normal') { [Console]::Out.WriteLine('stdout-ok'); [Console]::Error.WriteLine('stderr-ok'); exit 0 }
+            if ($args[0] -eq 'lines') { [Console]::Out.WriteLine('first'); [Console]::Out.WriteLine(); [Console]::Out.WriteLine('second'); exit 0 }
             if ($args[0] -eq 'nonzero') { exit 7 }
             while ($true) {
                 if ($args[0] -eq 'stderr') { [Console]::Error.WriteLine(('x' * 4096)) }
@@ -46,6 +47,11 @@ internal static class ProcessChecks
         }
         var normal = await Backend.ProcessAsync(executable, Arguments("normal", Path.Combine(directory, "normal.pid")), _ => { }, CancellationToken.None);
         Require(normal.Contains("stdout-ok") && normal.Contains("stderr-ok"), "both-streams-drained");
+        var captured = new System.Text.StringBuilder();
+        await Backend.ProcessAsync(executable, Arguments("lines", Path.Combine(directory, "lines.pid")),
+            text => captured.Append(text), CancellationToken.None);
+        Require(captured.ToString() == "first" + Environment.NewLine + Environment.NewLine + "second" + Environment.NewLine,
+            "log-callback-preserves-line-and-blank-line-boundaries");
         try
         {
             await Backend.ProcessAsync(executable, Arguments("nonzero", Path.Combine(directory, "nonzero.pid")), _ => { }, CancellationToken.None);

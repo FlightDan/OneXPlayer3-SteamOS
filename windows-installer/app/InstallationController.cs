@@ -82,6 +82,29 @@ public static partial class InstallationController
     }
     public static async Task<InstallationSession> RunAsync(InstallationRequest request, Action<InstallationProgress> report, Action<string> log,
         CancellationToken token, Action<InstallationSession>? created = null)
+        => await WithInstallationLogAsync("install", log, trace => RunCoreAsync(request,
+            update => { trace.Progress(update); report(update); }, trace.Write, token, state =>
+            {
+                trace.Write($"\nINSTALL_SESSION={Path.Combine(SessionDirectory(state), "session.json")}\n");
+                created?.Invoke(state);
+            }));
+
+    private static async Task<T> WithInstallationLogAsync<T>(string kind, Action<string> log, Func<InstallationLog, Task<T>> action)
+    {
+        using var trace = new InstallationLog(kind, log);
+        trace.Write($"Installation log: {trace.LogPath}\nWorkspace: {Work}\n");
+        try
+        {
+            var result = await action(trace);
+            if (result is InstallationSession state)
+                trace.Write($"\nINSTALL_STATUS={state.Status}\nDeployment: {state.Deployment}\n");
+            return result;
+        }
+        catch (Exception error) { trace.Write(error.ToString() + Environment.NewLine); throw; }
+    }
+
+    private static async Task<InstallationSession> RunCoreAsync(InstallationRequest request, Action<InstallationProgress> report, Action<string> log,
+        CancellationToken token, Action<InstallationSession>? created)
     {
         ValidateRequest(request); token.ThrowIfCancellationRequested();
         if (request.Physical && request.Options?.StorageMounts is { Length: > 0 } mounts)

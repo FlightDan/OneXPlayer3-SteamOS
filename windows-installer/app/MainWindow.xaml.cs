@@ -242,7 +242,7 @@ public partial class MainWindow : Window
         PlanningScope.Text = Kind == InstallationTargetKind.InternalShared
             ? PartitionInventory.L("所选磁盘与容量用于安装规划；本次执行仍使用独立的 80 GiB 虚拟测试盘。", "Disk and capacity selections are for planning; execution still uses a separate 80 GiB virtual test disk.")
             : PartitionInventory.L("外部完整系统演练使用新建的 80 GiB 虚拟盘；真实外部设备选择尚未开放。", "The external full-system rehearsal uses a new 80 GiB virtual disk; real external-device selection is not available yet.");
-        if(physicalInstallation) PlanningScope.Text=PartitionInventory.L("选择至少 64 GiB 未分配空间，可选 64G、100G、全部空间或自定义容量。也可先删除不再需要的数据分区来释放空间；删除前会单独确认，系统和启动分区受保护。","Choose at least 64 GiB of unallocated space, then select 64G, 100G, all space or a custom capacity. You can first delete an unwanted data partition to free space. Deletion has its own confirmation; system and boot partitions are protected.");
+        if(physicalInstallation) PlanningScope.Text=PartitionInventory.L("选择至少 64 GiB 未分配空间，可选 64G、100G 或自定义容量。也可先删除不再需要的数据分区来释放空间；删除前会单独确认，系统和启动分区受保护。","Choose at least 64 GiB of unallocated space, then select 64G, 100G or a custom capacity. You can first delete an unwanted data partition to free space. Deletion has its own confirmation; system and boot partitions are protected.");
     }
     private void SourceModeChanged(object sender, RoutedEventArgs e) { if (ready) { ImagePath.Clear(); ValidationMessage.Text = ""; } }
     private void BrowseImage(object sender, RoutedEventArgs e)
@@ -391,7 +391,6 @@ public partial class MainWindow : Window
     internal async Task StartAsync(InstallationRequest request)
     {
         if (operation != null) throw new InvalidOperationException(InstallerI18n.T("已有任务正在运行。"));
-        InstallationController.ValidateRequest(request);
         session = null; Progress.Value = 0;
         operation = new CancellationTokenSource(); StopButton.IsEnabled = true; ShowStep(5); LogText.Clear(); LogExpander.IsExpanded = false;
         try

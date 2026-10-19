@@ -68,6 +68,11 @@ public static partial class InstallationController
     }
     public static async Task<InstallationSession> ResumeAsync(InstallationSession selected, Action<InstallationProgress> report,
         Action<string> log, CancellationToken token)
+        => await WithInstallationLogAsync("resume", log, trace => ResumeCoreAsync(selected,
+            update => { trace.Progress(update); report(update); }, trace.Write, token));
+
+    private static async Task<InstallationSession> ResumeCoreAsync(InstallationSession selected, Action<InstallationProgress> report,
+        Action<string> log, CancellationToken token)
     {
         _ = RecoveryState(selected);
         var directory = SessionDirectory(selected); var journal = Path.Combine(directory, "session.json");

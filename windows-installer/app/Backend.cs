@@ -41,7 +41,7 @@ public static class Backend
         {
             try
             {
-                while (await reader.ReadLineAsync(token) is { } line) { lock (output) output.AppendLine(line); log(line); }
+                while (await reader.ReadLineAsync(token) is { } line) { lock (output) output.AppendLine(line); log(line + Environment.NewLine); }
             }
             catch
             {

@@ -180,8 +180,8 @@ public static class PartitionPickerChecks
         picker.Partitions.SelectedItem = picker.Partitions.Items.Cast<PartitionRow>().Single(r => r.Space != null);
         picker.CapacityInput.Text = "32"; Click("NextButton");
         Require(Find<StackPanel>("TargetPage").Visibility == Visibility.Visible && picker.ChangesHost.Children.Count == 0, "invalid-capacity-blocks-next-and-clears-preview");
-        picker.AllSpaceButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(picker.Selection.Capacity == gap.Size, "use-all-includes-fractional-gib");
+        Require(picker.AllSpaceButton.Visibility == Visibility.Collapsed && !picker.AllSpaceButton.IsVisible,
+            "use-all-entry-is-hidden");
         picker.CapacityInput.Text = "128.5";
         Require(picker.Selection.Capacity == 128 * PartitionInventory.GiB + 512 * PartitionInventory.MiB, "fractional-gib-supported");
         Click("NextButton"); Require(Find<StackPanel>("SourcePage").Visibility == Visibility.Visible, "valid-target-reaches-source");

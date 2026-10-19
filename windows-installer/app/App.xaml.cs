@@ -23,7 +23,14 @@ public partial class App : Application
         }
         if (e.Args.Length > 0 && e.Args[0] == "--partition-helper")
         {
-            try { if (e.Args.Length != 2) throw new ArgumentException("Expected partition job"); Shutdown(await InstallationController.ExecuteHelperAsync(e.Args[1])); }
+            try
+            {
+                Shutdown(await InstallationLog.CaptureHelperAsync(async () =>
+                {
+                    if (e.Args.Length != 2) throw new ArgumentException("Expected partition job");
+                    return await InstallationController.ExecuteHelperAsync(e.Args[1]);
+                }));
+            }
             catch { Shutdown(1); }
             return;
         }
@@ -63,6 +70,12 @@ public partial class App : Application
                 else if (e.Args.Length == 3 && e.Args[1] == "reviewed-install") { log.AppendLine("INSTALL_SESSION=" + await ReviewedInstallationCli.RunAsync(e.Args[2])); }
                 else if (e.Args.Length == 2 && e.Args[1] == "capacity-checks") { log.AppendLine(await PreparedCapacityChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "workspace-checks") { log.AppendLine(await WorkspaceChecks.RunAsync()); }
+                else if (e.Args.Length == 2 && e.Args[1] == "installation-log-checks")
+                {
+                    var proof = Path.Combine(Backend.Root, "logs", "installation-log-checks-" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(proof);
+                    log.AppendLine(System.Text.Json.JsonSerializer.Serialize(new { passed = true, directory = proof, results = await InstallationLogChecks.RunAsync(proof) }));
+                }
                 else if (e.Args.Length == 2 && e.Args[1] == "secret-input-checks") { log.AppendLine(await SecretInputChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "runtime-permission-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"permissions\"}")); }
                 else if (e.Args.Length == 2 && e.Args[1] == "startup-integration-checks") { log.AppendLine(await Backend.GuestAsync("integration-check", null, false, text => log.Append(text), CancellationToken.None, selection: "{\"checks\":\"startup\"}")); }

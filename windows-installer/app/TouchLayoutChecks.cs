@@ -57,8 +57,8 @@ internal static class TouchLayoutChecks
         Require(((SolidColorBrush)Find<TextBlock>("NavTarget").Foreground).Color == Color.FromRgb(134,239,172), "valid-target-is-green");
         picker.Capacity100Button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(picker.Selection.Capacity == 100 * PartitionInventory.GiB && !TargetRed(), "valid-100g-clears-target-error");
-        picker.AllSpaceButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(!TargetRed(), "all-space-clears-target-error");
+        Require(picker.AllSpaceButton.Visibility == Visibility.Collapsed && !picker.AllSpaceButton.IsVisible,
+            "all-space-entry-hidden-from-touch-layout");
         picker.CapacityInput.Text = "32";
         Require(TargetRed(), "invalid-capacity-marks-target-error");
         picker.Capacity64Button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

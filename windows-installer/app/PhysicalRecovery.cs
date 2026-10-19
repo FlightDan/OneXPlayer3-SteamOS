@@ -55,6 +55,9 @@ public static partial class InstallationController
 {
     // Explicit recovery entry. Never constructs a new plan from the now-occupied gap.
     public static async Task<string> ResumePhysicalAsync(string sessionPath, Action<string> log, CancellationToken token)
+        => await WithInstallationLogAsync("physical-resume", log, trace => ResumePhysicalCoreAsync(sessionPath, trace.Write, token));
+
+    private static async Task<string> ResumePhysicalCoreAsync(string sessionPath, Action<string> log, CancellationToken token)
     {
         if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator)) throw new IOException("Physical recovery requires administrator access.");
         sessionPath=Path.GetFullPath(sessionPath);MediaSource.Ordinary(sessionPath,Work);

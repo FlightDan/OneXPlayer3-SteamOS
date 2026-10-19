@@ -20,7 +20,7 @@
   <Button x:Name="DeletePartitionButton" Click="DeletePartition" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,12" Foreground="#A32F23"/>
   <StackPanel x:Name="CapacityPanel" IsEnabled="False">
    <TextBlock x:Name="CapacityLabel" FontWeight="SemiBold"/>
-   <WrapPanel Margin="0,8,0,4"><TextBox x:Name="CapacityInput" Width="130" TextChanged="CapacityChanged" Margin="0,0,0,8"/><TextBlock Text="GiB" VerticalAlignment="Center" Margin="8,0,16,8"/><Button x:Name="Capacity64Button" Content="64G" Tag="64" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="Capacity100Button" ToolTipService.ShowOnDisabled="True" Content="100G" Tag="100" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="AllSpaceButton" Click="UseAll" Margin="0,0,0,8"/></WrapPanel>
+   <WrapPanel Margin="0,8,0,4"><TextBox x:Name="CapacityInput" Width="130" TextChanged="CapacityChanged" Margin="0,0,0,8"/><TextBlock Text="GiB" VerticalAlignment="Center" Margin="8,0,16,8"/><Button x:Name="Capacity64Button" Content="64G" Tag="64" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="Capacity100Button" ToolTipService.ShowOnDisabled="True" Content="100G" Tag="100" Click="UsePreset" Margin="0,0,8,8"/><Button x:Name="AllSpaceButton" Visibility="Collapsed" Click="UseAll" Margin="0,0,0,8"/></WrapPanel>
    <TextBlock x:Name="CapacityHint" TextWrapping="Wrap" Foreground="#61728A" Margin="0,4,0,10"/>
     <TextBlock x:Name="PlacementLabel" FontWeight="SemiBold"/>
     <WrapPanel Margin="0,8,0,8">
