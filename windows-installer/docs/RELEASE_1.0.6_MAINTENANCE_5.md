@@ -9,3 +9,7 @@
 完整离线维护包包含 31 个可维护组件及依赖和桌面双击入口，也已提供独立 ZIP。Opti 可选 XMX 运行库包含在完整包中；Waydroid 的 Android 镜像初始化仍需另行完成。
 
 正式签名身份保持原值，CPU 维持公开基线；本包不含动态功耗研究代码、设备记录、凭据或私钥。本轮未进行完整无人值守新装、实际分区挂载或实机全量恢复测试；GTK 图形密码弹窗次数未自动测量，授权复用由实际 Client 和临时终端认证代理验证。
+
+发布记录：新构建 20261019-151459 已公开并设为 Latest，2 个附件通过公开重新下载校验。Windows ZIP 为 550,669,864 字节，SHA-256 e44661979a5de4e3f255da33db1bcfe89321bbd23ef5b75ad4d5d641851ce43d。SourceCommit 为 e9e55c2a95c11740adf2de8383138dcfc9b47bc1。11 项发布检查包括 10 项功能检查及版本/便携启动器绑定检查。
+
+https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/v1.0.6%2Binstaller.20261019.151459

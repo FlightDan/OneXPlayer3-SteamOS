@@ -23,10 +23,10 @@
 | 最终维护载荷 | 完成：从审计公开基线及白名单改动重新准备并签名；publisher-report.complete=true，完整目录覆盖 32 项，14 个未改动组件包复用原公开附件。 |
 | 源码验证 | 完成：50 项测试通过、1 项原生 GTK 测试在 Windows 跳过；该界面另通过实际掌机 GTK 验收。 |
 | 维护 Release | 完成：新 Tag 和 8 个附件已公开，Windows 保持 Latest。 |
-| 公开下载和实机升级 | 完成：15 个组件及原始运行库引用重新公开下载通过；核心、目录验签和实际 .4→.5 仅核心升级通过。完整离线 ZIP 的公开重新下载校验记录随交付补齐。 |
+| 公开下载和实机升级 | 完成：15 个组件及原始运行库引用重新公开下载通过；核心、目录验签和实际 .4→.5 仅核心升级通过；全部 8 个新附件（含完整离线 ZIP）也已公开重新下载并核对摘要。 |
 | 完整离线维护包 | 完成：31 个可维护组件及依赖、原签名目录和核心、桌面双击入口；断网空缓存重组、签名、提取及 ZIP CRC/内容检查通过。 |
 | Windows 携带维护工具 | 完成：37 个运行文件及 manifest 从最终源码重建，Python 与 PowerShell 一致性检查通过。 |
-| Windows 完整包及 Release | 阻塞（尚未完成）：新的时间戳完整包正在打包，剩余步骤为 ZIP/元数据核对、发布和公开下载验证；不得用此前 Windows 包冒充新交付。 |
+| Windows 完整包及 Release | 完成：新构建 20261019-151459 已发布并设为 Latest；11 项发布检查（10 项功能检查及版本/便携启动器绑定）、载荷检查、ZIP/元数据检查通过，2 个公开附件重新下载校验通过。Windows 应用源码未变，沿用哈希已验证的相同正式程序，维护载荷重新生成。 |
 | 版本与 README | 完成：显示版本不变，只替换 3 处 README 维护版本链接。 |
 
 维护 Release：https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/maintenance-v1.0.6%2Bmaintenance.5
@@ -34,3 +34,7 @@
 完整离线桌面 ZIP：255,892,995 字节，SHA-256 53be1ffae0edab3656572a75fdd885e0fcd0b4c0cf148d669739f266f31ba21b。
 
 公开源码及实际载荷均排除动态功耗研究、设备记录、凭据和私钥；CPU 8 个文件保持公开基线。本次实机只更新维护核心，没有执行组件安装、磁盘操作或全量恢复测试。
+
+Windows Release：https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/tag/v1.0.6%2Binstaller.20261019.151459
+
+Windows ZIP：550,669,864 字节，SHA-256 e44661979a5de4e3f255da33db1bcfe89321bbd23ef5b75ad4d5d641851ce43d。包内 SourceCommit 为 e9e55c2a95c11740adf2de8383138dcfc9b47bc1。
