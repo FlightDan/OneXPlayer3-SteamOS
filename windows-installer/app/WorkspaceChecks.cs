@@ -35,6 +35,23 @@ internal static class WorkspaceChecks
                 "80-GiB-image-keeps-sparse-allocation");
             using (var info = JsonDocument.Parse(await Backend.ProcessAsync(qemu, ["info", "--output=json", sparse], _ => { }, CancellationToken.None)))
                 Require(info.RootElement.GetProperty("actual-size").GetInt64() < 1024 * 1024, "empty-80-GiB-image-uses-less-than-1-MiB");
+            using (var file = new FileStream(sparse, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Require(RawImageStaging.SparseDataUpperBound(file, CancellationToken.None) == 0,
+                    "empty-sparse-raw-needs-no-logical-capacity-budget");
+                // More than one native query page, with widely separated data
+                // and a final extent beyond a typical workspace's free space.
+                const long allSpace = 512L * 1024 * 1024 * 1024;
+                file.SetLength(allSpace);
+                for (var i = 0; i < 300; i++) { file.Position = 1024 * 1024 + i * 128 * 1024; file.WriteByte(0x5a); }
+                file.Position = allSpace - 1; file.WriteByte(0xa5); file.Flush(true);
+                var bound = RawImageStaging.SparseDataUpperBound(file, CancellationToken.None);
+                Require(bound >= 301ul * 4096 && bound < 64ul * 1024 * 1024,
+                    "512-GiB-fragmented-sparse-raw-budget-covers-all-pages-and-final-extent");
+                var largeClusters = RawImageStaging.SparseDataUpperBound(file, CancellationToken.None, 2ul * 1024 * 1024);
+                Require(largeClusters >= 40ul * 1024 * 1024 && largeClusters < 64ul * 1024 * 1024,
+                    "sparse-budget-rounds-and-merges-larger-destination-clusters");
+            }
             var source = Path.Combine(directory, "data.img");
             using (var stream = new FileStream(source, FileMode.CreateNew, FileAccess.Write)) {
                 stream.SetLength(16 * 1024 * 1024);
@@ -45,6 +62,16 @@ internal static class WorkspaceChecks
             await RawImageStaging.ConvertAsync(source, copy, _ => { }, CancellationToken.None);
             await Backend.ProcessAsync(qemu, ["compare", "-f", "raw", "-F", "raw", source, copy], _ => { }, CancellationToken.None);
             results.Add("sparse-copy-preserves-start-end-data-and-zero-regions");
+            using (var file = File.OpenRead(source))
+                Require(RawImageStaging.SparseDataUpperBound(file, CancellationToken.None) == null,
+                    "ordinary-raw-retains-conservative-data-budget");
+            var staged = Path.Combine(directory, "sparse-data-copy.img");
+            var stagingLog = new List<string>();
+            await RawImageStaging.ConvertAsync(copy, staged, stagingLog.Add, CancellationToken.None);
+            Require(stagingLog.Any(line => line.Contains("allocation source=Windows sparse ranges")),
+                "raw-staging-uses-native-sparse-budget");
+            await Backend.ProcessAsync(qemu, ["compare", "-f", "raw", "-F", "raw", source, staged], _ => { }, CancellationToken.None);
+            results.Add("native-sparse-budget-copy-retains-data-and-zero-regions");
             var snapshot = JsonNode.Parse(PartitionInventory.ExampleJson)!;
             snapshot[0]!["partitionReadError"] = "incomplete";
             Require(PartitionInventory.Read(snapshot.ToJsonString()).Single().Rows.All(row => row.Space == null && !row.CanDelete), "incomplete-inventory-cannot-install-or-delete");
