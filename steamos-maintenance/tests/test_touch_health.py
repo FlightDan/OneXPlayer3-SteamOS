@@ -79,6 +79,18 @@ class TouchHealthTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in self.service.perform.call_args_list],
                          ['health', 'export-health'])
 
+    def test_sidebar_navigation_runs_check_and_busy_guard_prevents_overlap(self):
+        self.ui.selections, self.ui.selected = {}, set()
+        self.ui._cancel_confirm = mock.Mock()
+        self.ui.navigate('health')
+        self.assertEqual(self.ui.route, 'health')
+        self.service.perform.assert_called_once_with('health')
+        self.assertFalse(self.ui.mutating)
+        self.ui.navigate('health')
+        self.service.perform.assert_called_once_with('health')
+        self.complete()
+        self.assertTrue(self.ui.views['health']['report_ready'])
+
     def test_health_page_renders_read_only_items_and_gates_report_export(self):
         ui = TouchWindow.__new__(TouchWindow)
         ui.toolbar, ui.footer = object(), object()

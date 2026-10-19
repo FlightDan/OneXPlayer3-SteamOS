@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.5",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "将一键体检更名为系统检查，移至独立左侧导航入口；检查结果保持该入口高亮。移除概览中分区挂载工具按钮下的重复说明。"
+}

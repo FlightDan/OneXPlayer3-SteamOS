@@ -305,7 +305,7 @@ class DesktopService:
                         detail += '\n' + device['name'] + ' (' + ' '.join(device['handlers']) + ')'
             items.append({'id': check['id'], 'title': labels[check['status']] + ' · ' + check['title'][language], 'detail': detail})
         counts = report['summary']
-        view = self._view(self.t('一键体检结果', 'Health check results'),
+        view = self._view(self.t('系统检查结果', 'System check results'),
                            self.t('已完成只读检查，异常和无法判断的项目优先显示。实际按键响应和互联网连接仍需另行验证。',
                                   'Read-only checks finished; warnings and unknowns appear first. Actual button response and Internet access still need separate verification.'),
                          facts=[(self.t('检查时间', 'Checked at'), report['created_at']),

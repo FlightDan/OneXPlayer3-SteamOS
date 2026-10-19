@@ -12,12 +12,11 @@ from .display_language import detect_language
 TEXT = {
     'zh': {
         'app': 'OXP3 修复与更新', 'overview': '概览', 'repairs': '修复与插件',
-        'recovery': '恢复', 'settings': '设置', 'health': '一键体检',
+        'recovery': '恢复', 'settings': '设置', 'health': '系统检查',
         'intro': '管理这台掌机的项目修复、插件与更新。',
         'partition_mount': '打开分区挂载工具',
-        'partition_mount_hint': '只打开工具窗口；保存挂载设置时会另行请求管理员授权。',
         'health_intro': '只读检查手柄、Wi-Fi 状态与近期错误、已安装组件；完成后可导出诊断报告。',
-        'health_again': '重新体检', 'health_export': '导出报告', 'health_back': '返回修复与插件',
+        'health_again': '重新检查', 'health_export': '导出报告', 'health_back': '返回修复与插件',
         'github_network': 'GitHub 下载线路',
         'network_auto': '自动（先直连，失败后尝试备用线路）', 'network_direct': '直连',
         'network_hint': '自动先直连，失败后尝试备用线路；第三方线路只访问公开文件，下载仍校验签名。',
@@ -55,12 +54,11 @@ TEXT = {
     },
     'en': {
         'app': 'OXP3 repairs & updates', 'overview': 'Overview', 'repairs': 'Repairs & plugins',
-        'recovery': 'Recovery', 'settings': 'Settings', 'health': 'Run health check',
+        'recovery': 'Recovery', 'settings': 'Settings', 'health': 'System check',
         'intro': 'Manage project repairs, plugins and updates for this handheld.',
         'partition_mount': 'Open partition mount utility',
-        'partition_mount_hint': 'This opens the utility only. Saving mount settings asks for administrator authorization separately.',
         'health_intro': 'Read-only checks cover controllers, Wi-Fi status and recent errors, and installed components. Export the report for diagnosis.',
-        'health_again': 'Run health check again', 'health_export': 'Export report', 'health_back': 'Back to repairs & plugins',
+        'health_again': 'Check again', 'health_export': 'Export report', 'health_back': 'Back to repairs & plugins',
         'github_network': 'GitHub download route',
         'network_auto': 'Auto (try direct first, then fallbacks)', 'network_direct': 'Direct',
         'network_hint': 'Auto tries direct first, then fallbacks. Third-party routes access public files only; downloads still verify signatures.',
@@ -228,7 +226,7 @@ class TouchWindow:
         spacer = Gtk.Box()
         spacer.set_size_request(-1, 4)
         self.navigation.pack_start(spacer, False, False, 0)
-        for route in ('overview', 'repairs', 'recovery', 'settings'):
+        for route in ('overview', 'repairs', 'health', 'recovery', 'settings'):
             button = self._button(self.text[route], lambda _, route=route: self.navigate(route), css='nav')
             button.get_child().set_width_chars(1)
             button.get_child().set_max_width_chars(18)
@@ -337,6 +335,8 @@ class TouchWindow:
         self.scroll.get_vadjustment().set_value(0)
         if route == 'overview':
             self.perform('overview')
+        elif route == 'health':
+            self._start_health_check()
         elif route == 'repairs' and self.service.has_source and not self.initial_imported:
             self.initial_imported = True
             self.perform('import', path=str(self.service.source))
@@ -353,8 +353,7 @@ class TouchWindow:
         self._clear(self.footer)
         for route, button in self.nav_buttons.items():
             context = button.get_style_context()
-            active_route = 'repairs' if self.route == 'health' else self.route
-            context.add_class('active') if route == active_route else context.remove_class('active')
+            context.add_class('active') if route == self.route else context.remove_class('active')
         default_message = {'overview': 'intro', 'repairs': 'empty', 'recovery': 'recovery_intro',
                            'settings': 'daily_detail', 'health': 'health_intro'}
         view = self.views.get(self.route, {})
@@ -381,7 +380,6 @@ class TouchWindow:
             self.page.pack_start(box, False, False, 0)
         if self.route == 'overview':
             self._action(self.page, self.text['partition_mount'], self._start_partition_mount)
-            self.page.pack_start(self._label(self.text['partition_mount_hint'], 'muted'), False, False, 0)
             self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover', route='repairs'), primary=True)
             self._action(self.toolbar, self.text['refresh'], lambda _: self.perform('status'))
             self._action(self.footer, self.text['browse'], lambda _: self.navigate('repairs'))
@@ -436,7 +434,6 @@ class TouchWindow:
             return
         self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover'), primary=True)
         self._action(self.toolbar, self.text['import'], self._choose_bundle)
-        self._action(self.toolbar, self.text['health'], self._start_health_check)
         items = view.get('items', [])
         if items:
             installed_count = sum(self._hideable_installed(item) for item in items)
