@@ -145,6 +145,16 @@ for slot in ('A','B'):
                 assert entries and all('nvme.noacpi=1' in line.split() for line in entries)
                 assert 'nvme.noacpi=1' in (root/'etc/default/grub.d/oxp3-nvme.cfg').read_text()
         expected_components=set(options['repairs']+options['plugins'])|({'kde-language'} if options['kde_language']!='system' else set())
+        if options['kde_language']!='system':
+            language=options['kde_language']
+            # KConfig permits repeated sections. Use the actual KDE reader so
+            # unrelated valid preferences cannot make Python's INI parser fail.
+            for group,key,expected in (('Translations','LANGUAGE',language),('Formats','LANG',language+'.UTF-8'),('Formats','LC_MESSAGES',language+'.UTF-8')):
+                actual=subprocess.check_output(['chroot',str(root),'/usr/bin/env','LC_ALL=C.UTF-8','KDE_HOME_READONLY=1','/usr/bin/kreadconfig6','--file','/home/deck/.config/plasma-localerc','--group',group,'--key',key],text=True,timeout=30).strip()
+                assert actual==expected, 'KDE runtime cannot read selected login '+key
+            values=dict(line.split('=',1) for line in (root/'etc/locale.conf').read_text().splitlines() if '=' in line and not line.lstrip().startswith('#'))
+            assert values['LANG']==language+'.UTF-8', 'System login locale differs from selection'
+            assert values['LC_MESSAGES']==language+'.UTF-8', 'System message locale differs from selection'
         expected_components.add('system-update-hold')
         expected_components.add('serial-console-policy')
         expected_components.add('maintenance-tool')

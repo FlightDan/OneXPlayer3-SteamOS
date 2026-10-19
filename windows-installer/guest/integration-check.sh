@@ -66,6 +66,9 @@ fi
 if [ -f /mnt/payload/selection.json ] && python3 -B -c 'import json,sys; sys.exit(json.load(open("/mnt/payload/selection.json"))!={"checks":"desktop-language"})'; then
     python3 -B /mnt/payload/components/test_integration.py \
         IntegrationChecks.test_desktop_language_presets_stage_and_restore \
+        IntegrationChecks.test_desktop_language_both_slots_preserves_formats_and_restores_system_locale \
+        IntegrationChecks.test_desktop_language_system_choice_preserves_both_locale_files \
+        IntegrationChecks.test_desktop_language_overrides_message_locale_and_keeps_regional_formats \
         IntegrationChecks.test_kde_preserves_unrelated_settings \
         IntegrationChecks.test_disabled_items_do_not_install
     umount /mnt/integration-test-scratch

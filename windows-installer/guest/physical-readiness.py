@@ -23,3 +23,10 @@ run('mount','-t','vfat','-o','ro',nodes['esp'],str(root))
 try:
     if not (root/'EFI/BOOT/BOOTX64.EFI').is_file():raise RuntimeError('Missing removable UEFI loader')
 finally:run('umount',str(root))
+selection = Path('/mnt/payload/selection.json')
+if selection.exists():
+    request = json.loads(selection.read_text())
+    if request != {'home_copy': True}:
+        raise RuntimeError('Unknown physical readiness selection')
+    from ext4_copy_plan import canonical_json, generate_managed_home
+    print('OXP_HOME_COPY_PLAN=' + canonical_json(generate_managed_home()), flush=True)

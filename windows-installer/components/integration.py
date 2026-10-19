@@ -163,10 +163,8 @@ class LogicalDirectory(DirectoryTransaction):
         value['destination']=str(self.destination)
         return value
 
-def config_file(root, relative, group, values):
-    path=Path(root)/relative
-    saved=snapshot(path)
-    text=base64.b64decode(saved['data']).decode() if saved['exists'] else ''
+def config_data(text, group, values):
+    """Edit selected KDE keys without discarding unrelated preferences."""
     # KDE configuration supports duplicate key groups and localized keys; edit
     # only the requested group's plain keys, keeping unrelated text verbatim.
     lines=text.splitlines(); start=next((i for i,l in enumerate(lines) if l.strip()=='['+group+']'),None)
@@ -179,6 +177,32 @@ def config_file(root, relative, group, values):
         if matches: body[matches[0]]=key+'='+value
         else: body.append(key+'='+value)
     return ('\n'.join(lines[:start+1]+body+lines[end:])+'\n').encode()
+
+def config_file(root, relative, group, values):
+    saved=snapshot(Path(root)/relative)
+    text=base64.b64decode(saved['data']).decode() if saved['exists'] else ''
+    return config_data(text,group,values)
+
+def desktop_language_files(root, language):
+    """Seed the selected language for first login, including a usable LANG.
+
+    Plasma imports both groups from plasma-localerc. LANGUAGE alone is ignored
+    by gettext when the inherited locale is C/POSIX. Keep independent regional
+    format choices, but set the fallback locale alongside the translation list.
+    """
+    if language=='system': return {}
+    locale=language+'.UTF-8'
+    relative='home/deck/.config/plasma-localerc'
+    data=config_file(root,relative,'Translations',{'LANGUAGE':language})
+    data=config_data(data.decode(),'Formats',{'LANG':locale,'LC_MESSAGES':locale})
+    system='etc/locale.conf'; saved=snapshot(Path(root)/system)
+    lines=base64.b64decode(saved['data']).decode().splitlines() if saved['exists'] else []
+    for key in ('LANG','LC_MESSAGES'):
+        matches=[i for i,line in enumerate(lines) if line.split('=',1)[0].strip()==key]
+        if len(matches)>1: raise RuntimeError('Ambiguous system '+key+' setting')
+        if matches: lines[matches[0]]=key+'='+locale
+        else: lines.append(key+'='+locale)
+    return {relative:{'data':data,'user':True},system:{'data':('\n'.join(lines)+'\n').encode()}}
 
 def flathub_files(root, payload):
     # Flatpak supports complete, signed system remote definitions in remotes.d.
@@ -623,10 +647,9 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
     if 'decky' in reports:
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'decky',**reports['decky']}),flush=True)
     if options['kde_language']!='system':
-        language=options['kde_language']; relative='home/deck/.config/plasma-localerc'
-        data=config_file(root,relative,'Translations',{'LANGUAGE':language})
-        apply_files(root,state,'kde-language',{relative:{'data':data,'user':True}},owner)
-        reports['kde-language']={'status':'files_installed','language':language,'activation':'next-login'}
+        language=options['kde_language']; files=desktop_language_files(root,language)
+        apply_files(root,state,'kde-language',files,owner)
+        reports['kde-language']={'status':'files_installed','language':language,'locale':language+'.UTF-8','activation':'next-login','files':list(files)}
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'kde-language',**reports['kde-language']}),flush=True)
     # The required update hold was applied before optional repairs; there is no
     # live updater activation or service stop in offline image preparation.

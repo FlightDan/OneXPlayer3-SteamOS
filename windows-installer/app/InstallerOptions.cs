@@ -115,11 +115,11 @@ public sealed class InstallerOptionsPanel : StackPanel
         deckPassword.PasswordChanged += (_, _) => { if (!clearingSensitiveInputs) Changed?.Invoke(this, EventArgs.Empty); };
         deckPasswordConfirm.PasswordChanged += (_, _) => { if (!clearingSensitiveInputs) Changed?.Invoke(this, EventArgs.Empty); };
         UpdateDeckPasswordState();
-        Heading("SteamOS 桌面语言（KDE）", "SteamOS desktop language (KDE)");
+        Heading("SteamOS 系统与桌面语言（KDE）", "SteamOS system and desktop language (KDE)");
         var languageNote = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray };
         labels.Add((languageNote,
-            "默认跟随安装器语言。手动选择后保持你的设置，在安装后登录桌面时生效；Steam 游戏模式的语言请在 Steam 设置中选择。",
-            "Defaults to the installer language. A manual choice is kept and takes effect when you log in to the installed desktop. Choose the Steam Gaming Mode language in Steam settings."));
+            "默认跟随安装器语言，设置系统登录语言与 KDE 桌面语言。手动选择后保持你的设置，在安装后下次登录时生效；Steam 游戏模式的语言请在 Steam 设置中选择。",
+            "Defaults to the installer language for system login and the KDE desktop. A manual choice is kept and takes effect at the next login after installation. Choose the Steam Gaming Mode language in Steam settings."));
         Children.Add(languageNote);
         var names = new[] { "保持系统默认 / System default", "简体中文", "繁體中文", "English", "日本語", "한국어", "Deutsch", "Français", "Español", "Русский" };
         for (var i = 0; i < catalog.KdeLanguages.Length; i++) kde.Items.Add(new ComboBoxItem { Content = names[i], Tag = catalog.KdeLanguages[i] });

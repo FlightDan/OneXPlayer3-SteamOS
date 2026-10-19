@@ -60,6 +60,9 @@ public partial class App : Application
                 else if (e.Args.Length is 2 or 3 && e.Args[1] == "installation-progress-checks") { log.AppendLine(InstallationProgressChecks.Run(e.Args.Length == 3 ? e.Args[2] : null)); }
                 else if (e.Args.Length == 2 && e.Args[1] == "official-system-progress-checks") { log.AppendLine(await OfficialSystemProgressChecks.RunAsync()); }
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-recovery-checks") { log.AppendLine(await PhysicalRecoveryChecks.RunAsync()); }
+                else if (e.Args.Length == 2 && e.Args[1] == "home-copy-native-checks") { log.AppendLine(await Ext4HomeCopyChecks.RunAsync()); }
+                else if (e.Args.Length == 2 && e.Args[1] == "home-copy-plan-checks") { log.AppendLine(await Backend.GuestAsync("home-copy-plan-checks", null, false, text => log.Append(text), CancellationToken.None)); }
+                else if (e.Args.Length == 3 && e.Args[1] == "home-copy-plan") { log.AppendLine(await Backend.GuestAsync("home-copy-plan", e.Args[2], false, text => log.Append(text), CancellationToken.None)); }
                 else if (e.Args.Length == 3 && e.Args[1] == "resume-physical")
                 {
                     var recoveryLog = Path.Combine(InstallationController.Work,"physical-resume-"+Guid.NewGuid().ToString("N")+".log");
@@ -85,6 +88,7 @@ public partial class App : Application
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-gpt-native-checks") log.AppendLine("GPT_NATIVE_CHECK="+await PhysicalInstallation.CheckSparseGptOwnedAsync());
                 else if (e.Args.Length == 2 && e.Args[1] == "physical-planning-checks") { var proof=PhysicalPlanningChecks.Run(); await File.WriteAllTextAsync(Path.Combine(Backend.Root,"logs/physical-planning-checks.json"),proof);log.AppendLine(proof); }
                 else if (e.Args.Length == 3 && e.Args[1] == "physical-adapter-check") log.AppendLine("PHYSICAL_ADAPTER="+await PhysicalInstallation.CheckOwnedAsync(e.Args[2],text=>log.AppendLine(text),CancellationToken.None));
+                else if (e.Args.Length == 3 && e.Args[1] == "physical-home-copy-check") log.AppendLine("PHYSICAL_HOME_COPY="+await PhysicalInstallation.CheckOwnedAsync(e.Args[2],text=>log.AppendLine(text),CancellationToken.None,optimizeHome:true));
                 else if (e.Args.Length == 3 && e.Args[1] == "physical-readiness") log.AppendLine(await Backend.GuestAsync("physical-readiness",e.Args[2],false,text=>log.Append(text),CancellationToken.None));
                 else if (e.Args.Length == 4 && e.Args[1] == "upgrade-source") log.AppendLine(await Backend.GuestAsync("upgrade-source",e.Args[2],true,text=>log.Append(text),CancellationToken.None,updateRoot:e.Args[3]));
                 else if (e.Args.Length == 3 && e.Args[1] == "inspect") log.AppendLine(await Backend.GuestAsync("inspect",e.Args[2],false,text=>log.Append(text),CancellationToken.None));

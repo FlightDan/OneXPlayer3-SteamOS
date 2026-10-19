@@ -29,7 +29,7 @@ function Invoke-LauncherCheck([string[]]$Arguments,[string]$Result,[string]$Name
     $checks.Add($Name)
     Write-Output "PASS: $Name"
 }
-foreach($task in @('component-outcome-checks','shared-storage-checks','physical-planning-checks','partition-picker-checks','installation-log-checks')) {
+foreach($task in @('component-outcome-checks','shared-storage-checks','physical-planning-checks','partition-picker-checks','installation-log-checks','home-copy-native-checks','physical-recovery-checks')) {
     Invoke-LauncherCheck -Arguments @('--cli',$task) -Result 'logs/native-cli-result.txt' -Name $task -Cli
 }
 Invoke-LauncherCheck -Arguments @('--shared-storage-ui-checks') -Result 'logs/shared-storage-ui-checks.json' -Name 'shared-storage-ui-checks'

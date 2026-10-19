@@ -833,6 +833,51 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         self.assertLess(commands.index(('systemctl','stop','inputplumber.service')),commands.index(('systemctl','stop','oxp3-gyro.service')))
         self.assertEqual(commands[-2:],[('systemctl','daemon-reload'),('systemctl','start','inputplumber.service')])
         self.assertIn(('steamos-readonly','enable'),commands)
+    def test_cpu_live_restore_stops_optional_gpu_priority_before_cpu_service(self):
+        from unittest.mock import patch
+        import integration_runtime as runtime
+        commands=[]
+        show=('systemctl','show','--property=LoadState','--value','oxp3-gpu-priority.service')
+        def fake_run(*args):
+            commands.append(args)
+            if args==show: return 'loaded'
+            return 'enabled' if args==('steamos-readonly','status') else ''
+        with patch.object(runtime,'run',side_effect=fake_run), patch.object(runtime,'restore',return_value=[]):
+            self.assertEqual(runtime.restore_live('oxp3-cpu','A'),[])
+        gpu_stop=('systemctl','stop','oxp3-gpu-priority.service')
+        cpu_stop=('systemctl','stop','oxp3-cpu.service')
+        self.assertLess(commands.index(show),commands.index(gpu_stop))
+        self.assertLess(commands.index(gpu_stop),commands.index(cpu_stop))
+        self.assertNotIn(('systemctl','start','oxp3-gpu-priority.service'),commands)
+    def test_cpu_live_restore_skips_gpu_priority_when_older_unit_is_not_found(self):
+        from unittest.mock import patch
+        import integration_runtime as runtime
+        commands=[]
+        show=('systemctl','show','--property=LoadState','--value','oxp3-gpu-priority.service')
+        def fake_run(*args):
+            commands.append(args)
+            if args==show: return 'not-found'
+            return 'enabled' if args==('steamos-readonly','status') else ''
+        with patch.object(runtime,'run',side_effect=fake_run), patch.object(runtime,'restore',return_value=[]):
+            self.assertEqual(runtime.restore_live('oxp3-cpu','A'),[])
+        cpu_stop=('systemctl','stop','oxp3-cpu.service')
+        self.assertLess(commands.index(show),commands.index(cpu_stop))
+        self.assertNotIn(('systemctl','stop','oxp3-gpu-priority.service'),commands)
+        self.assertNotIn(('systemctl','start','oxp3-gpu-priority.service'),commands)
+    def test_cpu_live_restore_propagates_gpu_unit_load_state_errors(self):
+        from unittest.mock import patch
+        import integration_runtime as runtime
+        commands=[]
+        show=('systemctl','show','--property=LoadState','--value','oxp3-gpu-priority.service')
+        def fake_run(*args):
+            commands.append(args)
+            if args==show: raise RuntimeError('systemctl show failed')
+            return ''
+        with patch.object(runtime,'run',side_effect=fake_run):
+            with self.assertRaisesRegex(RuntimeError,'systemctl show failed'):
+                runtime.restore_live('oxp3-cpu','A')
+        self.assertNotIn(('systemctl','stop','oxp3-cpu.service'),commands)
+        self.assertNotIn(('systemctl','start','oxp3-gpu-priority.service'),commands)
     def test_gyro_manual_calibration_blocks_partial_restore(self):
         self.options.update(repairs=['input','gyro'],plugins=[],kde_language='system')
         stage(self.root,PAYLOAD,self.options,'A')
@@ -875,9 +920,10 @@ for relative in ('.local/share/Steam/config/deck-write-check',
         with self.assertRaises(RuntimeError): stage(self.root,PAYLOAD,dict(self.options,kde_language='en_US'),'A')
     def test_kde_preserves_unrelated_settings(self):
         p=self.root/'home/deck/.config/plasma-localerc'; p.parent.mkdir(parents=True)
-        p.write_text('[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=de\n[Other]\nkeep=yes\n')
+        p.write_text('[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=de\n[Other]\nkeep=yes\n[Other]\nmore=yes\n')
         data=config_file(self.root,'home/deck/.config/plasma-localerc','Translations',{'LANGUAGE':'zh_CN'}).decode()
         self.assertIn('LANG=de_DE.UTF-8',data); self.assertIn('keep=yes',data); self.assertIn('LANGUAGE=zh_CN',data)
+        self.assertEqual(data.count('[Other]'),2); self.assertIn('more=yes',data)
     def test_desktop_language_presets_stage_and_restore(self):
         p=self.root/'home/deck/.config/plasma-localerc'; p.parent.mkdir(parents=True)
         original='[Formats]\nLANG=de_DE.UTF-8\n[Translations]\nLANGUAGE=en_US\n[Other]\nkeep=yes\n'
@@ -891,16 +937,74 @@ for relative in ('.local/share/Steam/config/deck-write-check',
                 result=stage(root,PAYLOAD,options,'A')
                 parser=configparser.ConfigParser(interpolation=None); parser.read(config)
                 self.assertEqual(parser['Translations']['LANGUAGE'],desktop_language)
-                self.assertEqual(parser['Formats']['LANG'],'de_DE.UTF-8')
+                self.assertEqual(parser['Formats']['LANG'],desktop_language+'.UTF-8')
                 self.assertEqual(parser['Other']['keep'],'yes')
                 self.assertEqual(config.stat().st_uid,1000)
                 self.assertEqual(result['components']['kde-language']['activation'],'next-login')
                 self.assertEqual(stage(root,PAYLOAD,options,'A'),result)
                 self.assertEqual(restore(root,'A','kde-language'),[])
                 self.assertEqual(config.read_text(),original)
+                self.assertFalse((root/'etc/locale.conf').exists())
         result=stage(self.root,PAYLOAD,dict(self.options,repairs=[],plugins=[],kde_language='system'),'B')
         self.assertNotIn('kde-language',result['components'])
         self.assertEqual(p.read_text(),original)
+    def test_desktop_language_both_slots_preserves_formats_and_restores_system_locale(self):
+        for installer_language,desktop_language in (('zh-CN','zh_CN'),('en-US','en_US'),('zh-CN','en_US'),('en-US','zh_CN')):
+            with self.subTest(installer=installer_language,desktop=desktop_language), tempfile.TemporaryDirectory(prefix='oxp3-language-ab-') as directory:
+                roots=[Path(directory)/slot for slot in ('A','B')]
+                original='[Formats]\nLANG=C\nLC_MESSAGES=C\nLC_TIME=de_DE.UTF-8\n[Translations]\nLANGUAGE=en_US\n[Other]\nkeep=yes\n'
+                system='# existing regional preference\nLANG=C\nLC_MESSAGES=C\nLC_TIME=de_DE.UTF-8\n'
+                options=dict(self.options,repairs=[],plugins=[],installer_language=installer_language,kde_language=desktop_language)
+                for root in roots:
+                    shutil.copytree(self.root,root,symlinks=True)
+                    (root/'etc/locale.conf').write_text(system)
+                config=roots[0]/'home/deck/.config/plasma-localerc'; config.parent.mkdir(parents=True); config.write_text(original)
+                shared_home=roots[0]/'home'; (roots[1]/'home').mkdir()
+                subprocess.run(['mount','--bind',str(shared_home),str(roots[1]/'home')],check=True)
+                try:
+                    for root,slot in zip(roots,('A','B')):
+                        result=stage(root,PAYLOAD,options,slot)
+                        parser=configparser.ConfigParser(interpolation=None); parser.read(config)
+                        self.assertEqual(parser['Translations']['LANGUAGE'],desktop_language)
+                        self.assertEqual(parser['Formats']['LANG'],desktop_language+'.UTF-8')
+                        self.assertEqual(parser['Formats']['LC_MESSAGES'],desktop_language+'.UTF-8')
+                        self.assertEqual(parser['Formats']['LC_TIME'],'de_DE.UTF-8')
+                        self.assertEqual(parser['Other']['keep'],'yes')
+                        self.assertEqual((root/'etc/locale.conf').read_text(),system.replace('LANG=C','LANG='+desktop_language+'.UTF-8').replace('LC_MESSAGES=C','LC_MESSAGES='+desktop_language+'.UTF-8'))
+                        self.assertEqual(stage(root,PAYLOAD,options,slot),result)
+                    for root,slot in zip(roots,('A','B')):
+                        self.assertEqual(restore(root,slot,'kde-language'),[])
+                        self.assertEqual((root/'etc/locale.conf').read_text(),system)
+                        self.assertEqual(config.read_text(),original)
+                finally: subprocess.run(['umount',str(roots[1]/'home')],check=True)
+
+    def test_desktop_language_system_choice_preserves_both_locale_files(self):
+        config=self.root/'home/deck/.config/plasma-localerc'; config.parent.mkdir(parents=True)
+        config.write_text('[Formats]\nLANG=ja_JP.UTF-8\n[Translations]\nLANGUAGE=ja\n')
+        system=self.root/'etc/locale.conf'; system.write_text('LANG=ja_JP.UTF-8\n')
+        original=(config.read_bytes(),system.read_bytes())
+        result=stage(self.root,PAYLOAD,dict(self.options,repairs=[],plugins=[],kde_language='system'),'A')
+        self.assertNotIn('kde-language',result['components'])
+        self.assertEqual((config.read_bytes(),system.read_bytes()),original)
+    def test_desktop_language_overrides_message_locale_and_keeps_regional_formats(self):
+        from integration import desktop_language_files
+        config=self.root/'home/deck/.config/plasma-localerc'; config.parent.mkdir(parents=True)
+        system=self.root/'etc/locale.conf'
+        for previous in ('C','en_US.UTF-8'):
+            config.write_text('[Formats]\nLANG=C\nLC_MESSAGES='+previous+'\nLC_TIME=de_DE.UTF-8\n[Translations]\nLANGUAGE=en_US\n[Other]\nkeep=yes\n[Other]\nmore=yes\n')
+            system.write_text('LANG=C\nLC_MESSAGES='+previous+'\nLC_TIME=de_DE.UTF-8\n')
+            originals=(config.read_bytes(),system.read_bytes())
+            for language in ('zh_CN','en_US'):
+                with self.subTest(previous=previous,selected=language):
+                    files=desktop_language_files(self.root,language)
+                    for relative in ('home/deck/.config/plasma-localerc','etc/locale.conf'):
+                        data=files[relative]['data'].decode()
+                        self.assertIn('LANG='+language+'.UTF-8\n',data)
+                        self.assertIn('LC_MESSAGES='+language+'.UTF-8\n',data)
+                        self.assertIn('LC_TIME=de_DE.UTF-8\n',data)
+                    self.assertIn('[Other]\nkeep=yes\n[Other]\nmore=yes\n',files['home/deck/.config/plasma-localerc']['data'].decode())
+            self.assertEqual(desktop_language_files(self.root,'system'),{})
+            self.assertEqual((config.read_bytes(),system.read_bytes()),originals)
     def test_gamescope_environment_isolation_has_independent_restore(self):
         self.options.update(repairs=['gamescope-env'],plugins=[],kde_language='system')
         result=stage(self.root,PAYLOAD,self.options,'A')

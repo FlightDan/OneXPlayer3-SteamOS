@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace OxpInstaller;
 
-public sealed record PhysicalRecoveryState(int Schema, string Phase, NativeDiskInfo Device, PhysicalPlan Plan, MediaSource Source, string[] Completed, string? Error);
+public sealed record PhysicalRecoveryState(int Schema, string Phase, NativeDiskInfo Device, PhysicalPlan Plan, MediaSource Source, string[] Completed, string? Error, HomeCopyProfile? HomeCopy = null);
 internal sealed class CompletedRangeMismatchException(long offset) : IOException("Completed partition differs at exact byte " + offset + ".");
 
 public static partial class PhysicalInstallation
@@ -16,11 +16,14 @@ public static partial class PhysicalInstallation
             throw new IOException("Only the newly installed FAT boot slots may be restored during recovery.");
         return completed.TakeWhile(r => !restore.Contains(r)).ToArray();
     }
-    internal static void ValidateRecovery(PhysicalRecoveryState state, MediaSource source, PhysicalPlan plan, PreparedDisk layout)
+    internal static void ValidateRecovery(PhysicalRecoveryState state, MediaSource source, PhysicalPlan plan, PreparedDisk layout, HomeCopyProfile? homeCopy = null)
     {
-        if (state.Schema != 1 || state.Phase is not ("incomplete" or "partitions-created" or "registering-boot")
+        if (state.Schema is not (1 or 2) || state.Schema == 1 && (state.HomeCopy != null || homeCopy != null)
+            || state.Schema == 2 && (state.HomeCopy == null || homeCopy == null || state.HomeCopy != homeCopy)
+            || state.Phase is not ("incomplete" or "partitions-created" or "registering-boot")
             && !PreparedDisk.Roles.Any(r => state.Phase == "writing-" + r || state.Phase == "verified-" + r))
             throw new IOException("This physical journal cannot be resumed.");
+        state.HomeCopy?.Validate();
         var expected = Plan(plan.Selection, plan.Kind, layout);
         bool Same(PhysicalPlan p) => p.Selection == plan.Selection && p.Kind == plan.Kind && p.DiskId == expected.DiskId
             && p.MakeDefaultBoot == plan.MakeDefaultBoot && (!p.MakeDefaultBoot || p.Kind == InstallationTargetKind.InternalShared)
@@ -74,17 +77,18 @@ public static partial class InstallationController
         var jobPath=Path.Combine(state.Deployment,"partition-job.json");MediaSource.Ordinary(jobPath,Work);
         if(new FileInfo(jobPath).Length>65536)throw new IOException("Oversized original job.");
         var job=JsonSerializer.Deserialize<PartitionJob>(File.ReadAllText(jobPath))??throw new IOException("Missing original job.");
-        if(job.Schema!=1 || job.Scope!="reviewed-physical-range" || job.PhysicalPlan==null || job.Kind!=state.Kind
+        if(job.Schema is not (1 or 2) || job.Schema != recovery.Schema || job.Schema == 1 && job.HomeCopy != null || job.Schema == 2 && job.HomeCopy == null
+            || job.Scope!="reviewed-physical-range" || job.PhysicalPlan==null || job.Kind!=state.Kind
             || "partition-deploy-"+job.Nonce!=Path.GetFileName(state.Deployment) || job.Source!=recovery.Source)throw new IOException("Original reviewed job differs from recovery journal.");
         // The deployment journal carries the source handle identity and original reviewed range.
         using var source=new PreparedDiskImage(recovery.Source.Path);
-        PhysicalInstallation.ValidateRecovery(recovery,source.Identity,job.PhysicalPlan,source.Layout);
+        PhysicalInstallation.ValidateRecovery(recovery,source.Identity,job.PhysicalPlan,source.Layout,job.HomeCopy);
         if(MediaSpace.Query(Work,16*PartitionInventory.MiB).Available<8ul*PartitionInventory.GiB)throw new IOException("Recovery requires at least 8 GiB of free workspace.");
         File.Copy(sessionPath,sessionPath+".before-physical-resume-"+Guid.NewGuid().ToString("N")+".json",false);
         try
         {
             state=state with{Status="running",Stage="recovering",Error=null,UpdatedUtc=DateTime.UtcNow};Save(sessionPath,state);
-            await PhysicalInstallation.ApplyAsync(source,recovery.Plan,state.Deployment,log,token,resume:true);
+            await PhysicalInstallation.ApplyAsync(source,recovery.Plan,state.Deployment,log,token,resume:true,homeCopy:job.HomeCopy);
             var desktop = SteamOSDesktop.Install(state.Kind, state.Deployment, log, state.Options?.InstallerLanguage ?? InstallerI18n.Language);
             state = state with { DesktopRebootScript = desktop.Path, DesktopRebootWarning = desktop.Warning };
             state=state with{Status="awaiting-device-boot",Stage="awaiting-device-boot",UpdatedUtc=DateTime.UtcNow};Save(sessionPath,state);

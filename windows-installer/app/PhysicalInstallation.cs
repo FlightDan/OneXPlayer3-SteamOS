@@ -119,7 +119,7 @@ public static partial class PhysicalInstallation
         if(volume.Extents.Length!=1 || volume.Extents.Any(e=>e.DiskNumber==plan.Selection.Disk
             && plan.Added.Any(p=>Overlap(e.Offset,e.Size,p.Offset,p.Size)))) throw new IOException("Source overlaps the installation range.");
     }
-    public static async Task ApplyAsync(PreparedDiskImage source, PhysicalPlan plan,string directory,Action<string> log,CancellationToken token, bool resume = false)
+    public static async Task ApplyAsync(PreparedDiskImage source, PhysicalPlan plan,string directory,Action<string> log,CancellationToken token, bool resume = false, HomeCopyProfile? homeCopy = null)
     {
         if (plan.MakeDefaultBoot && plan.Kind != InstallationTargetKind.InternalShared)
             throw new IOException("External installation cannot change the host boot order.");
@@ -130,11 +130,16 @@ public static partial class PhysicalInstallation
             MediaSource.Ordinary(statePath,InstallationController.Work);
             if(new FileInfo(statePath).Length>1024*1024)throw new IOException("Oversized physical recovery journal.");
             recovery=JsonSerializer.Deserialize<PhysicalRecoveryState>(File.ReadAllText(statePath),new JsonSerializerOptions{PropertyNameCaseInsensitive=true}) ?? throw new IOException("Missing physical recovery journal.");
-            ValidateRecovery(recovery,source.Identity,plan,source.Layout);
+            ValidateRecovery(recovery,source.Identity,plan,source.Layout,homeCopy);
         }
+        homeCopy?.Validate();
         var leasePath=Path.Combine(InstallationController.Work,"physical-"+plan.DiskId.ToString("N")+".lock");MediaSource.Ordinary(leasePath,InstallationController.Work,false);
         using var ownership=new FileStream(leasePath,FileMode.Create,FileAccess.ReadWrite,FileShare.None,4096,FileOptions.DeleteOnClose);
-        await Backend.GuestAsync("physical-readiness",source.Identity.Path,false,log,token);
+        var readiness = await Backend.GuestAsync("physical-readiness",source.Identity.Path,false,log,token,
+            selection: homeCopy == null ? null : Ext4HomeCopyPlan.Selection);
+        var homePlan = homeCopy == null ? null : Ext4HomeCopyPlan.FromTranscript(readiness, source);
+        if (homePlan != null && homePlan.Profile != homeCopy) throw new IOException("Prepared home copy plan changed after review.");
+        if (homePlan != null) log($"HOME_COPY_PROFILE={homePlan.Profile.Mode}:{homePlan.UsedBytes}:{source.Layout.System.Single(p=>p.Name=="home").Size}");
         // All checks precede obtaining a writable handle. This API never erases existing partitions.
         var fresh=await Backend.PowerShellAsync("read-disks.ps1", [],_=>{},token);
         var rebound=plan.Selection with {Snapshot=resume?plan.Selection.Snapshot:fresh};
@@ -157,7 +162,7 @@ public static partial class PhysicalInstallation
         void Save(string phase,string[] completed,string? error=null)
         {
             using(var file=new FileStream(statePath+".tmp",FileMode.Create,FileAccess.Write,FileShare.None))
-            { JsonSerializer.Serialize(file,new {schema=1,phase,device=native,plan,source=source.Identity,completed,error});file.Flush(true); }
+            { JsonSerializer.Serialize(file,new {schema=homeCopy == null ? 1 : 2,phase,device=native,plan,source=source.Identity,completed,error,homeCopy});file.Flush(true); }
             File.Move(statePath+".tmp",statePath,true);
         }
         if(!resume) { File.WriteAllBytes(Path.Combine(directory,"gpt-native-before.bin"),before); Save("reviewed",[]); }
@@ -192,7 +197,9 @@ public static partial class PhysicalInstallation
                     var part=source.Layout.System.Single(p=>p.Name==role);var target=plan.Added.Single(p=>p.Name==role);
                     try
                     {
-                        await CompareCompletedAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,token);
+                        if (part.Name == "home" && homePlan != null)
+                            await PartitionDeployment.CompareRangesAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,native.Size,homePlan.Ranges,_=>{},token);
+                        else await CompareCompletedAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,token);
                         verifiedBeforeResume.Add(role);log("PHYSICAL_RECOVERY_PREFIX_VERIFIED="+role);
                     }
                     catch(CompletedRangeMismatchException error) when(role is "efi-A" or "efi-B")
@@ -213,8 +220,10 @@ public static partial class PhysicalInstallation
                         completed.Add(destination.Name);Save("verified-"+destination.Name,completed.ToArray());continue;
                     }
                     var part=source.Layout.System.Single(p=>p.Name==destination.Name);Save("writing-"+part.Name,completed.ToArray());
-                    await PartitionDeployment.CopyRangeAsync(source.Stream,raw,part.Offset,destination.Offset,part.Size,native.Size,
-                        p=>log($"PARTITION_PROGRESS={part.Name}:{p.Stage}:{p.Written}:{p.Verified}:{p.Total}"),token);
+                    Action<MediaProgress> report = p=>log($"PARTITION_PROGRESS={part.Name}:{p.Stage}:{p.Written}:{p.Verified}:{p.Total}");
+                    if (part.Name == "home" && homePlan != null)
+                        await PartitionDeployment.CopyRangesAsync(source.Stream,raw,part.Offset,destination.Offset,part.Size,native.Size,homePlan.Ranges,report,token);
+                    else await PartitionDeployment.CopyRangeAsync(source.Stream,raw,part.Offset,destination.Offset,part.Size,native.Size,report,token);
                     completed.Add(part.Name);Save("verified-"+part.Name,completed.ToArray());
                 }
             }
@@ -279,9 +288,35 @@ public static partial class PhysicalInstallation
         }
     }
     // Exercises the same native append, lock and bounded-copy operations only on an owned disposable VHD.
-    public static async Task<string> CheckOwnedAsync(string imagePath,Action<string> log,CancellationToken token)
+    public static async Task<string> CheckOwnedAsync(string imagePath,Action<string> log,CancellationToken token,bool optimizeHome = false)
     {
         using var source=new PreparedDiskImage(imagePath);
+        var homePlan = optimizeHome ? Ext4HomeCopyPlan.FromTranscript(
+            await Backend.GuestAsync("physical-readiness",imagePath,false,log,token,selection:Ext4HomeCopyPlan.Selection),source) : null;
+        if (optimizeHome && homePlan!.Profile.Mode != "ext4-used-v1") throw new IOException("Owned optimized-copy proof requires an optimized ext4 plan.");
+        long? freeProbe = null, zeroProbe = null;
+        if (homePlan != null)
+        {
+            var home = source.Layout.System.Single(p => p.Name == "home");
+            var block = new byte[4096]; long inspected = 0;
+            foreach (var range in homePlan.Ranges)
+            {
+                for (long at = range.Offset; at < range.Offset + range.Length && inspected < 16 * 1048576; at += block.Length)
+                {
+                    token.ThrowIfCancellationRequested(); source.Stream.Position = home.Offset + at; source.Stream.ReadExactly(block); inspected += block.Length;
+                    if (block.All(value => value == 0)) { zeroProbe = at; break; }
+                }
+                if (zeroProbe != null || inspected >= 16 * 1048576) break;
+            }
+            long end = 0;
+            foreach (var range in homePlan.Ranges)
+            {
+                if (range.Offset - end >= 4096) { freeProbe = end; break; }
+                end = range.Offset + range.Length;
+            }
+            if (freeProbe == null && home.Size - end >= 4096) freeProbe = end;
+            if (zeroProbe == null || freeProbe == null) throw new IOException("Owned optimized-copy fixture needs an allocated zero block and a filesystem-free block.");
+        }
         var directory=Path.Combine(InstallationController.Work,"physical-adapter-check-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
         const long mib=1048576, gib=1073741824;
         using(var disk=new VirtualMediaDisk(Path.Combine(directory,"media.vhd"),96*gib))
@@ -309,7 +344,30 @@ public static partial class PhysicalInstallation
             foreach(var target in plan.Added)
             {
                 var part=source.Layout.System.Single(p=>p.Name==target.Name);
-                await PartitionDeployment.CopyRangeAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,disk.Size,_=>{},token);
+                source.Recheck();
+                if (part.Name == "home" && homePlan != null)
+                {
+                    var sentinel = new byte[4096]; Array.Fill(sentinel, (byte)0xa7);
+                    foreach (var probe in new[] { zeroProbe!.Value, freeProbe!.Value })
+                    { raw.Position = target.Offset + probe; raw.Write(sentinel); }
+                    raw.Flush(true);
+                    await PartitionDeployment.CopyRangesAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,disk.Size,homePlan.Ranges,
+                        p=>log($"PARTITION_PROGRESS={part.Name}:{p.Stage}:{p.Written}:{p.Verified}:{p.Total}"),token);
+                    var block = new byte[4096]; raw.Position = target.Offset + zeroProbe.Value; raw.ReadExactly(block);
+                    if (block.Any(value => value != 0)) throw new IOException("Owned native range copy skipped an allocated zero block.");
+                    raw.Position = target.Offset + freeProbe.Value; raw.ReadExactly(block);
+                    if (!block.SequenceEqual(sentinel)) throw new IOException("Owned native range copy changed a filesystem-free block.");
+                    block = new byte[4096]; block[0] = 0x55;
+                    raw.Position = target.Offset + freeProbe.Value; raw.Write(block); raw.Flush(true);
+                    await PartitionDeployment.CompareRangesAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,disk.Size,homePlan.Ranges,_=>{},token);
+                    raw.Position = target.Offset + zeroProbe.Value; raw.Write(block); raw.Flush(true); var rejected = false;
+                    try { await PartitionDeployment.CompareRangesAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,disk.Size,homePlan.Ranges,_=>{},token); }
+                    catch (CompletedRangeMismatchException) { rejected = true; }
+                    if (!rejected) throw new IOException("Owned native resume accepted allocated-block corruption.");
+                    raw.Position = target.Offset + zeroProbe.Value; raw.Write(new byte[4096]); raw.Flush(true);
+                    log("PHYSICAL_ADAPTER_HOME_PROBES=allocated-zero-overwritten;free-preserved;resume-validates-allocated-ranges");
+                }
+                else await PartitionDeployment.CopyRangeAsync(source.Stream,raw,part.Offset,target.Offset,part.Size,disk.Size,_=>{},token);
                 log("PHYSICAL_ADAPTER_VERIFIED="+part.Name);
             }
             RequireLayout(plan,NativeMediaDevice.ReadLayout(raw.SafeFileHandle,disk.Size),true);
@@ -318,7 +376,7 @@ public static partial class PhysicalInstallation
             File.WriteAllText(Path.Combine(directory,"plan.json"),JsonSerializer.Serialize(plan));
         }
         var boot=await VirtualBoot.PhysicalAdapterAsync(Path.Combine(directory,"media.vhd"),log,token);
-        File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new {passed=true,boot,scope="Same native GPT append, selected-volume locking and relocated partition write/readback on an owned VHD; independent UEFI boot. No physical device or host firmware writes."}));
+        File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new {passed=true,boot,homeCopy=homePlan?.Profile,homeUsedBytes=homePlan?.UsedBytes,allocatedZeroProbe=zeroProbe,freeDataProbe=freeProbe,scope="Same native GPT append, selected-volume locking and relocated partition write/readback on an owned VHD; independent UEFI boot. No physical device or host firmware writes."}));
         return directory;
     }
 }

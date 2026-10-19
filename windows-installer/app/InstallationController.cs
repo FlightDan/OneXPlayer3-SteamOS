@@ -13,7 +13,7 @@ public sealed record InstallationProgress(string Stage, string Message, double? 
 public sealed record InstallationSession(int Schema, string Id, InstallationTargetKind Kind, string Source, bool Prepared,
     string Status, string Stage, string? Deployment, string? Error, DateTime UpdatedUtc, SelectedOptions? Options = null, bool Physical = false, RefindChoice? Refind = null, bool MakeDefaultBoot = false,
     string? DesktopRebootScript = null, string? DesktopRebootWarning = null);
-public sealed record PartitionJob(int Schema, string Nonce, string Scope, InstallationTargetKind Kind, MediaSource Source, string? RecoveryState = null, PhysicalPlan? PhysicalPlan = null);
+public sealed record PartitionJob(int Schema, string Nonce, string Scope, InstallationTargetKind Kind, MediaSource Source, string? RecoveryState = null, PhysicalPlan? PhysicalPlan = null, HomeCopyProfile? HomeCopy = null);
 public sealed record PartitionJobResult(string Status, string? Error);
 
 public static partial class InstallationController
@@ -239,11 +239,19 @@ public static partial class InstallationController
             progress.SetPartitions(prepared.Layout.System.Select(p => (p.Name, p.Size)));
             PhysicalPlan? physical=request.Physical?PhysicalInstallation.Plan(request.PlannedPartition!,request.Kind,prepared.Layout):null;
             if (physical != null) physical = physical with { MakeDefaultBoot = request.MakeDefaultBoot };
+            HomeCopyProfile? homeCopy = null;
+            if (physical != null)
+            {
+                var readiness = await Backend.GuestAsync("physical-readiness", image, false, log, token, selection: Ext4HomeCopyPlan.Selection);
+                var homePlan = Ext4HomeCopyPlan.FromTranscript(readiness, prepared);
+                homeCopy = homePlan.Profile;
+                progress.SetPartitions(prepared.Layout.System.Select(p => (p.Name, p.Name == "home" ? homePlan.UsedBytes : p.Size)));
+            }
             Phase("permission", request.Physical?"即将请求管理员权限，核对并写入已确认的实际磁盘空间。":"即将请求 Windows 管理员权限，用于创建和写入新的虚拟测试盘。", "04.00");
             var nonce = Guid.NewGuid().ToString("N"); var deployment = Path.Combine(Work, "partition-deploy-" + nonce); Directory.CreateDirectory(deployment);
             state = state with { Deployment = deployment }; Save(journal, state);
             var jobPath = Path.Combine(deployment, "partition-job.json");
-            await File.WriteAllTextAsync(jobPath, JsonSerializer.Serialize(new PartitionJob(1, nonce, request.Physical?"reviewed-physical-range":"new-virtual-disk-only", request.Kind, prepared.Identity, PhysicalPlan:physical)), token);
+            await File.WriteAllTextAsync(jobPath, JsonSerializer.Serialize(new PartitionJob(request.Physical ? 2 : 1, nonce, request.Physical?"reviewed-physical-range":"new-virtual-disk-only", request.Kind, prepared.Identity, PhysicalPlan:physical, HomeCopy:homeCopy)), token);
             var result = await RunHelperAsync(jobPath, nonce, text =>
             {
                 if (state.Stage == "permission") Phase("writing", request.Physical?"正在写入已确认的磁盘空间…":"正在写入虚拟测试盘…", "04.00");
@@ -335,7 +343,9 @@ public static partial class InstallationController
         if (Path.GetFileName(path) != "partition-job.json" || new FileInfo(path).Length > 65536) throw new IOException("Invalid partition job path/size.");
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         var job = await JsonSerializer.DeserializeAsync<PartitionJob>(file) ?? throw new IOException("Empty job.");
-        if (job.Schema != 1 || job.Scope is not ("new-virtual-disk-only" or "resume-owned-vhd-only" or "reviewed-physical-range") || !Enum.IsDefined(job.Kind) || !Regex.IsMatch(job.Nonce, "^[0-9a-f]{32}$")
+        if (job.Schema is not (1 or 2) || job.Schema == 1 && job.HomeCopy != null
+            || job.Schema == 2 && (job.Scope != "reviewed-physical-range" || job.HomeCopy == null)
+            || job.Scope is not ("new-virtual-disk-only" or "resume-owned-vhd-only" or "reviewed-physical-range") || !Enum.IsDefined(job.Kind) || !Regex.IsMatch(job.Nonce, "^[0-9a-f]{32}$")
             || Path.GetFileName(Path.GetDirectoryName(path)!) != "partition-deploy-" + job.Nonce) throw new IOException("Unsupported deployment job.");
         if ((job.Scope=="reviewed-physical-range") != (job.PhysicalPlan!=null) || job.PhysicalPlan!=null && (job.RecoveryState!=null || job.PhysicalPlan.Kind!=job.Kind)) throw new IOException("Invalid physical installation job.");
         if (job.Scope == "new-virtual-disk-only" && job.RecoveryState != null
@@ -357,7 +367,7 @@ public static partial class InstallationController
             if (image.Identity != job.Source) throw new IOException("Prepared image changed after review.");
             cancellation.Token.ThrowIfCancellationRequested();
             Action<string> report = line => { lock (writer) writer.WriteLine(JsonSerializer.Serialize(line)); };
-            if(job.PhysicalPlan!=null) await PhysicalInstallation.ApplyAsync(image,job.PhysicalPlan,directory,report,cancellation.Token);
+            if(job.PhysicalPlan!=null) await PhysicalInstallation.ApplyAsync(image,job.PhysicalPlan,directory,report,cancellation.Token,homeCopy:job.HomeCopy);
             else if (job.RecoveryState != null)
                 await ResumePreparedAsync(image, job.Kind, job.RecoveryState, report, cancellation.Token);
             else await PartitionDeploymentChecks.WritePreparedAsync(job.Source.Path, job.Kind, directory, report, cancellation.Token);

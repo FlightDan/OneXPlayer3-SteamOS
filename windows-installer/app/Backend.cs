@@ -103,7 +103,7 @@ public static class Backend
         var secureEncodedLength = 0;
         if (fixture != null) fixture = Path.GetFullPath(fixture);
         if (stateDisk != null) stateDisk = Path.GetFullPath(stateDisk);
-        if (task is not ("secret-input-check" or "resize-prepared" or "capacity-check" or "refind-image" or "physical-readiness" or "upgrade-source" or "integration-delta-check" or "integration-verify" or "integration-check" or "integration" or "smoke" or "inspect" or "build" or "verify" or "partition-test" or "handoff-metadata" or "handoff-binding" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "journal-migration-check" or "ui-installed-check" or "ui-cancelled-check" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" or "refine-preview")) throw new ArgumentException("Unknown task");
+        if (task is not ("home-copy-plan" or "home-copy-plan-checks" or "secret-input-check" or "resize-prepared" or "capacity-check" or "refind-image" or "physical-readiness" or "upgrade-source" or "integration-delta-check" or "integration-verify" or "integration-check" or "integration" or "smoke" or "inspect" or "build" or "verify" or "partition-test" or "handoff-metadata" or "handoff-binding" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "journal-migration-check" or "ui-installed-check" or "ui-cancelled-check" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" or "refine-preview")) throw new ArgumentException("Unknown task");
         if (task is "integration" or "refind-image" or "resize-prepared" or "capacity-check")
         {
             if (image == null) throw new ArgumentException("Missing independent prepared image.");
@@ -184,7 +184,7 @@ public static class Backend
             }
         }
         var scratch = Path.Combine(work, "scratch.raw");
-        using (var disk = new FileStream(scratch, FileMode.CreateNew)) disk.SetLength(task == "integration-check" ? 3L * 1024 * 1024 * 1024 : 256L * 1024 * 1024);
+        using (var disk = new FileStream(scratch, FileMode.CreateNew)) disk.SetLength(task == "home-copy-plan-checks" ? 4L * 1024 * 1024 * 1024 : task == "integration-check" ? 3L * 1024 * 1024 * 1024 : 256L * 1024 * 1024);
         static string Option(string value) => value.Replace('\\', '/').Replace(",", ",,");
         var arguments = new List<string> { "-accel", "tcg", "-m", "1024", "-smp", "2", "-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot", "-nic", "none",
             "-kernel", Path.Combine(Root, "runtime/alpine/boot/vmlinuz-virt"), "-initrd", Path.Combine(Root, "runtime/alpine/boot/initramfs-virt"),
@@ -225,7 +225,7 @@ public static class Backend
         var start = new ProcessStartInfo(qemu) { WorkingDirectory = Path.GetDirectoryName(qemu)!, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };
-        var taskTimeout = TimeSpan.FromMinutes(task is "refind-image" or "integration" or "integration-check" or "build" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" ? 20 : 5);
+        var taskTimeout = TimeSpan.FromMinutes(task is "home-copy-plan-checks" or "refind-image" or "integration" or "integration-check" or "build" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" ? 20 : 5);
         using var timeout = new CancellationTokenSource(taskTimeout);
         using var combined = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
         // Open the log before starting QEMU: an unwritable/full log disk must

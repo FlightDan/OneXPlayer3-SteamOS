@@ -301,6 +301,78 @@ public sealed class PartitionVolumeLocks : IDisposable
 
 public static class PartitionDeployment
 {
+    // The same explicit ranges drive the write and its durable readback. A zero
+    // source block within a selected range is always written to the destination.
+    internal static async Task CopyRangesAsync(FileStream source, FileStream target, long sourceOffset, long targetOffset, long length,
+        long capacity, IReadOnlyList<CopyExtent> ranges, Action<MediaProgress> report, CancellationToken token)
+    {
+        var total = RequireRanges(source, sourceOffset, targetOffset, length, capacity, ranges);
+        long written = 0;
+        var input = new byte[4 * 1024 * 1024];
+        try
+        {
+            foreach (var range in ranges)
+            {
+                source.Position = checked(sourceOffset + range.Offset); target.Position = checked(targetOffset + range.Offset);
+                for (long offset = 0; offset < range.Length;)
+                {
+                    token.ThrowIfCancellationRequested(); var count = (int)Math.Min(input.Length, range.Length - offset);
+                    await source.ReadExactlyAsync(input.AsMemory(0, count), token); token.ThrowIfCancellationRequested();
+                    await target.WriteAsync(input.AsMemory(0, count), token); offset += count; written += count;
+                    report(new("writing", written, 0, total));
+                }
+            }
+            target.Flush(true);
+            await CompareRangesAsync(source, target, sourceOffset, targetOffset, length, capacity, ranges,
+                verified => report(new("verifying", written, verified, total)), token);
+            token.ThrowIfCancellationRequested(); target.Flush(true);
+        }
+        catch (Exception original)
+        {
+            try { target.Flush(true); }
+            catch (Exception flush) { throw new AggregateException("Partition operation and final flush failed.", original, flush); }
+            throw;
+        }
+    }
+    private static long RequireRanges(FileStream source, long sourceOffset, long targetOffset, long length, long capacity, IReadOnlyList<CopyExtent> ranges)
+    {
+        if (sourceOffset < 0 || targetOffset < 1048576 || length <= 0 || sourceOffset % 512 != 0 || targetOffset % 512 != 0 || length % 512 != 0
+            || sourceOffset > source.Length || length > source.Length - sourceOffset || capacity < 1048576
+            || targetOffset > capacity - 1048576 || length > capacity - targetOffset - 1048576 || ranges.Count is < 1 or > 8192)
+            throw new IOException("Partition copy range is outside supported aligned data bounds.");
+        long end = 0, total = 0;
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            var range = ranges[i];
+            if (range.Offset < 0 || range.Length <= 0 || range.Offset % 512 != 0 || range.Length % 512 != 0
+                || range.Offset > length || range.Length > length - range.Offset || i > 0 && range.Offset < end)
+                throw new IOException("Invalid partition copy extent.");
+            end = range.Offset + range.Length; total = checked(total + range.Length);
+        }
+        return total;
+    }
+    internal static async Task CompareRangesAsync(FileStream source, FileStream target, long sourceOffset, long targetOffset, long length,
+        long capacity, IReadOnlyList<CopyExtent> ranges, Action<long> report, CancellationToken token)
+    {
+        RequireRanges(source, sourceOffset, targetOffset, length, capacity, ranges);
+        var input = new byte[4 * 1024 * 1024]; var output = new byte[input.Length]; long verified = 0;
+        foreach (var range in ranges)
+        {
+            source.Position = checked(sourceOffset + range.Offset); target.Position = checked(targetOffset + range.Offset);
+            for (long offset = 0; offset < range.Length;)
+            {
+                token.ThrowIfCancellationRequested(); var count = (int)Math.Min(input.Length, range.Length - offset);
+                await source.ReadExactlyAsync(input.AsMemory(0, count), token); await target.ReadExactlyAsync(output.AsMemory(0, count), token);
+                if (!input.AsSpan(0, count).SequenceEqual(output.AsSpan(0, count)))
+                {
+                    var first = 0; while (first < count && input[first] == output[first]) first++;
+                    throw new CompletedRangeMismatchException(range.Offset + offset + first);
+                }
+                offset += count; verified += count; report(verified);
+            }
+        }
+        token.ThrowIfCancellationRequested();
+    }
     public static async Task CopyRangeAsync(FileStream source, FileStream target, long sourceOffset, long targetOffset, long length,
         long capacity, Action<MediaProgress> report, CancellationToken token)
     {
