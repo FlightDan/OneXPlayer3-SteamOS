@@ -28,14 +28,37 @@ public static class Backend
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         if (environment != null) foreach (var entry in environment) start.Environment[entry.Key] = entry.Value;
         using var process = new Process { StartInfo = start };
+        token.ThrowIfCancellationRequested();
         process.Start();
-        using var registration = token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
+        void Stop()
+        {
+            try { if (!process.HasExited) process.Kill(true); }
+            catch (InvalidOperationException) { }
+        }
+        using var registration = token.Register(Stop);
         var output = new StringBuilder();
         async Task ReadAsync(StreamReader reader)
         {
-            while (await reader.ReadLineAsync(token) is { } line) { lock (output) output.AppendLine(line); log(line); }
+            try
+            {
+                while (await reader.ReadLineAsync(token) is { } line) { lock (output) output.AppendLine(line); log(line); }
+            }
+            catch
+            {
+                // A failed log sink must not leave a writer blocked on a full pipe.
+                Stop();
+                throw;
+            }
         }
-        await Task.WhenAll(ReadAsync(process.StandardOutput), ReadAsync(process.StandardError), process.WaitForExitAsync(token));
+        try
+        {
+            await Task.WhenAll(ReadAsync(process.StandardOutput), ReadAsync(process.StandardError), process.WaitForExitAsync(token));
+        }
+        finally
+        {
+            Stop();
+            await process.WaitForExitAsync();
+        }
         token.ThrowIfCancellationRequested();
         if (process.ExitCode != 0) throw new InvalidOperationException($"进程退出码 {process.ExitCode}：{Path.GetFileName(executable)}\n{output}");
         return output.ToString();
@@ -202,59 +225,76 @@ public static class Backend
         var start = new ProcessStartInfo(qemu) { WorkingDirectory = Path.GetDirectoryName(qemu)!, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(task is "refind-image" or "integration" or "integration-check" or "build" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" ? 20 : 5));
+        var taskTimeout = TimeSpan.FromMinutes(task is "refind-image" or "integration" or "integration-check" or "build" or "install-session-test" or "session-intent-interrupt" or "session-intent-recover" or "deployment-test" or "deployment-interrupt" or "deployment-recovery" or "firstboot-prepare" or "firstboot-verify" or "ui-bootstrap-seed" or "shared-state-test" or "hdr-test" or "plugin-test" ? 20 : 5);
+        using var timeout = new CancellationTokenSource(taskTimeout);
         using var combined = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
-        process.Start();
-        using var kill = combined.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
+        // Open the log before starting QEMU: an unwritable/full log disk must
+        // not leave a running guest outside the process cleanup scope.
         var logPath = Path.Combine(Root, "logs", id + ".txt"); Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
         using var liveLog = new StreamWriter(new FileStream(logPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+        combined.Token.ThrowIfCancellationRequested();
+        process.Start();
+        void StopGuest()
+        {
+            try { if (!process.HasExited) process.Kill(true); }
+            catch (InvalidOperationException) { }
+        }
+        using var kill = combined.Token.Register(StopGuest);
         var transcript = new StringBuilder(); int phase = 0;
         async Task ReadAsync(StreamReader reader)
         {
-            var buffer = new char[4096]; int count;
-            while ((count = await reader.ReadAsync(buffer.AsMemory(), combined.Token)) > 0)
+            try
             {
-                var chunk = new string(buffer, 0, count); string text;
-                lock (transcript) { transcript.Append(chunk); liveLog.Write(chunk); text = transcript.ToString(); }
-                log(chunk);
-                var terminal = Regex.Replace(text, @"\x1b\[[0-9;?]*[A-Za-z]", "");
-                if (Regex.IsMatch(terminal, @"login:\s*$") && Interlocked.CompareExchange(ref phase, 1, 0) == 0) await process.StandardInput.WriteAsync("root\n");
-                else if (Regex.IsMatch(terminal, @"~\s*#\s*$") && Interlocked.CompareExchange(ref phase, 2, 1) == 1)
+                var buffer = new char[4096]; int count;
+                while ((count = await reader.ReadAsync(buffer.AsMemory(), combined.Token)) > 0)
                 {
-                    // Only the secret file uses 077. Applying it to the task also makes
-                    // public runtime directories root-only and breaks the deck session.
-                    var command = secureInput == null
-                        ? $"( umask 022; mkdir -p /mnt/payload && mount -t vfat -o ro /dev/vdb1 /mnt/payload && sh /mnt/payload/tasks/{task}.sh ); poweroff\n"
-                        : $"( umask 022; stty sane -echo || exit 1; printf '\\nOXP_SECRET_INPUT_READY\\n'; IFS= read -r oxp_setup_input || exit 1; ( umask 077; printf '%s' \"$oxp_setup_input\" | tr -d '\\r' | base64 -d > /tmp/oxp-deck-initial-password ) || exit 1; unset oxp_setup_input; ( mkdir -p /mnt/payload && mount -t vfat -o ro /dev/vdb1 /mnt/payload && sh /mnt/payload/tasks/{task}.sh ); task_status=$?; rm -f /tmp/oxp-deck-initial-password; stty echo; exit \"$task_status\" ); poweroff\n";
-                    for (var offset = 0; offset < command.Length; offset += 8)
+                    var chunk = new string(buffer, 0, count); string text;
+                    lock (transcript) { transcript.Append(chunk); liveLog.Write(chunk); text = transcript.ToString(); }
+                    log(chunk);
+                    var terminal = Regex.Replace(text, @"\x1b\[[0-9;?]*[A-Za-z]", "");
+                    if (Regex.IsMatch(terminal, @"login:\s*$") && Interlocked.CompareExchange(ref phase, 1, 0) == 0) await process.StandardInput.WriteAsync("root\n");
+                    else if (Regex.IsMatch(terminal, @"~\s*#\s*$") && Interlocked.CompareExchange(ref phase, 2, 1) == 1)
                     {
-                        await process.StandardInput.WriteAsync(command.AsMemory(offset, Math.Min(8, command.Length - offset)), combined.Token);
-                        await process.StandardInput.FlushAsync(combined.Token);
-                        await Task.Delay(25, combined.Token);
-                    }
-                }
-                else if (secureInput != null && secureEncoded != null && secureEncodedLength > 0
-                    && phase == 2 && Regex.IsMatch(terminal, @"(?:^|[\r\n])OXP_SECRET_INPUT_READY[\r\n]"))
-                {
-                    if (Interlocked.CompareExchange(ref phase, 3, 2) == 2)
-                    {
-                        // QEMU's emulated serial receiver can drop a burst larger
-                        // than its FIFO, including the terminating newline.
-                        // Pace secrets just like the shell command above.
-                        for (var offset = 0; offset < secureEncodedLength; offset += 8)
+                        // Only the secret file uses 077. Applying it to the task also makes
+                        // public runtime directories root-only and breaks the deck session.
+                        var command = secureInput == null
+                            ? $"( umask 022; mkdir -p /mnt/payload && mount -t vfat -o ro /dev/vdb1 /mnt/payload && sh /mnt/payload/tasks/{task}.sh ); poweroff\n"
+                            : $"( umask 022; stty sane -echo || exit 1; printf '\\nOXP_SECRET_INPUT_READY\\n'; IFS= read -r oxp_setup_input || exit 1; ( umask 077; printf '%s' \"$oxp_setup_input\" | tr -d '\\r' | base64 -d > /tmp/oxp-deck-initial-password ) || exit 1; unset oxp_setup_input; ( mkdir -p /mnt/payload && mount -t vfat -o ro /dev/vdb1 /mnt/payload && sh /mnt/payload/tasks/{task}.sh ); task_status=$?; rm -f /tmp/oxp-deck-initial-password; stty echo; exit \"$task_status\" ); poweroff\n";
+                        for (var offset = 0; offset < command.Length; offset += 8)
                         {
-                            await process.StandardInput.WriteAsync(secureEncoded.AsMemory(offset, Math.Min(8, secureEncodedLength - offset)), combined.Token);
+                            await process.StandardInput.WriteAsync(command.AsMemory(offset, Math.Min(8, command.Length - offset)), combined.Token);
                             await process.StandardInput.FlushAsync(combined.Token);
                             await Task.Delay(25, combined.Token);
                         }
-                        await process.StandardInput.WriteAsync("\n".AsMemory(), combined.Token);
-                        await process.StandardInput.FlushAsync(combined.Token);
-                        lock (transcript) liveLog.WriteLine("\nOXP_SECRET_INPUT_SENT");
-                        Array.Clear(secureEncoded);
-                        Array.Clear(secureBytes!);
-                        secureEncodedLength = 0;
+                    }
+                    else if (secureInput != null && secureEncoded != null && secureEncodedLength > 0
+                        && phase == 2 && Regex.IsMatch(terminal, @"(?:^|[\r\n])OXP_SECRET_INPUT_READY[\r\n]"))
+                    {
+                        if (Interlocked.CompareExchange(ref phase, 3, 2) == 2)
+                        {
+                            // QEMU's emulated serial receiver can drop a burst larger
+                            // than its FIFO, including the terminating newline.
+                            // Pace secrets just like the shell command above.
+                            for (var offset = 0; offset < secureEncodedLength; offset += 8)
+                            {
+                                await process.StandardInput.WriteAsync(secureEncoded.AsMemory(offset, Math.Min(8, secureEncodedLength - offset)), combined.Token);
+                                await process.StandardInput.FlushAsync(combined.Token);
+                                await Task.Delay(25, combined.Token);
+                            }
+                            await process.StandardInput.WriteAsync("\n".AsMemory(), combined.Token);
+                            await process.StandardInput.FlushAsync(combined.Token);
+                            lock (transcript) liveLog.WriteLine("\nOXP_SECRET_INPUT_SENT");
+                            Array.Clear(secureEncoded);
+                            Array.Clear(secureBytes!);
+                            secureEncodedLength = 0;
+                        }
                     }
                 }
+            }
+            catch
+            {
+                StopGuest();
+                throw;
             }
         }
         try
@@ -272,13 +312,17 @@ public static class Backend
             if (process.ExitCode != 0 || !Regex.IsMatch(result, @"(?:^|[\r\n])OXP_TASK_RESULT=passed[\r\n]")) throw new InvalidOperationException("构建环境任务失败，参见日志：" + logPath);
             return result;
         }
+        catch (OperationCanceledException error) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
+        {
+            throw new TimeoutException($"构建环境任务 {task} 超过 {taskTimeout.TotalMinutes:g} 分钟，参见日志：{logPath}", error);
+        }
         finally
         {
             if (secureEncoded != null) Array.Clear(secureEncoded);
             if (secureBytes != null) Array.Clear(secureBytes);
             if (!process.HasExited)
             {
-                try { process.Kill(true); } catch (InvalidOperationException) { }
+                StopGuest();
                 await process.WaitForExitAsync();
             }
             await liveLog.FlushAsync();

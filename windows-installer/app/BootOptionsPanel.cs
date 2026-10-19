@@ -9,7 +9,7 @@ namespace OxpInstaller;
 // Installed on the new SteamOS ESP; the existing firmware registration points to its fallback loader.
 public sealed class BootOptionsPanel : StackPanel
 {
-    internal CheckBox InstallChoice { get; } = new() { IsChecked = false };
+    internal CheckBox InstallChoice { get; } = new() { IsChecked = true };
     internal CheckBox MakeDefaultChoice { get; } = new() { IsChecked = true };
     private readonly TextBlock firmwareNote = new() { TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.FromRgb(97, 114, 138)), Margin = new Thickness(0, 4, 0, 12), LineHeight = 22 };
     private bool firmwareAvailable;
@@ -18,7 +18,7 @@ public sealed class BootOptionsPanel : StackPanel
     internal RadioButton WindowsChoice { get; } = new() { GroupName = "BootDefault" };
     internal RadioButton ForeverChoice { get; } = new() { GroupName = "BootWait" };
     internal RadioButton TimedChoice { get; } = new() { GroupName = "BootWait", IsChecked = true };
-    internal TextBox Seconds { get; } = new() { Text = "5", Width = 96, MinHeight = 64, FontSize = 22, HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+    internal TextBox Seconds { get; } = new() { Text = "2", Width = 96, MinHeight = 64, FontSize = 22, HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
     internal Button Minus { get; } = new() { Content = "−", Width = 64, MinHeight = 64, Padding = new Thickness(0), Margin = new Thickness(0, 0, 12, 0), FontSize = 28 };
     internal Button Plus { get; } = new() { Content = "+", Width = 64, MinHeight = 64, Padding = new Thickness(0), Margin = new Thickness(12, 0, 0, 0), FontSize = 28 };
     private readonly StackPanel settings = new();
@@ -74,7 +74,7 @@ public sealed class BootOptionsPanel : StackPanel
     }
     private void Adjust(int delta)
     {
-        var value = int.TryParse(Seconds.Text, out var parsed) ? parsed : 5;
+        var value = int.TryParse(Seconds.Text, out var parsed) ? parsed : 2;
         Seconds.Text = Math.Clamp((long)value + delta, 1, 3600).ToString(CultureInfo.InvariantCulture);
     }
     internal string Configuration()

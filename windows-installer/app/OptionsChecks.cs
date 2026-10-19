@@ -39,23 +39,25 @@ public static class OptionsChecks
         Require(catalog.Repairs.All(x => x.Id != "waydroid") && catalog.Plugins.Any(x => x.Id == "waydroid"), "third-party-waydroid-is-in-third-party-category");
         Require(catalog.Repairs.Single(x => x.Id == "gamescope-env").Default, "new-game-mode-black-screen-fix-default-enabled");
         var boot = (BootOptionsPanel)((StackPanel)window.FindName("BootOptionsHost")).Children[0];
-        Require(boot.InstallChoice.IsEnabled && boot.Selection == null, "refind-install-available-and-opt-in");
-        boot.InstallChoice.IsChecked = true;
-        Require(boot.Selection == new RefindChoice("SteamOS", 5), "refind-install-settings-reach-request");
+        Require(boot.InstallChoice.IsEnabled && boot.InstallChoice.IsChecked == true
+            && boot.Selection == new RefindChoice("SteamOS", 2), "refind-install-selected-by-default-with-two-second-timeout");
         boot.InstallChoice.IsChecked = false;
+        Require(boot.Selection == null, "refind-install-can-be-opted-out");
+        boot.InstallChoice.IsChecked = true;
+        Require(boot.Selection == new RefindChoice("SteamOS", 2), "refind-install-settings-reach-request");
         try { RefindInstallation.Validate(new("Windows", 5),null); throw new InvalidOperationException("Unbound Windows default accepted"); }
         catch (IOException) { events.Add("unidentified-windows-default-refused"); }
         var windowsSnapshot = "[{\"partitions\":[{\"isSystem\":true,\"gptType\":\"c12a7328-f81f-11d2-ba4b-00a0c93ec93b\",\"guid\":\"12345678-1234-1234-1234-123456789abc\"}]}]";
         var identified = new PartitionSelection(windowsSnapshot,false,0,0,0);
         Require(RefindInstallation.WindowsEsp(identified)=="12345678-1234-1234-1234-123456789abc","windows-esp-bound-to-gpt-identity");
         RefindInstallation.Validate(new("Windows",0),identified);
-        Require(boot.Configuration().Contains("default_selection \"SteamOS\"") && boot.Configuration().Contains("timeout 5"), "refind-default-settings");
+        Require(boot.Configuration().Contains("default_selection \"SteamOS\"") && boot.Configuration().Contains("timeout 2"), "refind-default-settings");
         boot.InstallChoice.IsChecked = true;
         boot.WindowsChoice.IsChecked = true;
         boot.Plus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(boot.Configuration().Contains("default_selection \"Windows\"") && boot.Configuration().Contains("timeout 6"), "refind-windows-and-touch-plus");
+        Require(boot.Configuration().Contains("default_selection \"Windows\"") && boot.Configuration().Contains("timeout 3"), "refind-windows-and-touch-plus");
         boot.Minus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(boot.Seconds.Text == "5", "refind-touch-minus");
+        Require(boot.Seconds.Text == "2", "refind-touch-minus");
         boot.Seconds.Text = "1"; boot.Minus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(boot.Seconds.Text == "1", "refind-timeout-lower-bound");
         boot.Seconds.Text = "3600"; boot.Plus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -63,12 +65,14 @@ public static class OptionsChecks
         boot.Seconds.Text = "bad";
         try { boot.Configuration(); throw new IOException("invalid-refind-timeout-accepted"); }
         catch (InvalidOperationException) { events.Add("invalid-refind-timeout-rejected"); }
+        boot.Plus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Require(boot.Seconds.Text == "3", "refind-invalid-timeout-adjustment-starts-from-two");
         boot.ForeverChoice.IsChecked = true;
         Require(boot.Configuration().Contains("timeout 0") && !boot.Seconds.IsEnabled && !boot.Plus.IsEnabled, "refind-wait-forever-disables-timer");
         var exported = Path.Combine(Backend.Root, "logs", "refind-settings-ui-check.conf");
         boot.WriteConfiguration(exported);
         Require(File.ReadAllText(exported) == boot.Configuration(), "refind-export-matches-settings");
-        boot.Seconds.Text = "5"; boot.TimedChoice.IsChecked = true;
+        boot.Seconds.Text = "2"; boot.TimedChoice.IsChecked = true;
         var boxes = panel.OptionBoxes;
         Require(new[] { "steamgriddb", "protondb", "tabmaster", "css-loader", "autoflatpaks", "deck-settings", "hltb", "animation-changer" }
             .All(id => !boxes.ContainsKey(id)), "user-installed-third-party-plugins-are-not-bundled-options");
@@ -93,7 +97,7 @@ public static class OptionsChecks
         Require(((TextBlock)window.FindName("ModeBanner")).Text.Contains("Back up"),"backup-warning-translated");
         Require(((TextBlock)boxes["hdr"].Content).Text.Contains("Game mode HDR"), "english-repair-label-applied");
         Require(boxes["hdr"].IsChecked == false && boxes["windows-reboot"].IsChecked == false, "language-switch-preserves-disabled-choices");
-        Require(boot.WindowsChoice.IsChecked == true && boot.Seconds.Text == "5" && boot.InstallChoice.IsChecked == true, "language-switch-preserves-refind-settings");
+        Require(boot.WindowsChoice.IsChecked == true && boot.Seconds.Text == "2" && boot.InstallChoice.IsChecked == true, "language-switch-preserves-refind-settings");
         var kde = panel.KdeChoice; kde.SelectedIndex = 1;
         Require(panel.Selection.KdeLanguage == "zh_CN" && panel.Selection.InstallerLanguage == "en-US", "kde-language-independent-of-installer-language");
         var json = JsonSerializer.Serialize(panel.Selection); var roundtrip = JsonSerializer.Deserialize<SelectedOptions>(json)!;

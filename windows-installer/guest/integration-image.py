@@ -43,7 +43,7 @@ for slot in ('A','B'):
         mount(parts['var-'+slot],root/'var'); mount(parts['home'],root/'home')
         mount_etc(root,mounts)
         mount_opt(root,mounts)
-        if 'gm7-resume' in options['repairs']: mount(parts['efi-'+slot],root/'efi','-t','vfat')
+        if {'gm7-resume','split-lock'} & set(options['repairs']): mount(parts['efi-'+slot],root/'efi','-t','vfat')
         result=stage(root,'/mnt/payload',options,slot,password_hash,target_disk=target_disk)
         if any(result['components'].get(name,{}).get('status')=='files_installed' for name in ('input','fan-driver')):
             subprocess.run(['chroot',str(root),'/usr/bin/depmod','-a','7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'],check=True)

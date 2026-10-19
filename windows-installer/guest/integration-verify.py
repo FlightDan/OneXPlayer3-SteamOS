@@ -55,6 +55,11 @@ for slot in ('A','B'):
         state=root/'home/.oxp3-installer/integration'/slot
         assert json.loads((state/'request.json').read_text())==options
         results=json.loads((state/'result.json').read_text())
+        # EFI is a separate filesystem. Mount it for every installed boot repair
+        # before checking its files, including split-lock on non-GM7 disks.
+        if any(relative.startswith('efi/') for result in results['components'].values()
+               if result.get('status')=='files_installed' for relative in result.get('files',[])):
+            mount(parts['efi-'+slot],root/'efi','-t','vfat','-o','ro')
         verify_update_hold(root,results['components'].get('system-update-hold'))
         from serial_console import DROPIN, DATA
         console=results['components']['serial-console-policy']
@@ -135,7 +140,6 @@ for slot in ('A','B'):
             matched=isinstance(target_disk,dict) and target_disk.get('bus')=='NVMe' and re.search(r'\bGM7\b',target_disk.get('model',''),re.I) is not None
             assert results['components']['gm7-resume']['applicable']==matched
             if matched:
-                mount(parts['efi-'+slot],root/'efi','-t','vfat','-o','ro')
                 config=(root/'efi/EFI/steamos/grub.cfg').read_text()
                 entries=[line for line in config.splitlines() if re.match(r'^\s*(steamenv_boot|linux|linuxefi)\s',line) and '/boot/vmlinuz-' in line]
                 assert entries and all('nvme.noacpi=1' in line.split() for line in entries)

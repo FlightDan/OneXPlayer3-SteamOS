@@ -55,7 +55,15 @@ internal static class BootSetupChecks
             window.UpdateLayout();
             var choiceAt = panel.MakeDefaultChoice.TransformToAncestor(Find<Grid>("WindowRoot")).Transform(new Point());
             Require(choiceAt.Y < 300 && panel.MakeDefaultChoice.ActualHeight >= 48, "firmware-choice-visible-near-top-with-touch-target-" + english);
-            Require(panel.MakeDefaultChoice.IsEnabled && panel.MakeDefaultBoot && panel.Selection == null, "internal-default-selected-independent-of-refind-" + english);
+            Require(panel.MakeDefaultChoice.IsEnabled && panel.MakeDefaultBoot, "internal-firmware-default-selected-" + english);
+            if (!english)
+            {
+                Require(panel.InstallChoice.IsChecked == true && panel.Selection == new RefindChoice("SteamOS", 2), "refind-install-selected-by-default-with-two-second-timeout-" + english);
+                panel.InstallChoice.IsChecked = false;
+                Require(panel.Selection == null, "refind-install-can-be-opted-out-" + english);
+            }
+            else Require(panel.InstallChoice.IsChecked == false && panel.Selection == null, "refind-opt-out-survives-language-change-" + english);
+            panel.InstallChoice.IsChecked = true;
             panel.MakeDefaultChoice.IsChecked = false;
             Require(!panel.MakeDefaultBoot, "uncheck-keeps-original-order-" + english);
             panel.MakeDefaultChoice.IsChecked = true;

@@ -262,7 +262,7 @@ def main():
     p.add_argument('--esp', required=True, type=Path)
     p.add_argument('--payload', type=Path, default=Path(__file__).parent)
     p.add_argument('--esp-guid'); p.add_argument('--windows-guid')
-    p.add_argument('--default', choices=['SteamOS','Windows'], default='SteamOS'); p.add_argument('--timeout',type=int,default=5)
+    p.add_argument('--default', choices=['SteamOS','Windows'], default='SteamOS'); p.add_argument('--timeout',type=int,default=2)
     a=p.parse_args()
     if a.action == 'configure':
         current=verify(a.esp)
