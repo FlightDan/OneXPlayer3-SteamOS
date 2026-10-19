@@ -7,6 +7,8 @@ import uuid
 
 from . import auth_session, cli
 
+_UNSET = object()
+
 
 class DesktopService:
     mutating_actions = {'apply', 'rollback', 'restore', 'recover'}
@@ -88,6 +90,9 @@ class DesktopService:
     def _label(self, name):
         return self.labels.get(name, {'keyboard': self.t('屏幕键盘', 'Touch keyboard'),
             '_maintenance': self.t('维护工具', 'Maintenance tool')}.get(name, name))
+
+    def _count(self, number):
+        return self.t('%d 项' % number, '%d item' % number if number == 1 else '%d items' % number)
 
     def _reason(self, reason):
         text = str(reason)
@@ -237,18 +242,29 @@ class DesktopService:
                 self.labels[item['id']] = item.get('zh' if self.zh else 'en', item['id'])
                 categories[item['id']] = group
         items = []
+        requested = set(result.get('selected', []))
+        selected_names = []
         for name, item in result['components'].items():
-            ready = item['status'] == 'ready'
+            status = item.get('status')
+            compatibility = item.get('compatibility') or {}
+            incompatible = (status in ('blocked', 'incompatible')
+                            or compatibility.get('supported') is False)
+            ready = status == 'ready' and not incompatible
             category = categories.get(name, 'plugins')
             installed = result.get('installed_states', {}).get(name)
             installed = installed if type(installed) is bool else None
             update = result.get('update_available', {}).get(name)
+            selected = (name in requested if review else
+                        ready and (update is True or category == 'repairs' and installed is False))
+            selected = bool(ready and selected)
+            if selected:
+                selected_names.append(name)
             items.append({'id': name, 'title': self._label(name),
                           'detail': self._installation_detail(item.get('reason', ''), installed, update),
                           'enabled': ready, 'category': category, 'installed': installed,
-                          'update_available': update,
-                          'selected': name in result['selected'] if review else ready and
-                          (update is True or category == 'repairs' and installed is False)})
+                          'update_available': update, 'incompatible': incompatible,
+                          'needs_system_probe': False, 'needs_preflight': False,
+                          'selected': selected})
         items.sort(key=lambda item: item['category'] != 'repairs')
         facts = [(self.t('项目版本', 'Project version'), result['release']['version'])]
         if review:
@@ -257,17 +273,18 @@ class DesktopService:
             facts.append((self.t('生效方式', 'Activation'), self.t('需要重启或新会话', 'Restart or new session required')))
         for group in result.get('restore_groups', []):
             facts.append((self.t('恢复时须同时选择', 'Restore together'),
-                          '、'.join(self._label(name) for name in group['components'])))
+                          self._count(len(group['components']))))
         if review:
             facts.append((self.t('应用内容（含依赖）', 'Apply, including dependencies'),
-                          '、'.join(self._label(n) for n in result['selected']) or self.t('仅维护工具', 'Maintenance tool only')))
+                          self._count(len(selected_names))
+                          if selected_names else self.t('仅维护工具', 'Maintenance tool only')))
             if result.get('retained'):
                 facts.append((self.t('保持原状', 'Keep unchanged'),
-                              '、'.join(self._label(n) for n in result['retained'])))
+                              self._count(len(result['retained']))))
         return self._view(self.t('确认本次修改' if review else '选择修复与插件', 'Review changes' if review else 'Choose repairs and plugins'),
                           self.t('只有确认后才会应用。未选择的旧组件保持原状。', 'Changes apply only after confirmation. Unselected components stay unchanged.'),
                           facts=facts, items=items, review=review, can_apply=result['can_apply'],
-                          source=str(self.source), source_ready=True, selection=result['selected'])
+                          source=str(self.source), source_ready=True, selection=selected_names)
 
     def _result_view(self, result, heading=None):
         op = result.get('operation', result)
@@ -321,34 +338,108 @@ class DesktopService:
         from .downloads import trusted_key
         return describe_source(self.source, trusted_key())
 
-    def _distribution_view(self, value, *, installation=None, system=None):
+    def _live_system(self):
+        try:
+            from .probe import live
+            return live()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _distribution_package_closure(value, component):
+        dependencies = {item['id']: item.get('dependencies', []) for item in value.get('components', [])}
+        package_map = value.get('component_packages', {})
+        required = set()
+        visiting = set()
+
+        def include(name):
+            if name in visiting or name not in package_map:
+                return False
+            visiting.add(name)
+            required.update(package_map[name])
+            for dependency in dependencies.get(name, []):
+                if not include(dependency):
+                    return False
+            visiting.remove(name)
+            return True
+
+        return required if include(component) else None
+
+    def _distribution_plan(self, value, *, system=None):
+        """Run the trusted local planner only for packages present in the archive."""
+        if value.get('schema') != 2 or system is None:
+            return None
+        present = set(value.get('_local_present_packages', []))
+        package_ids = set(value.get('packages', {}))
+        if not present:
+            return None
+        from .update_state import needs_engine_bridge
+        if needs_engine_bridge(cli.installed_release()):
+            # The installed engine must first be upgraded through the reviewed
+            # tool-only path; older privileged verifiers cannot plan a modular
+            # archive safely. Keep this view advisory until that bridge runs.
+            return None
+        if package_ids <= present:
+            return self._backend('plan', all_components=True)
+
+        selected = []
+        for item in value.get('components', []):
+            if item.get('delivery') != 'maintenance' or item.get('available') is not True:
+                continue
+            required = self._distribution_package_closure(value, item['id'])
+            if required is not None and required <= present:
+                selected.append(item['id'])
+        return self._backend('plan', selected) if selected else None
+
+    def _distribution_view(self, value, *, installation=None, system=_UNSET, plan=None):
         from .catalog import describe
         from .update_state import available_updates
         self.installation_catalog = value
-        if system is None:
-            try:
-                from .probe import live
-                system = live()
-            except Exception:
-                system = None
+        if system is _UNSET:
+            system = self._live_system()
         installed = cli.installed_release()
         slot = system.get('slot', {}).get('id') if system else None
         names = [item['id'] for item in value['components']]
-        states = installation if installation is not None else self._installation_evidence(system, names)
+        plan_components = plan.get('components', {}) if isinstance(plan, dict) else {}
+        if installation is not None:
+            states = installation
+        elif plan is not None:
+            states = plan.get('installed_states', {})
+        else:
+            states = self._installation_evidence(system, names)
         updates = available_updates(value, installed, slot)
         report = describe(value, system, states)
         items = []
         for item in report['components']:
             name = item['id']
             self.labels[name] = item.get('zh' if self.zh else 'en', name)
-            enabled = item['status'] in ('requires_preflight', 'download_available')
             current = states.get(name)
+            component_plan = plan_components.get(name)
+            if isinstance(component_plan, dict):
+                plan_status = component_plan.get('status')
+                compatibility = component_plan.get('compatibility') or {}
+                incompatible = (plan_status in ('blocked', 'incompatible')
+                                or compatibility.get('supported') is False)
+                enabled = plan_status == 'ready' and not incompatible
+                reason = component_plan.get('reason') or item['reason']
+                needs_system_probe = False
+                needs_preflight = False
+                selected = enabled and (updates.get(name) is True or
+                                        current is False and item['kind'] == 'repairs')
+            else:
+                incompatible = item.get('incompatible') is True
+                enabled = item['status'] in ('requires_preflight', 'download_available') and not incompatible
+                reason = item['reason']
+                needs_system_probe = item.get('needs_system_probe') is True
+                needs_preflight = item.get('needs_preflight') is True
+                selected = False
             items.append(dict(id=name, title=self._label(name),
-                              detail=self._installation_detail(item['reason'], current, updates.get(name)),
+                              detail=self._installation_detail(reason, current, updates.get(name)),
                               enabled=enabled, category=item['kind'], installed=current,
                               update_available=updates.get(name),
-                              selected=enabled and (updates.get(name) is True or
-                              current is False and item['kind'] == 'repairs')))
+                              selected=selected, incompatible=incompatible,
+                              needs_system_probe=needs_system_probe,
+                              needs_preflight=needs_preflight))
         return self._view(self.t('选择更新与修复', 'Choose updates and repairs'),
                           self.t('清单包含全部组件。只下载所选项目及其依赖；旧版本无需逐版升级。',
                                  'The complete catalog covers every component. Download selected items and dependencies directly from any older version.'),
@@ -393,7 +484,9 @@ class DesktopService:
             items.append(dict(id=name, title=self._label(name),
                               detail=self._installation_detail(item['reason'], installed), enabled=enabled,
                               category=category, installed=installed, update_available=None,
-                              selected=enabled and category == 'repairs' and installed is False))
+                              selected=False, incompatible=item.get('incompatible') is True,
+                              needs_system_probe=item.get('needs_system_probe') is True,
+                              needs_preflight=item.get('needs_preflight') is True))
         items.sort(key=lambda item: item['category'] != 'repairs')
         return self._view(self.t('最新修复与插件', 'Latest repairs and plugins'),
                           self.t('安装状态为只读文件检查结果；无法读取的项目保留为未知，可使用“检查已安装”授权读取。',
@@ -547,9 +640,13 @@ class DesktopService:
                     result = self._backend('installation-status', list(plan['components']))
                     return self._plan_view(dict(plan, installed_states=result['installed_states']))
                 raise RuntimeError(self.t('请先检查更新或导入维护包。', 'Check updates or import a maintenance bundle first.'))
-            result = self._backend('installation-status', [item['id'] for item in value.get('components', [])])
             if value.get('schema') == 2:
+                result = self._backend('installation-status', [item['id'] for item in value.get('components', [])])
+                plan = self._distribution_plan(value, system=result.get('system'))
+                if plan is not None:
+                    return self._distribution_view(value, system=result.get('system'), plan=plan)
                 return self._distribution_view(value, installation=result['installed_states'], system=result['system'])
+            result = self._backend('installation-status', [item['id'] for item in value.get('components', [])])
             return self._legacy_catalog_view(value, result['system'], installation=result['installed_states'])
         if action == 'download':
             self.review = None
@@ -577,7 +674,9 @@ class DesktopService:
             self.review = None
             distribution = self._distribution()
             if distribution:
-                return self._distribution_view(distribution)
+                system = self._live_system()
+                plan = self._distribution_plan(distribution, system=system)
+                return self._distribution_view(distribution, system=system, plan=plan)
             return self._plan_view(self._backend('plan', all_components=True))
         if action == 'plan':
             self.review = None

@@ -184,6 +184,18 @@
       "default": false,
       "reason": "关闭 HDR/WCG 并 DPMS on 后画面恢复；游戏 Gamma22 保留。窗口高亮组未通过；重接 Gamma22 或隐藏内屏 HDR 开关尚未实现。",
       "source": "research/evidence/20261013-desktop-hdr-recovery.md"
+    },
+    {
+      "id": "opti2xmx",
+      "name": "Opti2XMX 0.2.7 每游戏 XMX / Opti 注入与版本管理",
+      "version": "0.2.7",
+      "state": "live_device_repair_confirmed",
+      "default": true,
+      "available": true,
+      "dependencies": [
+        "decky"
+      ],
+      "source": "windows-installer/docs/OPTI2XMX_INTEGRATION.md"
     }
   ],
   "plugins": [

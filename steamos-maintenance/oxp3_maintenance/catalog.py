@@ -122,8 +122,12 @@ def describe(value, system=None, installed=None):
             compatibility = evaluate(item['id'], system)
             report.update(compatibility=compatibility, status='requires_preflight' if compatibility['supported'] else 'incompatible',
                           reason=compatibility['reason'])
-        report['selected'] = (report['status'] in ('requires_preflight', 'download_available')
-                              and category == 'repairs' and state is not True)
+        report['incompatible'] = report['status'] == 'incompatible'
+        report['needs_system_probe'] = system is None and report['status'] == 'download_available'
+        report['needs_preflight'] = report['status'] in ('requires_preflight', 'download_available')
+        # Catalog compatibility is advisory. Defaults require an authoritative
+        # component plan, which is unavailable during discovery.
+        report['selected'] = False
         items.append(report)
     items.sort(key=lambda item: item['category'] != 'repairs')
     result = {'schema': value.get('schema', 1), 'release': value['release'], 'components': items,

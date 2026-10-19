@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import platform
 import re
 import shutil
+import ssl
 import stat
 import tarfile
 import tempfile
@@ -25,6 +26,18 @@ UNPUBLISHED = '固定版本的 XMX 运行环境尚未发布。发布后请更新
 REQUIRED = ('runtime/igdext64.dll', 'runtime/lib/libvulkan_intel.so',
             'runtime/tools/cm-compile.sh', 'runtime/tools/cmk_pack.py',
             'sdk/libxess.dll', 'runtime/LICENSE', 'runtime/THIRD_PARTY.md', 'sdk/XeSS-LICENSE.txt')
+
+
+def download_ssl_context():
+    """Use the OS trust bundle when Decky's frozen OpenSSL paths are absent."""
+    if platform.system() == 'Linux':
+        for name in ('/etc/ssl/cert.pem', '/etc/ssl/certs/ca-certificates.crt',
+                     '/etc/pki/tls/certs/ca-bundle.crt'):
+            if Path(name).is_file():
+                # Explicit cafile avoids PyInstaller's build-host default paths.
+                # Keep hostname and certificate verification; invalid CA files fail.
+                return ssl.create_default_context(cafile=name)
+    return ssl.create_default_context()
 
 
 def source_descriptor():
@@ -194,7 +207,7 @@ class RuntimeMixin:
             digest, count = hashlib.sha256(), 0
             self.progress.update(identity, 'downloading', 0, descriptor['size_bytes'])
             request = urllib.request.Request(descriptor['url'], headers={'User-Agent': 'Opti2XMX', 'Accept': 'application/octet-stream'})
-            with urllib.request.urlopen(request, timeout=30) as response, archive.open('xb') as output:
+            with urllib.request.urlopen(request, timeout=30, context=download_ssl_context()) as response, archive.open('xb') as output:
                 if urllib.parse.urlparse(response.geturl()).scheme != 'https':
                     raise RuntimeError('XMX runtime download redirected to an insecure source')
                 while True:

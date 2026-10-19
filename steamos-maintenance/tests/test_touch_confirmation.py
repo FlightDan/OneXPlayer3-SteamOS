@@ -66,6 +66,50 @@ class TouchConfirmationTests(unittest.TestCase):
         self.assertIsNone(self.ui.confirm_task)
         self.assertFalse(self.ui.confirmation.get_visible())
 
+    def test_incompatible_review_filter_and_yellow_status(self):
+        from gi.repository import Gtk
+        ui = self.ui
+        ui.route = 'repairs'
+        ui.selected = {'keyboard', 'slot-switch'}
+        ui.views['repairs'] = {
+            'review': True, 'can_apply': False,
+            'items': [{'id': 'keyboard', 'title': 'Keyboard', 'enabled': True},
+                      {'id': 'slot-switch', 'title': 'KDE <slot>', 'incompatible': True,
+                       'detail': 'Unsupported inactive slot'},
+                      {'id': 'dependency', 'title': 'Dependency', 'incompatible': True}],
+        }
+        ui._render()
+        def labels(widget):
+            values = [widget] if isinstance(widget, Gtk.Label) else []
+            for child in widget.get_children() if isinstance(widget, Gtk.Container) else []:
+                values.extend(labels(child))
+            return values
+        statuses = [label for label in labels(ui.page) if label.get_text() == ui.text['incompatible']]
+        self.assertEqual(len(statuses), 2)
+        self.assertTrue(all(label.get_style_context().has_class('incompatible') for label in statuses))
+        ui.incompatible_filter.set_active(True)
+        shown = [label.get_text() for label in labels(ui.page)]
+        self.assertNotIn('Keyboard', shown)
+        self.assertIn('KDE <slot>', shown)
+        self.assertIn('Dependency', shown)
+        self.assertEqual(ui.selected, {'keyboard', 'slot-switch'})
+        self.assertFalse(ui.views['repairs']['can_apply'])
+        self.assertEqual(ui.recorded, [])
+        ui.incompatible_filter.set_active(False)
+        self.assertIn('Keyboard', [label.get_text() for label in labels(ui.page)])
+        ui.protect('apply')
+        self.assertFalse(ui.incompatible_filter.get_sensitive())
+        ui._filter_incompatible(ui.incompatible_filter)
+        self.assertTrue(ui.confirmation.get_visible())
+        self.assertIsNotNone(ui.confirm_task)
+        ui._cancel_confirm()
+        self.assertTrue(ui.incompatible_filter.get_sensitive())
+        ui.busy = True
+        ui._sensitivity()
+        self.assertFalse(ui.incompatible_filter.get_sensitive())
+        ui._filter_incompatible(ui.incompatible_filter)
+        self.assertEqual(ui.recorded, [])
+
 
 if __name__ == '__main__':
     unittest.main()

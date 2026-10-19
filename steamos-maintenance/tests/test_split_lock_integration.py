@@ -174,7 +174,8 @@ class SplitLockIntegrationTests(unittest.TestCase):
             service = DesktopService(SimpleNamespace(bundle='fixture', bundle_dir=None))
         summary['catalog'] = self.options
         view = service._plan_view(summary, review=True)
-        self.assertTrue(any(label == 'Restore together' and 'split-lock' in value for label, value in view['facts']))
+        self.assertIn(('Restore together', '2 items'), view['facts'])
+        self.assertEqual({item['id'] for item in view['items']}, {'gm7-resume', 'split-lock'})
 
     def test_live_orchestrator_rejects_partial_restore_before_any_commands(self):
         self.prepare()

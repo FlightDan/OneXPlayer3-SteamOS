@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.6",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "修复导入本地维护包时不兼容项目被默认勾选；确认页新增仅显示不兼容项目及黄色提示；同步 Opti2XMX 0.2.7 系统 CA 下载修复。"
+}

@@ -15,10 +15,19 @@ controls = root / 'components/controls'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path, default=root / 'cache/integration')
 parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
+parser.add_argument('--opti-only', action='store_true', help='Regenerate only the pinned Opti2XMX component while preserving other manifest entries')
 arguments = parser.parse_args()
 store = arguments.output
-store.mkdir(parents=True, exist_ok=True)
-manifest = {}
+manifest_path = store / 'manifest.json'
+if arguments.opti_only:
+    if not store.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
+        raise FileNotFoundError('Targeted Opti generation requires an existing integration manifest')
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    if not isinstance(manifest, dict) or not manifest or 'opti2xmx' not in manifest:
+        raise ValueError('Targeted Opti generation requires a complete existing integration manifest')
+else:
+    store.mkdir(parents=True, exist_ok=True)
+    manifest = {}
 
 def component(name, files, units=(), packages=None):
     folder = store / name; folder.mkdir(exist_ok=True)
@@ -41,6 +50,11 @@ def emitted_definitions(path):
     return scope
 
 opti=arguments.opti_source
+runtime_archive=store/'opti2xmx/runtime.tar.gz'
+if arguments.opti_only:
+    if runtime_archive.is_symlink() or not runtime_archive.is_file():
+        raise FileNotFoundError('Opti runtime must be prepared before targeted integration generation')
+    validate_runtime(runtime_archive)
 opti_records=read_plugin_tree(opti)
 component('opti2xmx', {
     **{'/home/deck/homebrew/plugins/opti2xmx/'+name:data for name,data in opti_records.items()},
@@ -48,8 +62,16 @@ component('opti2xmx', {
 for item in manifest['opti2xmx']['files']:
     if '/homebrew/plugins/' in item['target']:item['user']=False
 manifest['opti2xmx']['runtime_archive']='opti2xmx/runtime.tar.gz'
-if not (store/'opti2xmx/runtime.tar.gz').is_file():manifest['opti2xmx']['missing']=['Run prepare-opti2xmx.py to stage the public runtime']
-else: validate_runtime(store/'opti2xmx/runtime.tar.gz')
+if not (store/'opti2xmx/runtime.tar.gz').is_file():
+    if arguments.opti_only:
+        raise FileNotFoundError('Opti runtime must be prepared before targeted integration generation')
+    manifest['opti2xmx']['missing']=['Run prepare-opti2xmx.py to stage the public runtime']
+else:
+    validate_runtime(store/'opti2xmx/runtime.tar.gz')
+if arguments.opti_only:
+    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+    print(json.dumps({'components':list(manifest),'opti2xmx':manifest['opti2xmx']},indent=2))
+    raise SystemExit(0)
 
 def plugin_files(name, values):
     return {f'/home/deck/homebrew/plugins/{name}/{key}': data for key, data in values.items()}

@@ -4,11 +4,13 @@ import io
 import json
 from pathlib import Path
 import tarfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
 import build_distribution as builder
-from oxp3_maintenance import bundle, catalog, distribution
+from oxp3_maintenance import bundle, catalog, cli, compatibility, components, distribution, downloads, probe
+from oxp3_maintenance.desktop_service import DesktopService
 import test_bundle
 
 
@@ -77,6 +79,78 @@ class DistributionTests(unittest.TestCase):
         self.assertFalse(runtime['default'])
         self.assertEqual(runtime['dependencies'], ['opti2xmx'])
         self.assertIn('/Opti2XMX/', descriptor['packages']['runtime-opti2xmx']['url'])
+
+    def test_verified_source_reports_local_package_presence_for_seed_and_full_archive(self):
+        result = self._build()
+        seed = self._seed(result)
+        seed_descriptor = distribution.describe_source(seed, self.public, openssl=self.openssl)
+        self.assertEqual(seed_descriptor['_local_present_packages'], ['core'])
+        selected = [item['id'] for item in seed_descriptor['components']
+                    if item['available'] and item['delivery'] == 'maintenance']
+        full_path = self.root / 'full-offline.tar.gz'
+        distribution.materialize(seed, selected, full_path, self.public,
+                                 opener=self._opener(result, []), openssl=self.openssl)
+        full_descriptor = distribution.describe_source(full_path, self.public, openssl=self.openssl)
+        self.assertEqual(set(full_descriptor['_local_present_packages']),
+                         set(full_descriptor['packages']) | {'core'})
+
+    def test_import_of_signed_full_archive_uses_live_plan_for_kde_resource_block(self):
+        slot = {'id': 'slot-switch', 'en': 'KDE Slot', 'zh': 'KDE 槽位',
+                'default': True, 'dependencies': []}
+        directory = self.payload / 'components/slot-switch'
+        directory.mkdir(parents=True)
+        for name in ('boot.py', 'desktop.py', 'oxp3-switch-slot', '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop'):
+            (directory / name).write_bytes(b'fixture ' + name.encode())
+        result = self._build('kde-full-distribution', extra_plugins=[slot])
+        seed_descriptor = distribution.describe_source(self._seed(result), self.public, openssl=self.openssl)
+        all_components = [item['id'] for item in seed_descriptor['components']
+                          if item['available'] and item['delivery'] == 'maintenance']
+        full_path = self.root / 'kde-full-offline.tar.gz'
+        distribution.materialize(self._seed(result), all_components, full_path, self.public,
+                                 opener=self._opener(result, []), openssl=self.openssl)
+
+        payload = self.payload
+        root = self.root / 'plan-root'
+        (root / 'usr/bin').mkdir(parents=True)
+        for tool in ('python3', 'pkexec', 'kdialog', 'systemctl', 'busctl'):
+            executable = root / 'usr/bin' / tool
+            executable.write_bytes(b'fixture executable')
+            executable.chmod(0o755)
+        system = {'os': dict(compatibility.BASE), 'kernel': compatibility.KERNEL,
+                  'dmi': dict(compatibility.DEVICE), 'uid': 1000, 'gid': 1000,
+                  'slot': {'id': 'slot-A'}, 'shared_compatible': True,
+                  'shared_os_compatible': True, 'packages': {}}
+        with mock.patch.object(Path, 'home', return_value=self.root), \
+             mock.patch.object(cli, 'installed_release', return_value={'version': '1.0.0', 'channel': 'stable'}):
+            service = DesktopService(SimpleNamespace(bundle=str(full_path), bundle_dir=None))
+        self.addCleanup(service.close)
+
+        def plan_backend(action, selected=(), *, all_components=False, **_kwargs):
+            self.assertEqual(action, 'plan')
+            self.assertTrue(all_components)
+            self.assertEqual(list(selected), [])
+            plan = components.build_plan(payload, root, ['slot-switch'], system)
+            return {'release': result['catalog']['release'], 'slot': system['slot'],
+                    'components': plan['components'], 'selected': plan['selected'],
+                    'installed_states': {'slot-switch': False}, 'update_available': {},
+                    'catalog': result['catalog'], 'can_apply': False, 'file_count': 0}
+
+        real_describe = distribution.describe_source
+        with mock.patch.object(downloads, 'trusted_key', return_value=self.public), \
+             mock.patch.object(distribution, 'describe_source',
+                               side_effect=lambda source, key: real_describe(source, key, openssl=self.openssl)), \
+             mock.patch.object(probe, 'live', return_value=system), \
+             mock.patch.object(service, '_backend', side_effect=plan_backend) as backend:
+            view = service.perform('import', path=str(full_path))
+        backend.assert_called_once_with('plan', all_components=True)
+        row = next(item for item in view['items'] if item['id'] == 'slot-switch')
+        self.assertTrue(row['incompatible'])
+        self.assertFalse(row['enabled'])
+        self.assertFalse(row['selected'])
+        self.assertFalse(row['needs_system_probe'])
+        self.assertIn('steamos-bootconf', row['detail'])
+        self.assertEqual(set(service.installation_catalog['_local_present_packages']),
+                         set(service.installation_catalog['packages']) | {'core'})
 
     def test_common_repairs_stay_in_core_and_only_large_or_owned_components_split(self):
         for component in ('input', 'fan-driver', 'gamescope-env', 'hdr', 'native-tdp', 'xe-dsb', 'legacy-runtime'):

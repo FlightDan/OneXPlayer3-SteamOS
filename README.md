@@ -159,7 +159,7 @@ Windows / SteamOS 启动菜单截图。启动阶段十字键与 A/B 已可用。
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.5/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.6/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 
@@ -173,7 +173,7 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** 是为这套适配开发的 Decky 插件，可为兼容的游戏直接提供原生的 **XeSS XMX 加速与 XeSS 帧生成**，并为其他兼容游戏提供支持 **XeSS 帧生成的 OptiScaler**。
 
-1.0.6 整合 Opti2XMX **0.2.6**；其 XeSS FG 2x / 3x / 4x 控件仍标为实验性，兼容性与测试范围见[帧生成说明](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md)。
+1.0.6 整合 Opti2XMX **0.2.7**；其 XeSS FG 2x / 3x / 4x 控件仍标为实验性，兼容性与测试范围见[帧生成说明](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md)。
 
 - 原生 XeSS 游戏可直接配置 XMX；其他兼容游戏可通过 OptiScaler 接入。
 - XMX 加速与 Opti 注入独立开关，支持安装、版本切换、回退和卸载。

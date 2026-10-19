@@ -11,6 +11,7 @@ import subprocess
 import time
 import urllib.request
 import uuid
+from runtime_setup import download_ssl_context
 
 RELEASES = {
     '0.9.4': ('v0.9.4', 'Optiscaler_0.9.4-final.20260718._MM.7z', 481819753),
@@ -148,7 +149,7 @@ class OptiMixin:
             req = urllib.request.Request(url, headers={'User-Agent':'Opti2XMX', 'Accept':'application/octet-stream'})
             part = archive.with_suffix('.part')
             try:
-                with urllib.request.urlopen(req, timeout=45) as response, part.open('wb') as out:
+                with urllib.request.urlopen(req, timeout=45, context=download_ssl_context()) as response, part.open('wb') as out:
                     header = response.headers.get('Content-Length', '')
                     total_bytes = int(header) if str(header).isdigit() and len(str(header)) < 12 else None
                     total = 0

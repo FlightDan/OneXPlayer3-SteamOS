@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-from oxp3_maintenance import adoption, catalog, cli, downloads, health, inventory, probe, releases, update_state
+from oxp3_maintenance import adoption, catalog, cli, components, compatibility, downloads, health, inventory, probe, releases, update_state
 from oxp3_maintenance.desktop_service import DesktopService
 from oxp3_maintenance.transactions import Store
 from oxp3_maintenance.opti_migration import PLUGIN, RUNTIME, RUNTIME_PREFIX
@@ -448,9 +448,17 @@ class SelectionDefaultsTests(unittest.TestCase):
 
     def test_review_uses_explicit_selection_instead_of_default_repair_choices(self):
         plan = self.plan()
-        plan['selected'] = ['installed-repair', 'new-plugin']
+        plan['selected'] = ['installed-repair', 'new-plugin', 'blocked-repair']
+        plan['retained'] = {'old-component': 'Kept unchanged'}
+        plan['restore_groups'] = [{'components': ['installed-repair', 'new-plugin']}]
         view = self.service._plan_view(plan, review=True)
         self.assertEqual({item['id'] for item in view['items'] if item['selected']}, {'installed-repair', 'new-plugin'})
+        self.assertEqual(set(view['selection']), {'installed-repair', 'new-plugin'})
+        self.assertTrue(next(item for item in view['items'] if item['id'] == 'blocked-repair')['incompatible'])
+        facts = dict(view['facts'])
+        self.assertEqual(facts['Apply, including dependencies'], '2 items')
+        self.assertEqual(facts['Keep unchanged'], '1 item')
+        self.assertEqual(facts['Restore together'], '2 items')
 
     def test_online_unknown_repairs_and_plugins_unselected_without_privilege(self):
         candidate = {'version': '1.1.0', 'size': 1024}
@@ -480,8 +488,10 @@ class SelectionDefaultsTests(unittest.TestCase):
             {'id': 'decky', 'kind': 'plugins', 'delivery': 'maintenance', 'available': True}]}
         rows = {item['id']: item for item in catalog.describe(value, installed={'keyboard': True, 'input': False, 'decky': None})['components']}
         self.assertFalse(rows['keyboard']['selected'])
-        self.assertTrue(rows['input']['selected'])
+        self.assertFalse(rows['input']['selected'])
         self.assertFalse(rows['decky']['selected'])
+        self.assertTrue(rows['keyboard']['needs_system_probe'])
+        self.assertFalse(rows['keyboard']['incompatible'])
         self.assertIs(rows['input']['installed'], False)
         self.assertIsNone(rows['decky']['installed'])
 
@@ -499,7 +509,10 @@ class SelectionDefaultsTests(unittest.TestCase):
             row = self.service._distribution_view(value)['items'][0]
         self.assertIs(row['installed'], True)
         self.assertIs(row['update_available'], True)
-        self.assertTrue(row['selected'])
+        self.assertFalse(row['selected'])
+        self.assertTrue(row['enabled'])
+        self.assertTrue(row['needs_preflight'])
+        self.assertFalse(row['incompatible'])
         self.assertIn('Installed; update available', row['detail'])
         self.assertIs(update_state.available_updates(value, {}, 'here')['keyboard'], None)
         with mock.patch.object(probe, 'live', return_value=system), \
@@ -508,8 +521,148 @@ class SelectionDefaultsTests(unittest.TestCase):
             for state, selected in ((None, False), (True, False), (False, True)):
                 with self.subTest(installed=state):
                     row = self.service._distribution_view(value, installation={'keyboard': state})['items'][0]
-                    self.assertIs(row['selected'], selected)
+                    self.assertFalse(row['selected'])
                     self.assertIs(row['installed'], state)
+
+        ready_plan = {'components': {'keyboard': {'status': 'ready', 'reason': 'Ready for transactional installation',
+                                                   'compatibility': {'supported': True}}},
+                      'installed_states': {'keyboard': True}}
+        with mock.patch.object(probe, 'live', return_value=system), \
+             mock.patch.object(cli, 'installed_release', return_value={'version': '1',
+                 'component_revisions_by_slot': {'here': {'keyboard': 'old'}}}):
+            row = self.service._distribution_view(value, system=system, plan=ready_plan)['items'][0]
+        self.assertTrue(row['selected'])
+        self.assertTrue(row['enabled'])
+        self.assertFalse(row['incompatible'])
+
+    def test_unknown_system_is_selectable_manually_but_not_default_selected(self):
+        value = {'schema': 2, 'release': {'version': '1.1.0'}, 'bundle': {}, 'packages': {},
+                 'component_packages': {'keyboard': ['core']}, 'distribution_manifest_digest': 'fixture',
+                 'components': [{'id': 'keyboard', 'kind': 'repairs', 'delivery': 'maintenance',
+                                 'available': True, 'revision': 'new', 'dependencies': []}]}
+        with mock.patch.object(probe, 'live', side_effect=RuntimeError('probe unavailable')):
+            row = self.service._distribution_view(value)['items'][0]
+        self.assertTrue(row['enabled'])
+        self.assertFalse(row['selected'])
+        self.assertFalse(row['incompatible'])
+        self.assertTrue(row['needs_system_probe'])
+
+    def test_local_full_import_uses_component_plan_for_kde_slot_resource_block(self):
+        base = Path(self.temp.name)
+        payload, root = base / 'payload', base / 'system-root'
+        (payload / 'components/slot-switch').mkdir(parents=True)
+        (payload / 'integration').mkdir(parents=True)
+        (root / 'usr/bin').mkdir(parents=True)
+        (payload / 'components/options.json').write_text(json.dumps({'schema': 1,
+            'repairs': [{'id': 'slot-switch', 'dependencies': [], 'available': True}], 'plugins': []}))
+        (payload / 'integration/manifest.json').write_text('{}')
+        for name in ('boot.py', 'desktop.py', 'oxp3-switch-slot', '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop'):
+            (payload / 'components/slot-switch' / name).write_bytes(b'fixture ' + name.encode())
+        for tool in ('python3', 'pkexec', 'kdialog', 'systemctl', 'busctl'):
+            path = root / 'usr/bin' / tool
+            path.write_bytes(b'fixture executable')
+            path.chmod(0o755)
+        system = {'os': dict(compatibility.BASE), 'kernel': compatibility.KERNEL,
+                  'dmi': dict(compatibility.DEVICE), 'uid': 1000, 'gid': 1000,
+                  'slot': {'id': 'slot-A'}, 'shared_compatible': True,
+                  'shared_os_compatible': True, 'packages': {}}
+        package = {'repair-slot-switch': {'size': 1, 'sha256': 'a' * 64, 'files_digest': 'b' * 64}}
+        value = {'schema': 2, 'release': {'version': '1.1.0'}, 'bundle': {'name': 'local-full.tar.gz'},
+                 'packages': package, 'component_packages': {'slot-switch': ['core', 'repair-slot-switch']},
+                 'distribution_manifest_digest': 'c' * 64, '_local_present_packages': ['core', 'repair-slot-switch'],
+                 'components': [{'id': 'slot-switch', 'kind': 'repairs', 'delivery': 'maintenance',
+                                 'available': True, 'revision': 'new', 'dependencies': [], 'en': 'KDE Slot'}]}
+        service = DesktopService(SimpleNamespace(bundle='/local-full.tar.gz', bundle_dir=None))
+        self.addCleanup(service.close)
+
+        def plan_backend(action, selected=(), *, all_components=False, **_kwargs):
+            self.assertEqual(action, 'plan')
+            self.assertTrue(all_components)
+            self.assertEqual(list(selected), [])
+            result = components.build_plan(payload, root, ['slot-switch'], system)
+            return {'release': value['release'], 'slot': system['slot'],
+                    'components': result['components'], 'selected': result['selected'],
+                    'installed_states': {'slot-switch': False}, 'update_available': {},
+                    'catalog': {'repairs': [{'id': 'slot-switch', 'en': 'KDE Slot'}], 'plugins': []},
+                    'can_apply': False, 'file_count': 0}
+
+        with mock.patch.object(probe, 'live', return_value=system), \
+             mock.patch.object(service, '_distribution', return_value=value), \
+             mock.patch.object(service, '_backend', side_effect=plan_backend) as backend:
+            view = service.perform('import', path='/local-full.tar.gz')
+        backend.assert_called_once_with('plan', all_components=True)
+        row = next(item for item in view['items'] if item['id'] == 'slot-switch')
+        self.assertTrue(row['incompatible'])
+        self.assertFalse(row['enabled'])
+        self.assertFalse(row['selected'])
+        self.assertFalse(row['needs_system_probe'])
+        self.assertIn('steamos-bootconf', row['detail'])
+        self.assertTrue(service.installation_catalog is value)
+
+    def test_legacy_engine_keeps_full_import_and_installed_check_advisory(self):
+        system = {'slot': {'id': 'slot-A'}}
+        value = {'schema': 2, 'release': {'version': '1.1.0'},
+                 'bundle': {'name': 'local-full.tar.gz'},
+                 'packages': {'repair-keyboard': {'size': 1, 'sha256': 'a' * 64,
+                                                    'files_digest': 'b' * 64}},
+                 'component_packages': {'keyboard': ['core', 'repair-keyboard']},
+                 'distribution_manifest_digest': 'c' * 64,
+                 '_local_present_packages': ['core', 'repair-keyboard'],
+                 'components': [{'id': 'keyboard', 'kind': 'repairs', 'delivery': 'maintenance',
+                                 'available': True, 'revision': 'new', 'dependencies': [],
+                                 'en': 'Keyboard'}]}
+
+        for action in ('import', 'check-installed'):
+            with self.subTest(action=action):
+                service = DesktopService(SimpleNamespace(bundle='/local-full.tar.gz', bundle_dir=None))
+                self.addCleanup(service.close)
+                service.installation_catalog = value if action == 'check-installed' else None
+
+                def backend(requested_action, *_args, **_kwargs):
+                    if requested_action == 'installation-status':
+                        return {'system': system, 'installed_states': {'keyboard': False}}
+                    self.fail('legacy engine must not receive a component plan')
+
+                with mock.patch.object(probe, 'live', return_value=system), \
+                     mock.patch.object(update_state, 'needs_engine_bridge', return_value=True) as bridge, \
+                     mock.patch.object(service, '_distribution', return_value=value), \
+                     mock.patch.object(compatibility, 'evaluate', return_value={
+                         'supported': True, 'reason': 'Fixture system is supported'}), \
+                     mock.patch.object(cli, 'read_installed_component_states', return_value={'keyboard': False}), \
+                     mock.patch.object(service, '_backend', side_effect=backend) as backend_call:
+                    view = (service.perform('import', path='/local-full.tar.gz') if action == 'import'
+                            else service.perform('check-installed'))
+
+                actions = [call.args[0] for call in backend_call.call_args_list]
+                self.assertNotIn('plan', actions)
+                if action == 'import':
+                    backend_call.assert_not_called()
+                else:
+                    backend_call.assert_called_once_with('installation-status', ['keyboard'])
+                bridge.assert_called_once()
+                row = next(item for item in view['items'] if item['id'] == 'keyboard')
+                self.assertFalse(row['selected'])
+                self.assertFalse(row['incompatible'])
+                self.assertTrue(row['needs_preflight'])
+
+    def test_sparse_local_import_does_not_label_missing_shard_incompatible_or_select_it(self):
+        value = {'schema': 2, 'release': {'version': '1.1.0'}, 'bundle': {'name': 'core-seed.tar.gz'},
+                 'packages': {'repair-keyboard': {'size': 1, 'sha256': 'a' * 64, 'files_digest': 'b' * 64}},
+                 'component_packages': {'keyboard': ['core', 'repair-keyboard']},
+                 'distribution_manifest_digest': 'c' * 64, '_local_present_packages': ['core'],
+                 'components': [{'id': 'keyboard', 'kind': 'repairs', 'delivery': 'maintenance',
+                                 'available': True, 'revision': 'new', 'dependencies': []}]}
+        with mock.patch.object(probe, 'live', return_value={'slot': {'id': 'slot-A'}}), \
+             mock.patch('oxp3_maintenance.compatibility.evaluate', return_value={'supported': True, 'reason': 'fixture'}), \
+             mock.patch.object(self.service, '_distribution', return_value=value), \
+             mock.patch.object(self.service, '_backend') as backend:
+            view = self.service.perform('import', path='/core-seed.tar.gz')
+        backend.assert_not_called()
+        row = view['items'][0]
+        self.assertTrue(row['enabled'])
+        self.assertFalse(row['selected'])
+        self.assertFalse(row['incompatible'])
+        self.assertTrue(row['needs_preflight'])
 
     def test_known_update_is_selected_even_when_installation_cannot_be_read(self):
         result = self.plan()

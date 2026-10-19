@@ -33,7 +33,7 @@ TEXT = {
         'working': '正在处理，请稍候…', 'mutating': '正在修改系统。请保持窗口开启，等待操作完成。',
         'wait_close': '系统操作尚未结束。请等待完成后再关闭窗口。',
         'error': '操作未完成', 'retry': '重试', 'done': '操作完成',
-        'pick': '请先选择至少一个修复或插件。', 'blocked': '查看下方不兼容原因后，返回调整选择。',
+        'pick': '请先选择至少一个修复或插件。', 'blocked': '有不兼容项目，请查看原因后返回调整选择。',
         'recovery_intro': '先读取当前状态，再选择需要恢复的组件。',
         'rollback': '回退上次更新', 'restore': '恢复所选组件', 'recover': '恢复中断操作',
         'logs': '查看操作记录', 'load': '读取已安装组件',
@@ -43,6 +43,8 @@ TEXT = {
         'none': '尚未选择', 'offline': '本地维护包',
         'scope': '只管理本项目的修复与插件，不升级 SteamOS。',
         'review_intro': '检查依赖、保留组件与不兼容原因，再决定是否应用。',
+        'incompatible': '不兼容', 'only_incompatible': '仅显示不兼容项目（{count}）',
+        'no_incompatible': '本次选择没有不兼容项目。',
         'download_hint': '下载所选组件及其依赖，保留供离线使用。下载不会安装任何组件。',
         'tool_hint': '只更新维护工具，保留现有修复和插件。',
         'no_items': '当前没有可选择的组件。可重试检查更新，或导入本地维护包。',
@@ -75,7 +77,7 @@ TEXT = {
         'working': 'Working. Please wait…', 'mutating': 'Changing the system. Keep this window open until the operation finishes.',
         'wait_close': 'A system operation is still running. Wait for completion before closing the window.',
         'error': 'Operation did not finish', 'retry': 'Retry', 'done': 'Operation complete',
-        'pick': 'Select at least one repair or plugin first.', 'blocked': 'Read the compatibility reasons below, then go back to adjust your selection.',
+        'pick': 'Select at least one repair or plugin first.', 'blocked': 'Some items are incompatible. Read the reasons, then go back to adjust your selection.',
         'recovery_intro': 'Read the current status, then select components to restore.',
         'rollback': 'Roll back last update', 'restore': 'Restore selected', 'recover': 'Recover interrupted task',
         'logs': 'View operation history', 'load': 'Read installed components',
@@ -85,6 +87,8 @@ TEXT = {
         'none': 'Nothing selected', 'offline': 'Local maintenance bundle',
         'scope': 'Manages this project’s repairs and plugins. Does not upgrade SteamOS.',
         'review_intro': 'Review dependencies, retained components and compatibility before applying.',
+        'incompatible': 'Incompatible', 'only_incompatible': 'Only show incompatible items ({count})',
+        'no_incompatible': 'No incompatible items in this selection.',
         'download_hint': 'Save selected components and dependencies for offline use. Downloading installs no components.',
         'tool_hint': 'Update the maintenance tool while keeping existing repairs and plugins.',
         'no_items': 'No components are available to select. Retry the update check or import a local bundle.',
@@ -109,6 +113,7 @@ window.oxp3 { background: #20252d; color: #f2f4f7; }
 .oxp3 .section-heading { font-size: 18px; font-weight: 600; }
 .oxp3 .detail { font-size: 14px; }
 .oxp3 .muted { color: #b9c5d5; }
+.oxp3 .incompatible { color: #ffd166; font-weight: 600; }
 .oxp3 button { min-height: 32px; padding: 8px 14px; border-radius: 9px;
   background: #303b49; color: #f2f4f7; border: 1px solid #4b5c70; box-shadow: none; }
 .oxp3 button:hover { background: #3b4b60; }
@@ -190,6 +195,7 @@ class TouchWindow:
         self.startup_pending = True
         self.installation_check_pending = True
         self.show_installed = False
+        self.show_incompatible_only = False
         self.retry_task = self.confirm_task = None
         self.actions, self.nav_buttons, self.checks = [], {}, {}
         self.window = Gtk.Window(title=self.text['app'])
@@ -220,7 +226,12 @@ class TouchWindow:
         self.navigation.set_size_request(200, -1)
         self.navigation.set_hexpand(False)
         self.navigation.get_style_context().add_class('navigation')
-        body.pack_start(self.navigation, False, False, 0)
+        navigation_scroll = Gtk.ScrolledWindow()
+        navigation_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        navigation_scroll.set_kinetic_scrolling(True)
+        navigation_scroll.set_size_request(200, 0)
+        navigation_scroll.add(self.navigation)
+        body.pack_start(navigation_scroll, False, False, 0)
         self.navigation.pack_start(self._label('OXP3', 'brand'), False, False, 0)
         self.navigation.pack_start(self._label('SteamOS', 'muted'), False, False, 0)
         spacer = Gtk.Box()
@@ -312,6 +323,14 @@ class TouchWindow:
             button.get_style_context().add_class(css)
         return button
 
+    def _compatibility_label(self, text, css=None):
+        label = self._label(text, css)
+        escaped = self.GLib.markup_escape_text(str(text))
+        for word in dict.fromkeys((self.text['incompatible'], self.text['incompatible'].lower())):
+            escaped = escaped.replace(word, '<span foreground="#ffd166">' + word + '</span>')
+        label.set_markup(escaped)
+        return label
+
     def _clear(self, container):
         for child in container.get_children():
             container.remove(child)
@@ -331,6 +350,8 @@ class TouchWindow:
         self.route = route
         self.reviewing = False
         self.selected = set(self.selections.get(route, {item['id'] for item in self.views.get(route, {}).get('items', []) if item.get('selected') and item.get('enabled')}))
+        if route == 'repairs':
+            self._restrict_selection(self.views.get(route, {}))
         self._render()
         self.scroll.get_vadjustment().set_value(0)
         if route == 'overview':
@@ -358,7 +379,8 @@ class TouchWindow:
                            'settings': 'daily_detail', 'health': 'health_intro'}
         view = self.views.get(self.route, {})
         self.heading.set_text(view.get('heading', self.text[self.route]))
-        compact = self.route == 'repairs' and bool(view.get('items')) and not view.get('review')
+        review = self.route == 'repairs' and bool(view.get('review'))
+        compact = self.route == 'repairs' and bool(view.get('items'))
         message = view.get('message', self.text[default_message[self.route]])
         if not compact or view.get('tone') == 'warning':
             message_label = self._label(message, 'muted')
@@ -367,6 +389,11 @@ class TouchWindow:
                 message_label.get_style_context().add_class(view['tone'])
             self.page.pack_start(message_label, False, False, 0)
         facts = [fact for fact in view.get('facts', []) if isinstance(fact, (tuple, list)) and len(fact) == 2]
+        if review and self.show_incompatible_only:
+            facts = []
+        elif review and facts:
+            self.page.pack_start(self._label(' · '.join(str(label) + ': ' + str(value) for label, value in facts), 'muted'), False, False, 0)
+            facts = []
         if compact and facts:
             self.page.pack_start(self._label('    '.join(str(label) + ': ' + str(value) for label, value in facts), 'muted'), False, False, 0)
             facts = []
@@ -400,7 +427,14 @@ class TouchWindow:
             title = item.get('title', item.get('id', ''))
             detail = item.get('detail', '')
             content = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=2)
-            content.pack_start(self._label(title, 'section-heading'), False, False, 0)
+            heading = self.Gtk.Box(spacing=12)
+            title_label = self._label(title, 'section-heading')
+            title_label.set_width_chars(1)
+            title_label.set_hexpand(True)
+            heading.pack_start(title_label, True, True, 0)
+            if item.get('incompatible') is True:
+                heading.pack_end(self._label(self.text['incompatible'], 'incompatible'), False, False, 0)
+            content.pack_start(heading, False, False, 0)
             if detail:
                 detail_label = self._label(detail, 'muted')
                 detail_label.get_style_context().add_class('detail')
@@ -423,14 +457,27 @@ class TouchWindow:
         Gtk = self.Gtk
         if self.reviewing or view.get('review'):
             self.reviewing = True
-            self.page.pack_start(self._label(self.text['review_intro'], 'muted'), False, False, 0)
-            self._render_items(view.get('items', []), selectable=False)
+            items = view.get('items', [])
+            count = sum(item.get('incompatible') is True for item in items)
+            self.incompatible_filter = Gtk.CheckButton()
+            filter_label = self._compatibility_label(self.text['only_incompatible'].format(count=count))
+            self.incompatible_filter.add(filter_label)
+            self.incompatible_filter.set_size_request(-1, 52)
+            self.incompatible_filter.set_active(self.show_incompatible_only)
+            self.incompatible_filter.connect('toggled', self._filter_incompatible)
+            self.toolbar.pack_start(self.incompatible_filter, False, False, 0)
+            if not self.show_incompatible_only:
+                self.page.pack_start(self._label(self.text['review_intro'], 'muted'), False, False, 0)
+            visible = self._review_items(items)
+            self._render_items(visible, selectable=False)
+            if self.show_incompatible_only and not visible:
+                self.page.pack_start(self._label(self.text['no_incompatible'], 'muted'), False, False, 0)
             row = Gtk.Box(spacing=12)
             self.footer.pack_start(row, False, False, 0)
             self._action(row, self.text['back'], self._back_to_selection)
             self._action(row, self.text['apply'], lambda _: self.protect('apply'), primary=True, enabled=bool(view.get('can_apply')))
             if not view.get('can_apply'):
-                self.footer.pack_start(self._label(self.text['blocked'], 'muted'), False, False, 0)
+                self.footer.pack_start(self._compatibility_label(self.text['blocked'], 'muted'), False, False, 0)
             return
         self._action(self.toolbar, self.text['check'], lambda _: self.perform('discover'), primary=True)
         self._action(self.toolbar, self.text['import'], self._choose_bundle)
@@ -532,6 +579,16 @@ class TouchWindow:
         self.selections[self.route] = set(self.selected)
         self._selection_count()
 
+    def _review_items(self, items):
+        return [item for item in items if not self.show_incompatible_only or item.get('incompatible') is True]
+
+    def _filter_incompatible(self, button):
+        if getattr(self, 'busy', False) or getattr(self, 'confirm_task', None) is not None:
+            return
+        self.show_incompatible_only = button.get_active()
+        self._render()
+        self.scroll.get_vadjustment().set_value(0)
+
     @staticmethod
     def _hideable_installed(item):
         return item.get('installed') is True and item.get('update_available') is not True
@@ -548,7 +605,14 @@ class TouchWindow:
         if self.route == 'repairs' and hasattr(self, 'review_button'):
             self.review_button.get_child().set_text(self.text['review_count'].format(count=len(self.selected)))
 
+    def _restrict_selection(self, view):
+        allowed = {item['id'] for item in view.get('items', [])
+                   if item.get('enabled') and item.get('incompatible') is not True}
+        self.selected.intersection_update(allowed)
+        self.selections['repairs'] = set(self.selected)
+
     def _review_selection(self, *_):
+        self._restrict_selection(self.views.get('repairs', {}))
         if not self.selected:
             self._notice(self.text['pick'], 'warning')
             return
@@ -630,6 +694,8 @@ class TouchWindow:
                 widget.set_sensitive(not blocked)
         if self.route == 'repairs' and hasattr(self, 'installed_switch'):
             self.installed_switch.set_sensitive(not blocked)
+        if self.route == 'repairs' and hasattr(self, 'incompatible_filter'):
+            self.incompatible_filter.set_sensitive(not blocked)
         self.retry_button.set_sensitive(not blocked)
 
     def perform(self, action, *, route=None, **params):
@@ -687,7 +753,8 @@ class TouchWindow:
         self.views[route] = view
         self.reviewing = bool(view.get('review'))
         if action in ('discover', 'import', 'status', 'check-installed'):
-            self.selected = {item['id'] for item in view.get('items', []) if item.get('selected') and item.get('enabled')}
+            self.selected = {item['id'] for item in view.get('items', []) if item.get('selected') and item.get('enabled')
+                             and item.get('incompatible') is not True}
             self.selections[route] = set(self.selected)
         self._render()
         self.scroll.get_vadjustment().set_value(0)

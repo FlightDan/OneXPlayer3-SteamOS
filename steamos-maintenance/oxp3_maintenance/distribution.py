@@ -160,6 +160,7 @@ def index_from_manifest(manifest):
 def _source(source, key, directory, openssl):
     """Copy authenticated files, preserving the exact original signed manifest."""
     view = verify_bundle(source, key, directory, openssl=openssl)
+    local_present_packages = list(view.get('present_packages', []))
     with _open_archive(source) as stream:
         records, special = _scan(stream)
     original = _parse_manifest(special['manifest.json'], special['manifest.sig'], key, openssl)
@@ -180,12 +181,16 @@ def _source(source, key, directory, openssl):
             raise BundleError('Distribution bridge release does not match the seed.')
         selected_records = {name: record for name, record in view['files'].items()
                             if name not in (BRIDGE_MANIFEST, BRIDGE_SIGNATURE)}
-        _present_manifest(full, selected_records)
+        local_present_packages = _present_manifest(full, selected_records)['present_packages']
         if set(selected_records) != set(full['packages']['core']['files']):
             raise BundleError('Distribution seed must contain exactly its complete core package.')
     else:
         full, raw, signature = original, special['manifest.json'], special['manifest.sig']
     descriptor = _descriptor(full)
+    # This is local verifier state, not part of the signed distribution index.
+    # The desktop selector uses it to distinguish a complete offline bundle
+    # from a core seed before asking the privileged planner to assess entries.
+    descriptor['_local_present_packages'] = list(local_present_packages)
     descriptor['bundle'] = {'name': Path(source).name, 'size': Path(source).stat().st_size,
                             'sha256': _hash_file(source), 'manifest_digest': manifest_digest(view)}
     return full, raw, signature, descriptor
