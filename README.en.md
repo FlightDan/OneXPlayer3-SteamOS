@@ -206,6 +206,14 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 
 See the [Roadmap (Chinese)](ROADMAP.md) for further plans.
 
+## Update verification and key security
+
+The client verifies update catalog and manifest signatures using a pinned Ed25519 release public key, then checks the SHA-256 digests of downloaded files. Installation is refused if a signature is invalid, a file digest does not match, or an update attempts to replace the pinned public key.
+
+The release public key is publicly available: [public-key file](steamos-maintenance/trusted-public-key.pem) and [full fingerprint](steamos-maintenance/docs/PUBLISHER.md#已建立的身份). On first installation, verify the public key and its full fingerprint against a trusted project source.
+
+Under the existing release-tool design, the publisher keeps the private key locally, protected by Windows current-user DPAPI encryption and restricted file permissions that allow access only to the current user and SYSTEM. The private key is not distributed with source code or update packages.
+
 ## 6. License
 
 Copyright © 2026 FlightDan and contributors.
