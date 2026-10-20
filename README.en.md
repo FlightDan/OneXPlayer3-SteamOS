@@ -206,7 +206,7 @@ XMX requires compatible Intel hardware and the matching runtime environment; ins
 
 See the [Roadmap (Chinese)](ROADMAP.md) for further plans.
 
-## Update verification and key security
+## 6. Update verification and key security
 
 The client verifies update catalog and manifest signatures using a pinned Ed25519 release public key, then checks the SHA-256 digests of downloaded files. Installation is refused if a signature is invalid, a file digest does not match, or an update attempts to replace the pinned public key.
 
@@ -214,7 +214,7 @@ The release public key is publicly available: [public-key file](steamos-maintena
 
 Under the existing release-tool design, the publisher keeps the private key locally, protected by Windows current-user DPAPI encryption and restricted file permissions that allow access only to the current user and SYSTEM. The private key is not distributed with source code or update packages.
 
-## 6. License
+## 7. License
 
 Copyright © 2026 FlightDan and contributors.
 
@@ -224,7 +224,7 @@ Third-party code, components, firmware and system images retain their own copyri
 
 This is an unofficial, community-maintained project and is not affiliated with Valve, Intel or ONEXPLAYER. All referenced trademarks belong to their respective owners.
 
-## 7. Acknowledgments
+## 8. Acknowledgments
 
 Thanks to the following projects and their contributors:
 
