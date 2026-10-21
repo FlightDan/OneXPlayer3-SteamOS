@@ -56,8 +56,7 @@ public partial class MainWindow
                 if (image.Layout.Size != InstallationController.Capacity)
                     return PartitionInventory.L("请选择本工具生成的 80 GiB 预部署镜像。", "Select an 80 GiB image prepared by this tool.");
             }
-            else if (!new[] { ".img", ".img.bz2", ".img.zip" }.Any(extension => ImagePath.Text.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
-                return PartitionInventory.L("请选择 .img、.img.bz2 或 .img.zip 镜像。", "Select an .img, .img.bz2 or .img.zip image.");
+            else RecoveryImage.ValidateSelection(ImagePath.Text);
             if (includeOfficial && UsePrepared.IsChecked != true && Upgrade310.IsChecked == true) OfficialSystem.RequirePreparedSource();
             return null;
         }

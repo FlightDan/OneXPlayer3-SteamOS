@@ -163,7 +163,7 @@ public static class OptionsChecks
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         T Field<T>(string name) => (T)typeof(InstallerOptionsPanel).GetField(name, flags)!.GetValue(panel)!;
         var source = Path.Combine(Backend.Root, "logs", "consent-check-" + Guid.NewGuid().ToString("N") + ".img");
-        File.WriteAllBytes(source, []);
+        File.WriteAllBytes(source, RecoveryImageChecks.Fixture());
         try
         {
             var picker = Find<PartitionPicker>("PartitionSelector");

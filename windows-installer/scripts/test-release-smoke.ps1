@@ -35,6 +35,7 @@ foreach($task in @('component-outcome-checks','shared-storage-checks','physical-
 Invoke-LauncherCheck -Arguments @('--shared-storage-ui-checks') -Result 'logs/shared-storage-ui-checks.json' -Name 'shared-storage-ui-checks'
 Invoke-LauncherCheck -Arguments @('--installation-result-checks') -Result 'logs/installation-result-checks.json' -Name 'installation-result-checks'
 Invoke-LauncherCheck -Arguments @('--options-checks') -Result 'logs/options-checks.json' -Name 'options-checks'
+Invoke-LauncherCheck -Arguments @('--recovery-image-checks') -Result 'logs/recovery-image-checks.json' -Name 'recovery-image-checks'
 $powershell=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
 foreach($task in @('test-partition-deletion','test-format-remaining','test-disk-inventory')) {
     # These scripts replace Storage/native disk entry points with fixtures.

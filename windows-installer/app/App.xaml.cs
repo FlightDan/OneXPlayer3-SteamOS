@@ -300,9 +300,17 @@ public partial class App : Application
             return;
         }
         if (e.Args.Length > 0 && e.Args[0] == "--render-ui") System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        var rehearsal = e.Args.Length > 0 && e.Args[0] is "--rehearsal" or "--shared-storage-ui-checks" or "--wizard-checks" or "--wizard-resume" or "--wizard-run-prepared" or "--wizard-run-image" or "--wizard-cancel-prepared";
+        var rehearsal = e.Args.Length > 0 && e.Args[0] is "--rehearsal" or "--recovery-image-checks" or "--shared-storage-ui-checks" or "--wizard-checks" or "--wizard-resume" or "--wizard-run-prepared" or "--wizard-run-image" or "--wizard-cancel-prepared";
         var window = new MainWindow(rehearsal);
         MainWindow = window;
+        if (e.Args.Length == 1 && e.Args[0] == "--recovery-image-checks")
+        {
+            var result = Path.Combine(Backend.Root, "logs/recovery-image-checks.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(result)!);
+            try { await File.WriteAllTextAsync(result, await RecoveryImageChecks.RunAsync(window)); Shutdown(0); }
+            catch (Exception error) { await File.WriteAllTextAsync(result, error.ToString()); Shutdown(1); }
+            return;
+        }
         if (e.Args.Length == 1 && e.Args[0] == "--shared-storage-ui-checks")
         {
             var result = Path.Combine(Backend.Root, "logs/shared-storage-ui-checks.json");

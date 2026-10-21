@@ -74,8 +74,7 @@ public static partial class InstallationController
             using var image = new PreparedDiskImage(request.Source);
             if (image.Layout.Size != Capacity) throw new IOException("演练需要本工具生成的 80 GiB 预部署镜像。");
         }
-        else if (!(request.Source.EndsWith(".img", StringComparison.OrdinalIgnoreCase) || request.Source.EndsWith(".img.bz2", StringComparison.OrdinalIgnoreCase) || request.Source.EndsWith(".img.zip", StringComparison.OrdinalIgnoreCase)))
-            throw new IOException("请选择 .img、.img.bz2 或 .img.zip 恢复镜像。");
+        else RecoveryImage.ValidateSelection(request.Source);
         if (!request.Prepared && request.UpgradeTo310) OfficialSystem.RequirePreparedSource();
         Directory.CreateDirectory(Work);
         MediaSpace.RequireAvailable(Work, MediaSpace.InstallationBudget(request.Physical, request.Prepared));

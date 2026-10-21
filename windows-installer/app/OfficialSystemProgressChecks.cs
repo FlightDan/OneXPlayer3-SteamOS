@@ -128,7 +128,7 @@ internal static class OfficialSystemProgressChecks
         Click("BackButton");
         Require(Find<StackPanel>("RecoverySourceSection").IsVisible && Find<TextBox>("ImagePath").Text == recoveryPath,
             "back-to-recovery-preserves-selected-file");
-        var stub = Path.Combine(directory, "navigation-only.img"); await File.WriteAllBytesAsync(stub, [0]);
+        var stub = Path.Combine(directory, "navigation-only.img"); await File.WriteAllBytesAsync(stub, RecoveryImageChecks.Fixture());
         Find<TextBox>("ImagePath").Text = stub;
         Click("NextButton");
         Require(Find<StackPanel>("OfficialSourceSection").IsVisible && !Find<StackPanel>("ContentPage").IsVisible,
