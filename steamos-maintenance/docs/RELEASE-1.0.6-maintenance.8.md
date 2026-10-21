@@ -14,6 +14,12 @@ HDR 试用仅在 Vulkan present_id / present_wait 扩展和对应特性可用时
 
 源码文本默认使用 LF，Windows PowerShell/CMD/BAT 保留 CRLF。避免 Windows checkout 将 Linux 服务、配置和 YAML 转为 CRLF，导致部署生成器无法加入原有 ExecCondition 启动校验；第三方 Opti 原始文件仍按现有 -text 规则保留字节。
 
-源码修复和独立审阅已完成，CI 输入按固定白名单重新生成并通过 16 项一致性检查、9 项输入回归。[原生 CI](https://github.com/FlightDan/OneXPlayer3-SteamOS/actions/runs/39638225385) 已成功，构建源码提交为 `b5abcea728a1ddf9191035cf32ff10a2c3f12fcb`；最终运行时归档为 46,653,440 字节，SHA-256 `0b70c2342b86f3d1c908e47d001037a01b76a81d2c5989a5bd2626048511bc58`，目标 SteamOS ABI 核验仍待完成。维护源码回归完成 782 项（34 项按平台跳过），退出码为 0。
+## 最终验证与实机验收
 
-最终签名载荷、实机升级与重启恢复验收及公开下载验证尚待完成；本文件不会把源码测试或原生构建成功写为实机验收通过。未包含未公开动态功耗研究、设备记录、凭据或私钥。
+- 最终源码提交 `f0b8dd9167d4c4e8e7518c5047a4835220da6538` 的 [Linux CI](https://github.com/FlightDan/OneXPlayer3-SteamOS/actions/runs/39650829377) 通过：共 807 项，17 项按平台跳过，其余通过。Windows 维护器回归也共 807 项，35 项按平台跳过，其余通过。恢复镜像输入校验的 32 项专项检查及 Windows 发布 smoke 检查通过；Windows 应用构建为 0 警告、0 错误。
+- 最终正式签名产物已完成三层签名、哈希及目录核验：catalog 覆盖 32 个组件，其中 31 个可用于维护升级；签名目录包含 14 个分片，新增 Desktop HDR 分片并引用 13 个既有公开分片。内嵌应用文件与审查源码一致。Opti2XMX 当前来源元数据签名也已核验。签名产物已在本地分组并校验 inventory 与 SHA256SUMS，尚未发布。
+- HDR 原生运行时通过目标 ABI 检查：已核对 65 个 ELF 文件及其依赖，运行环境为 SteamOS kernel `7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9`、glibc 2.43、KWin 6.7.3。检查仅验证 ABI，不启动或确认 HDR 画面试用。
+- OP3 实机仅选择 `input`、`gyro`、`desktop-hdr`。维护器桥接、升级及重启通过；回退时按事务收据清理了 162 个新增空文档目录，旧 HDR 基线的 1,418 个文件逐字节一致、1,752 条元数据匹配。随后使用同一最终签名包重新部署并重启，162 条目录收据跨重启有效；71 条未选组件管理路径和 216 条 legacy 记录保持不变。
+- 最终只读健康检查为 32 项正常、8 项信息、2 项警告、0 项未知；两项警告仅为本次及上次启动的 Wi-Fi 连接失败历史，检查时 NetworkManager 已连接，所有 `files.*` 检查均无不匹配。
+
+**实机验收：通过。** 范围仅限 OP3 上所列三个组件。未执行全新 SteamOS 安装；未完成人工 HDR 画面或游戏测试，也未验证 X2mini 实机画面。公开下载、签名及哈希复核须以发布后的独立记录为准；本地暂存结果不能替代该项核验。维护 Release 不承担 Latest；Windows 安装包须绑定对应最终 main 源码另行生成。未包含未公开动态功耗研究、设备记录、凭据或私钥。
