@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 work=$(cd "$(dirname "$0")" && pwd -P)
+python3 "$work/prepare-source-inputs.py" --check
+python3 -m unittest discover -s "$work" -p 'test_source_inputs.py'
 root="$work/portable-root"
 packages="${PACKAGE_DIR:-$work/packages}"
 if [ -e "$root" ] || [ -L "$root" ]; then echo "Refusing existing portable-root; run from a fresh workspace to preserve source provenance." >&2; exit 1; fi

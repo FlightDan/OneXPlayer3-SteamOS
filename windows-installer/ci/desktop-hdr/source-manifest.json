@@ -1,8 +1,8 @@
 [
   {
     "path": "research/desktop-hdr/patch-kwin.py",
-    "bytes": 841,
-    "sha256": "5a5b45a8d11110c9b29d1351586439078756b94b7d3e94c20c534c14709ca90d"
+    "bytes": 825,
+    "sha256": "d01fad841f9a5d6a7dc5d9ff6075aff19fe6f4cd266b452d8e49585dbbab410d"
   },
   {
     "path": "research/desktop-hdr/drm_output.candidate.cpp",
@@ -21,18 +21,28 @@
   },
   {
     "path": "research/desktop-hdr/oxp3_gamma22_policy.h",
-    "bytes": 739,
-    "sha256": "63f3061718dc47dd4f4f7450a56690f47adc9bb7df45fc9dac603ed74fdcfcdb"
+    "bytes": 738,
+    "sha256": "7293e480b243757de4e6ef362e9ffc57a5c0f595b6a01e6f9385967cb4c2d31e"
   },
   {
     "path": "research/desktop-hdr/mapped-hdr-control.cpp",
-    "bytes": 6165,
-    "sha256": "2cd3e8af60d59cfbb9e2d3ff209fb8def09b500ef5b40eb0725af5bad12a18cd"
+    "bytes": 6084,
+    "sha256": "56e7ff0a2b2f8a857e1413e199fba0bb87cbf000900623f71ba694bfd3a480fb"
   },
   {
     "path": "research/desktop-hdr/pattern-wayland.cpp",
-    "bytes": 18165,
-    "sha256": "3417771879799adfb9f5c67341fca983baac0b4132d3527967c8e017ab8bf4f4"
+    "bytes": 20638,
+    "sha256": "05d59f43445b33fe21c66c90762eeac75e09eda217ab287c229c6c069ea9199d"
+  },
+  {
+    "path": "research/desktop-hdr/presentation-proof.h",
+    "bytes": 1110,
+    "sha256": "c4bda85e21c893b00944468ef29c45f66d4aa857b29461b68ea77c05f01c7c39"
+  },
+  {
+    "path": "research/desktop-hdr/test-presentation-proof.cpp",
+    "bytes": 1599,
+    "sha256": "b41fb89871cc9ba4d7c3a539cce150bc8854c97ea8fd02187b62edcf6437e051"
   },
   {
     "path": "research/desktop-hdr/compatible-packages.txt",
@@ -41,13 +51,13 @@
   },
   {
     "path": "research/desktop-hdr/test-policy.cpp",
-    "bytes": 1262,
-    "sha256": "4cd21b943aed744d25650ad6d993426faaa12cc7c0e030c4c192fe908a881b54"
+    "bytes": 1261,
+    "sha256": "2c76bf4419db62f3b59a92cd6809ac80000d4d8e2655522f62961ab82c50b50a"
   },
   {
     "path": "research/desktop-hdr/test-color-path.cpp",
-    "bytes": 1114,
-    "sha256": "69c520692d2217efed5ffe47fd7132206b9ddc5d195b65f72656c310bc064a8c"
+    "bytes": 1113,
+    "sha256": "19709025d182e320d2dc3c7fd62d202cdf0256ee7d6dcd3206def0122d4d472f"
   },
   {
     "path": "research/desktop-hdr/launch-stable.sh",
@@ -56,8 +66,8 @@
   },
   {
     "path": "research/desktop-hdr/disable-hdr.py",
-    "bytes": 1174,
-    "sha256": "e3405fc9ab32d5a1feb6f3d0f9f22dcb4d5f0011bc9405fb2d661aa05713cbbd"
+    "bytes": 1146,
+    "sha256": "6b59b1c960f0f22e9683a70d0a371e04c7ae18b15690107fda335d3b97027b02"
   },
   {
     "path": "research/display-source/kwin-6.7.3-1.6.src.tar.gz",
@@ -66,7 +76,7 @@
   },
   {
     "path": "windows-installer/scripts/desktop_hdr_policy.py",
-    "bytes": 6373,
-    "sha256": "2b60c08b5060037714e4957abb7058a638d9d33967e6ca620e03dfca367ccd15"
+    "bytes": 6646,
+    "sha256": "f88818c92a1cca3011f6128e49fb1c8e166119cfc2a10823bc7925be6a13d883"
   }
 ]

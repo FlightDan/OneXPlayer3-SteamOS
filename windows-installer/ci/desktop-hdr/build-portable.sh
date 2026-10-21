@@ -24,6 +24,8 @@ prefix=/opt/oxp3-desktop-gamma22/6.7.3-1.6
 mkdir -p tests
 c++ -std=c++23 -Wall -Wextra -Werror -O2 "$hdr/test-policy.cpp" -o tests/test-policy
 ./tests/test-policy
+c++ -std=c++23 -Wall -Wextra -Werror -O2 "$hdr/test-presentation-proof.cpp" -o tests/test-presentation-proof
+./tests/test-presentation-proof
 cmake -G Ninja -S source/kwin-6.7.3 -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib -DKDE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_LIBEXECDIR=lib
 cmake --build build -j"${BUILD_JOBS:-2}"
 DESTDIR=/build/stage cmake --install build

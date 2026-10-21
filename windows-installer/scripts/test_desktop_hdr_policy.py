@@ -8,6 +8,7 @@ import unittest
 from desktop_hdr_policy import (
     DesktopHdrPolicyError,
     POLICY_MARKER,
+    PRESENTATION_MARKER,
     TRIAL_MARKER,
     read_desktop_hdr_runtime,
     validate_desktop_hdr_runtime,
@@ -47,7 +48,7 @@ class DesktopHdrPolicyTests(unittest.TestCase):
         self.good = {
             CONTROL: b'frontend ' + POLICY_MARKER + TRIAL_MARKER,
             KWIN: b'compositor ' + POLICY_MARKER + TRIAL_MARKER,
-            'bin/oxp3-hdr-pattern': b'HDR10 renderer ' + TRIAL_MARKER,
+            'bin/oxp3-hdr-pattern': b'HDR10 renderer ' + TRIAL_MARKER + PRESENTATION_MARKER,
         }
 
     def test_edid_only_runtime_is_accepted_and_readable(self):
@@ -106,6 +107,21 @@ class DesktopHdrPolicyTests(unittest.TestCase):
                 _archive(self.path, binaries)
                 with self.assertRaisesRegex(DesktopHdrPolicyError, '475/700 trial marker'):
                     validate_desktop_hdr_runtime(self.path)
+
+    def test_maintenance7_queued_only_renderer_is_rejected_for_validation_and_staging(self):
+        binaries = dict(self.good)
+        binaries['bin/oxp3-hdr-pattern'] = b'HDR10 renderer ' + TRIAL_MARKER + b'FIRST_PRESENT_OK'
+        # A marker in a different binary cannot bless the old renderer.
+        binaries[CONTROL] += PRESENTATION_MARKER
+        binaries[KWIN] += PRESENTATION_MARKER
+        _archive(self.path, binaries, extra=(
+            (KWIN_SONAME, ('libkwin.so.6.7.3',)),
+            (KWIN_LINK, ('libkwin.so.6',)),
+        ))
+        for validator in (validate_desktop_hdr_runtime, read_desktop_hdr_runtime):
+            with self.subTest(validator=validator.__name__):
+                with self.assertRaisesRegex(DesktopHdrPolicyError, 'presentation completion marker'):
+                    validator(self.path)
 
     def test_renderer_must_be_present(self):
         binaries = {name: data for name, data in self.good.items() if name != 'bin/oxp3-hdr-pattern'}

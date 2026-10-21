@@ -28,6 +28,7 @@ $kwinBinary = 'lib/libkwin.so.6.7.3'
 $kwinLinks = @('lib/libkwin.so.6', 'lib/libkwin.so')
 $policyMarker = 'OXP3_GAMMA22_POLICY_EDID_ONLY_V2'
 $trialMarker = 'X2MINI_HDR_TRIAL_475_700_V1'
+$presentationMarker = 'HDR_TRIAL_PRESENT_WAIT_V2'
 $modelMarkers = @('/sys/class/dmi/id/sys_vendor', '/sys/class/dmi/id/product_name', 'ONE-NETBOOK', 'ONEXPLAYER 3')
 $entries = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
 $binaries = [Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::Ordinal)
@@ -131,5 +132,12 @@ foreach ($name in $required) {
         if ($byteSearch::Contains($data, $encoded)) { $hasTrial = $true; break }
     }
     if (!$hasTrial) { throw "Desktop-HDR binary is missing the 475/700 trial marker: $name" }
+    if ($name -ceq 'bin/oxp3-hdr-pattern') {
+        $hasPresentation = $false
+        foreach ($encoded in (EncodedMarkers $presentationMarker)) {
+            if ($byteSearch::Contains($data, $encoded)) { $hasPresentation = $true; break }
+        }
+        if (!$hasPresentation) { throw "Desktop-HDR renderer is missing the presentation completion marker: $name" }
+    }
 }
 Write-Output 'DESKTOP_HDR_RUNTIME=passed'

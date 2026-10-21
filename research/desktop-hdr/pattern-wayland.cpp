@@ -13,6 +13,7 @@
 #include <vector>
 #include <cstring>
 #include <string>
+#include "presentation-proof.h"
 
 static wl_display *display;
 static wl_compositor *compositor;
@@ -93,12 +94,30 @@ int main(int argc,char**argv) try {
     if(!found) throw std::runtime_error("10-bit HDR10 ST2084 surface pair not advertised");
     uint32_t ec; ok(vkEnumerateDeviceExtensionProperties(physical,nullptr,&ec,nullptr),"device extensions");
     std::vector<VkExtensionProperties> exts(ec); ok(vkEnumerateDeviceExtensionProperties(physical,nullptr,&ec,exts.data()),"extensions");
-    bool metadata=false; for(auto e:exts) if(!std::strcmp(e.extensionName,"VK_EXT_hdr_metadata")) metadata=true;
+    bool metadata=false, presentIdExtension=false, presentWaitExtension=false;
+    for(auto e:exts) {
+        if(!std::strcmp(e.extensionName,"VK_EXT_hdr_metadata")) metadata=true;
+        if(!std::strcmp(e.extensionName,VK_KHR_PRESENT_ID_EXTENSION_NAME)) presentIdExtension=true;
+        if(!std::strcmp(e.extensionName,VK_KHR_PRESENT_WAIT_EXTENSION_NAME)) presentWaitExtension=true;
+    }
     if(trial && !metadata) throw std::runtime_error("HDR trial requires VK_EXT_hdr_metadata");
+    VkPhysicalDevicePresentWaitFeaturesKHR presentWait{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR};
+    VkPhysicalDevicePresentIdFeaturesKHR presentId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR};
+    presentId.pNext=&presentWait;
+    if(trial) {
+        if(!presentIdExtension || !presentWaitExtension) throw std::runtime_error("HDR trial requires VK_KHR_present_id and VK_KHR_present_wait presentation evidence");
+        VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};features.pNext=&presentId;
+        vkGetPhysicalDeviceFeatures2(physical,&features);
+        if(!presentId.presentId || !presentWait.presentWait) throw std::runtime_error("HDR trial requires enabled presentId and presentWait features");
+    }
     std::vector<const char*> de={"VK_KHR_swapchain"}; if(metadata) de.push_back("VK_EXT_hdr_metadata");
+    if(trial) {de.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);de.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);}
     float priority=1; VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO}; qi.queueFamilyIndex=family; qi.queueCount=1; qi.pQueuePriorities=&priority;
     VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; di.queueCreateInfoCount=1; di.pQueueCreateInfos=&qi; di.enabledExtensionCount=de.size(); di.ppEnabledExtensionNames=de.data();
+    if(trial) di.pNext=&presentId;
     VkDevice dev; ok(vkCreateDevice(physical,&di,nullptr,&dev),"create device"); VkQueue queue; vkGetDeviceQueue(dev,family,0,&queue);
+    auto waitForPresent=trial ? (PFN_vkWaitForPresentKHR)vkGetDeviceProcAddr(dev,"vkWaitForPresentKHR") : nullptr;
+    if(trial && !waitForPresent) throw std::runtime_error("HDR trial presentation completion entry point unavailable");
     VkSurfaceCapabilitiesKHR caps; ok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps),"caps");
     VkExtent2D size=caps.currentExtent; if(size.width==UINT32_MAX) {
         size={(uint32_t)width,(uint32_t)height};
@@ -133,8 +152,14 @@ int main(int argc,char**argv) try {
         VkFramebufferCreateInfo fi{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};fi.renderPass=render;fi.attachmentCount=1;fi.pAttachments=&views[i];fi.width=size.width;fi.height=size.height;fi.layers=1;ok(vkCreateFramebuffer(dev,&fi,nullptr,&buffers[i]),"framebuffer");}
     VkCommandPoolCreateInfo pi{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pi.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;pi.queueFamilyIndex=family;VkCommandPool pool;ok(vkCreateCommandPool(dev,&pi,nullptr,&pool),"pool");
     VkCommandBufferAllocateInfo ci{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};ci.commandPool=pool;ci.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;ci.commandBufferCount=1;VkCommandBuffer cmd;ok(vkAllocateCommandBuffers(dev,&ci,&cmd),"command buffer");
-    VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};VkSemaphore acquired,done;ok(vkCreateSemaphore(dev,&sem,nullptr,&acquired),"semaphore");ok(vkCreateSemaphore(dev,&sem,nullptr,&done),"semaphore");
+    VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};VkSemaphore acquired;ok(vkCreateSemaphore(dev,&sem,nullptr,&acquired),"acquire semaphore");
+    // A submission fence/QueueWaitIdle does not prove the presentation wait has
+    // consumed a semaphore. Reuse only after acquiring that same image and
+    // waiting on acquired in the rendering submission (Vulkan WSI guarantee).
+    std::vector<VkSemaphore> renderFinished(nc);
+    for(auto& semaphore:renderFinished) ok(vkCreateSemaphore(dev,&sem,nullptr,&semaphore),"image render-finished semaphore");
     auto start=std::chrono::steady_clock::now();unsigned frames=0;
+    const auto presentationDeadline=start+std::chrono::seconds(seconds);
     while(!closed && std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<seconds) {
         while(wl_display_prepare_read(display)!=0){if(wl_display_dispatch_pending(display)<0)throw std::runtime_error("Wayland pending dispatch failed");} wl_display_flush(display);pollfd fd{wl_display_get_fd(display),POLLIN,0};if(poll(&fd,1,0)>0){if(wl_display_read_events(display)<0)throw std::runtime_error("Wayland read failed");}else{wl_display_cancel_read(display);} wl_display_dispatch_pending(display);
         uint64_t acquireTimeout=UINT64_MAX;
@@ -167,9 +192,21 @@ int main(int argc,char**argv) try {
         if(!four && !peak && !trial) {rect(.2f,.87f,.15f,.08f,80,0,0);rect(.42f,.87f,.15f,.08f,0,80,0);rect(.64f,.87f,.15f,.08f,0,0,80);}
         rect(.94f,.04f,.025f,.025f,150,150,150);
         if(!trial) number("22",.46f,.07f);
+        auto& done=renderFinished.at(index);
         vkCmdEndRenderPass(cmd);ok(vkEndCommandBuffer(cmd),"end");VkPipelineStageFlags stage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.waitSemaphoreCount=1;submit.pWaitSemaphores=&acquired;submit.pWaitDstStageMask=&stage;submit.commandBufferCount=1;submit.pCommandBuffers=&cmd;submit.signalSemaphoreCount=1;submit.pSignalSemaphores=&done;ok(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE),"submit");
-        VkPresentInfoKHR pr{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};pr.waitSemaphoreCount=1;pr.pWaitSemaphores=&done;pr.swapchainCount=1;pr.pSwapchains=&swap;pr.pImageIndices=&index;ok(vkQueuePresentKHR(queue,&pr),"present");
-        if(frames==0) std::printf("FIRST_PRESENT_OK\n");
+        // FIFO avoids replacement of the first image; its nonzero ID is unique
+        // for this swapchain. Subsequent presents use zero (no tracked ID).
+        const uint64_t firstPresentId=1;
+        VkPresentIdKHR proof{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};proof.swapchainCount=1;proof.pPresentIds=&firstPresentId;
+        VkPresentInfoKHR pr{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};pr.waitSemaphoreCount=1;pr.pWaitSemaphores=&done;pr.swapchainCount=1;pr.pSwapchains=&swap;pr.pImageIndices=&index;
+        if(trial && frames==0) pr.pNext=&proof;
+        ok(vkQueuePresentKHR(queue,&pr),"present");
+        if(trial && frames==0) {
+            requirePresentationCompletion([&](uint64_t timeout){return waitForPresent(dev,swap,firstPresentId,timeout)==VK_SUCCESS;},
+                                          []{return std::chrono::steady_clock::now();},presentationDeadline);
+            std::printf("HDR_TRIAL_PRESENT_WAIT_V2\n");
+            std::printf("FIRST_PRESENT_OK\n");
+        }
         ok(vkQueueWaitIdle(queue),"queue idle");
         frames++;
         if(frames<=3)std::printf("PRESENTS=%u\n",frames);

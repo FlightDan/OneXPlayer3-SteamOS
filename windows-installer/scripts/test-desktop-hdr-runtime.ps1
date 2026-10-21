@@ -17,14 +17,17 @@ function Add-TarLink($Writer, [string]$Name, [string]$Target) {
 }
 
 function New-RuntimeArchive([string]$Path, [string]$Frontend, [string]$KWin,
-    [switch]$StaleSoname, [switch]$WrongSonameTarget, [switch]$CaseMismatchSonameTarget) {
+    [switch]$StaleSoname, [switch]$WrongSonameTarget, [switch]$CaseMismatchSonameTarget,
+    [switch]$OldPresentationRenderer) {
     $stream = [IO.File]::Create($Path)
     try {
         $writer = [System.Formats.Tar.TarWriter]::new($stream, [System.Formats.Tar.TarEntryFormat]::Pax, $true)
         try {
             Add-TarFile $writer 'bin/oxp3-mapped-hdr-control' ([Text.Encoding]::Unicode.GetBytes("$Frontend X2MINI_HDR_TRIAL_475_700_V1"))
             Add-TarFile $writer 'lib/libkwin.so.6.7.3' ([Text.Encoding]::Unicode.GetBytes("$KWin X2MINI_HDR_TRIAL_475_700_V1"))
-            Add-TarFile $writer 'bin/oxp3-hdr-pattern' ([Text.Encoding]::ASCII.GetBytes('X2MINI_HDR_TRIAL_475_700_V1 HDR10 renderer'))
+            $renderer = 'X2MINI_HDR_TRIAL_475_700_V1 HDR10 renderer FIRST_PRESENT_OK'
+            if (!$OldPresentationRenderer) { $renderer += ' HDR_TRIAL_PRESENT_WAIT_V2' }
+            Add-TarFile $writer 'bin/oxp3-hdr-pattern' ([Text.Encoding]::ASCII.GetBytes($renderer))
             if ($StaleSoname) {
                 Add-TarFile $writer 'lib/libkwin.so.6' ([Text.Encoding]::ASCII.GetBytes('ONE-NETBOOK ONEXPLAYER 3'))
             } elseif ($WrongSonameTarget) {
@@ -46,6 +49,12 @@ try {
     $good = Join-Path $temporary 'good.tar'
     New-RuntimeArchive $good "frontend $marker" "KWin $marker"
     & $validator -RuntimePath $good
+
+    $maintenance7 = Join-Path $temporary 'maintenance7-renderer.tar'
+    New-RuntimeArchive $maintenance7 "frontend $marker HDR_TRIAL_PRESENT_WAIT_V2" "KWin $marker HDR_TRIAL_PRESENT_WAIT_V2" -OldPresentationRenderer
+    $rejected = $false
+    try { & $validator -RuntimePath $maintenance7 } catch { $rejected = $_.Exception.Message -like '*presentation completion marker*' }
+    if (!$rejected) { throw 'The old maintenance.7 queued-only renderer was not rejected.' }
 
     $old = Join-Path $temporary 'old.tar'
     New-RuntimeArchive $old 'OXP3 Gamma22 HDR mapping: enabled (1100/472)' 'ONE-NETBOOK ONEXPLAYER 3'
@@ -80,7 +89,7 @@ try {
     try { & $validator -RuntimePath $caseMismatch } catch { $failure = $_.Exception.ToString(); $rejected = $failure -like '*does not resolve to the validated compositor*' }
     if (!$rejected) { throw "A case-mismatched SONAME symlink was not rejected: $failure" }
 
-    Write-Output 'PASS: PowerShell package guard accepts the validated KWin alias chain and rejects stale, redirected, or DMI-gated binaries.'
+    Write-Output 'PASS: PowerShell package guard accepts the validated KWin alias chain and rejects old queued-only renderers, stale, redirected, or DMI-gated binaries.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     if (!$resolved.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe test cleanup path.' }

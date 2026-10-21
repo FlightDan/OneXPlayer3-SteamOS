@@ -7,6 +7,7 @@ param(
     [string]$OutputDirectory,
     [string]$PreviousCatalog,
     [string]$PreviousSignature,
+    [string]$KeyStore,
     [string]$Python
 )
 $ErrorActionPreference = 'Stop'
@@ -22,5 +23,6 @@ if ($OpenSsl) { $publisherArguments += @('--openssl', $OpenSsl) }
 if ($OutputDirectory) { $publisherArguments += @('--output', $OutputDirectory) }
 if ($PreviousCatalog) { $publisherArguments += @('--previous-catalog', $PreviousCatalog) }
 if ($PreviousSignature) { $publisherArguments += @('--previous-signature', $PreviousSignature) }
+if ($KeyStore) { $publisherArguments += @('--store', $KeyStore) }
 & $Python @publisherArguments
 exit $LASTEXITCODE

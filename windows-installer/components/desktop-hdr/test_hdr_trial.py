@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import hdr_trial as hdr
 
@@ -196,6 +196,42 @@ class TrialTests(unittest.TestCase):
                 hdr.run_trial(self.home, self.journal)
         self.assertEqual(self.backend.enables, 0)
         self.assertEqual(self.journal.read()['phase'], 'reverted')
+
+    def test_queued_frame_without_completion_never_opens_confirmation(self):
+        request_enable = self.trial.request_enable
+        def request(token):
+            request_enable(token)
+            self.backend.enable()
+            self.trial.activated(token)
+
+        def selected(_timeout):
+            self.now += 2
+            return [True]
+
+        pattern = Mock()
+        pattern.poll.return_value = None
+        selector = Mock()
+        selector.__enter__ = Mock(return_value=selector)
+        selector.__exit__ = Mock(return_value=False)
+        selector.select.side_effect = selected
+        with patch.object(hdr, 'KDE', return_value=self.backend), \
+             patch.object(hdr, 'Trial', return_value=self.trial), \
+             patch.object(self.trial, 'request_enable', side_effect=request), \
+             patch.object(hdr.subprocess, 'run'), \
+             patch.object(hdr.subprocess, 'Popen', return_value=pattern) as popen, \
+             patch.object(hdr, 'detached_guard', side_effect=lambda token, _home: self.trial.arm_guard(token)), \
+             patch.object(hdr.time, 'sleep'), \
+             patch.object(hdr.time, 'monotonic', side_effect=lambda: self.now), \
+             patch.object(hdr.selectors, 'DefaultSelector', return_value=selector), \
+             patch.object(hdr.os, 'read', return_value=b'PRESENT_QUEUED\n'), \
+             patch.object(hdr, 'stop'):
+            with self.assertRaisesRegex(RuntimeError, 'not presented before timeout'):
+                hdr.run_trial(self.home, self.journal)
+        self.assertEqual(popen.call_count, 1) # renderer only, no confirmation UI
+        state = self.journal.read()
+        self.assertEqual(state['phase'], 'reverting')
+        self.assertEqual(state['deadline'], 110.0) # readiness never extends guard
+        self.assertTrue(state['watchdog_ready'])
 
     def test_late_ui_cannot_request_activation_after_guard_expired(self):
         token = self.trial.begin()

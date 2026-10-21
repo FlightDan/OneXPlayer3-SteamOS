@@ -8,6 +8,7 @@ windows-installer/components/slot-switch/oxp3-switch-slot text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.ps1 text eol=crlf
+steamos-maintenance/trusted-public-key.pem text eol=lf
 *.cmd text eol=crlf
 *.png binary
 *.jpg binary

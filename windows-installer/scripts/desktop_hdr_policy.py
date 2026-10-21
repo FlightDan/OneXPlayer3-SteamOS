@@ -8,6 +8,7 @@ import tarfile
 
 POLICY_MARKER = b'OXP3_GAMMA22_POLICY_EDID_ONLY_V2'
 TRIAL_MARKER = b'X2MINI_HDR_TRIAL_475_700_V1'
+PRESENTATION_MARKER = b'HDR_TRIAL_PRESENT_WAIT_V2'
 REQUIRED_BINARIES = (
     'bin/oxp3-mapped-hdr-control',
     'lib/libkwin.so.6.7.3',
@@ -114,6 +115,8 @@ def _read_runtime(path: Path, include_payloads: bool):
                         raise DesktopHdrPolicyError('Desktop-HDR runtime still contains an OP3 model hard gate')
                     if not _contains(data, TRIAL_MARKER):
                         raise DesktopHdrPolicyError('Desktop-HDR runtime is missing the 475/700 trial marker')
+                    if name == 'bin/oxp3-hdr-pattern' and not _contains(data, PRESENTATION_MARKER):
+                        raise DesktopHdrPolicyError('Desktop-HDR renderer is missing the presentation completion marker')
                 if include_payloads:
                     files[name] = data
                     modes[name] = item.mode
