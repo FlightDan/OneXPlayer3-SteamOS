@@ -207,7 +207,15 @@ XMX 需要兼容的 Intel 硬件及配套运行环境；仅安装插件不足以
 
 更多后续工作见 [Roadmap](ROADMAP.md)。
 
-## 6. 许可证
+## 6. 更新验证与密钥安全
+
+客户端使用固定的 Ed25519 发行公钥验证更新目录和清单的签名，再核对下载文件的 SHA-256 摘要。签名错误、文件摘要不一致或更新试图替换已固定公钥时，拒绝继续安装。
+
+发行公钥公开提供：[公钥文件](steamos-maintenance/trusted-public-key.pem)及[完整指纹](steamos-maintenance/docs/PUBLISHER.md#已建立的身份)。首次安装时，请从可信项目来源核对公钥及其完整指纹。
+
+按现有发布工具的设计，私钥由发布者在本地保管，使用 Windows 当前用户 DPAPI 加密及受限文件权限保护，仅允许当前用户和 SYSTEM 访问，不随源码或更新包分发。
+
+## 7. 许可证
 
 Copyright © 2026 FlightDan and contributors.
 
@@ -217,7 +225,7 @@ Copyright © 2026 FlightDan and contributors.
 
 本项目为社区维护的非官方项目，与 Valve、Intel 或 ONEXPLAYER 无官方隶属关系；相关商标归各自权利人所有。
 
-## 7. 致谢
+## 8. 致谢
 
 感谢以下项目及其贡献者：
 
