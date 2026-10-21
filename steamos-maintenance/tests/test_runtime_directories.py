@@ -249,6 +249,22 @@ class RuntimeDirectoryTests(unittest.TestCase):
         self.assertEqual((self.root / PROGRAM).read_bytes(), b'new program')
         self.assertEqual((self.root / DOC).read_bytes(), b'new documentation')
 
+    def test_external_planned_directory_after_preflight_is_not_claimed(self):
+        original_write = self.store._write
+        def inject(path, snapshot, **kwargs):
+            if path == DOC:
+                (self.runtime / 'share').mkdir()  # External actor, after final preflight.
+            return original_write(path, snapshot, **kwargs)
+        with patch.object(self.store, '_write', side_effect=inject):
+            with self.assertRaisesRegex(TransactionError, 'Uncertain runtime directory creation'):
+                self.apply()
+        self.assertFalse((self.root / DOC).exists())
+        self.assertTrue((self.runtime / 'share').is_dir())
+        self.assertEqual(list(self.store.state.glob('runtime-directories-*.json')), [])
+        # The original pending remains fail closed; emptiness grants no claim.
+        with self.assertRaisesRegex(TransactionError, 'Uncertain runtime directory creation'):
+            self.store.recover('B')
+
     def test_live_mount_device_number_is_not_persisted_in_identity(self):
         info = SimpleNamespace(st_dev=123, st_ino=91, st_mode=0o40755, st_uid=0, st_gid=0)
         with patch.object(directories, 'filesystem_identity', return_value='ext4:verified-uuid:/offload/opt'):

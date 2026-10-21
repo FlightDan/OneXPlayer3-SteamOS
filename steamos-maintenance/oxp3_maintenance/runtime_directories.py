@@ -266,8 +266,13 @@ def existing(store, path, info, handle):
     pending = store._runtime_directory_pending
     if pending is None or not supported(path):
         return
+    intents = pending.get('runtime_directory_intents', {})
+    if path in intents and intents[path] is None:
+        # A different actor may create a planned ancestor after preflight. Only
+        # our mkdir followed by its durable receipt grants ownership.
+        raise store._directory_error('Uncertain runtime directory creation; preserve for recovery: ' + path)
     receipt = pending.get('runtime_directory_cleanup', {}).get(path)
-    receipt = pending.get('runtime_directory_intents', {}).get(path) or receipt
+    receipt = intents.get(path) or receipt
     for record in pending['index_after']['slots'].values():
         candidate = (record.get('current') or {}).get('runtime_directories', {}).get(path)
         if candidate is not None:
