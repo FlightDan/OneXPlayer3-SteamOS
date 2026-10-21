@@ -76,6 +76,8 @@ def prepare(root, destination, write=False):
     inputs = source_bytes(root, archive)
     manifest = source_manifest(inputs)
     manifest_path = destination / 'source-manifest.json'
+    packages_path = destination / 'portable-packages.json'
+    packages = json.loads(packages_path.read_text(encoding='utf-8-sig'))
     if write:
         temporary = archive.with_suffix('.tar.tmp')
         try:
@@ -102,6 +104,17 @@ def prepare(root, destination, write=False):
                 raise RuntimeError('Noncanonical CI source archive member: ' + member.name)
             if source.extractfile(member).read() != inputs[member.name]:
                 raise RuntimeError('Stale CI source archive member: ' + member.name)
+    # The fetcher consumes this additional pin. It lives outside the input tar,
+    # so hashing the completed archive introduces no self-reference.
+    archive_metadata = dict(sourceInputs=archive.name,
+                            sourceManifest=manifest_path.name,
+                            sourceArchiveSize=archive.stat().st_size,
+                            sourceInputsSHA256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    if write:
+        packages.update(archive_metadata)
+        packages_path.write_text(json.dumps(packages, indent=2) + '\n', encoding='utf8', newline='\n')
+    if any(packages.get(key) != value for key, value in archive_metadata.items()):
+        raise RuntimeError('Stale portable-packages source archive metadata; run prepare-source-inputs.py --write')
     return manifest
 
 

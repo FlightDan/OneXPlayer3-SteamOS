@@ -7503,6 +7503,6 @@
       "localFilename": "libxft-2.3.9-1-x86_64.pkg.tar.zst"
     }
   ],
-  "sourceInputsSHA256": "2395387083f40370bc3553809ff6899897c7b51711de46bccd4df9d0b8d43c80",
+  "sourceInputsSHA256": "90bc6380a14d28f0e522fc4a66c31bb8f60212a18e6d6cfdca44ca911d68c54c",
   "buildDependencyProvenance": {}
 }

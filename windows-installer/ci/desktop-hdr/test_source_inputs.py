@@ -1,7 +1,10 @@
 """Build provenance regressions using temporary public-source fixtures."""
 import importlib.util
 import hashlib
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -19,6 +22,14 @@ class SourceInputsTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.destination = self.root / 'ci'
         self.destination.mkdir()
+        (self.destination / 'portable-packages.json').write_text(json.dumps({
+            'purpose': 'fixture metadata must be preserved',
+            'packages': [],
+            'sourceInputs': 'source-inputs.tar',
+            'sourceManifest': 'source-manifest.json',
+            'sourceArchiveSize': 0,
+            'sourceInputsSHA256': 'old pin',
+        }), encoding='utf8')
         for name in inputs.INPUTS:
             source = self.root / name
             source.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +93,37 @@ class SourceInputsTests(unittest.TestCase):
         (self.root / 'research/display-source/kwin-6.7.3-1.6.src.tar.gz').write_bytes(b'changed upstream')
         with self.assertRaisesRegex(RuntimeError, 'Pinned upstream archive hash mismatch'):
             inputs.prepare(self.root, self.destination, write=True)
+
+    def test_rebuild_updates_fetcher_pin_and_preserves_package_metadata(self):
+        inputs.prepare(self.root, self.destination, write=True)
+        metadata_path = self.destination / 'portable-packages.json'
+        old_digest = json.loads(metadata_path.read_text(encoding='utf8'))['sourceInputsSHA256']
+        (self.root / 'research/desktop-hdr/pattern-wayland.cpp').write_text('new renderer', encoding='utf8')
+        inputs.prepare(self.root, self.destination, write=True)
+        metadata = json.loads(metadata_path.read_text(encoding='utf8'))
+        archive = (self.destination / metadata['sourceInputs']).read_bytes()
+        self.assertNotEqual(metadata['sourceInputsSHA256'], old_digest)
+        self.assertEqual(metadata['sourceInputsSHA256'], hashlib.sha256(archive).hexdigest())
+        self.assertEqual(metadata['sourceArchiveSize'], len(archive))
+        self.assertEqual(metadata['purpose'], 'fixture metadata must be preserved')
+        self.assertEqual(metadata['packages'], [])
+        # Execute the actual consumer offline: no packages are listed here, but
+        # fetch-portable must still validate the same source archive SHA pin.
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('fetch-portable.py')),
+                                 str(metadata_path), str(self.destination / 'packages')],
+                                capture_output=True, text=True, check=True)
+        self.assertIn('source input archive verified', result.stdout)
+
+    def test_check_rejects_stale_fetcher_pin_even_with_matching_tar_and_manifest(self):
+        inputs.prepare(self.root, self.destination, write=True)
+        metadata_path = self.destination / 'portable-packages.json'
+        original = json.loads(metadata_path.read_text(encoding='utf8'))
+        for key, wrong in (('sourceInputsSHA256', 'old pin'), ('sourceArchiveSize', 0),
+                           ('sourceInputs', 'old-source-inputs.tar'), ('sourceManifest', 'old-manifest.json')):
+            with self.subTest(key=key):
+                metadata_path.write_text(json.dumps({**original, key: wrong}), encoding='utf8')
+                with self.assertRaisesRegex(RuntimeError, 'Stale portable-packages source archive metadata'):
+                    inputs.prepare(self.root, self.destination)
 
 
 if __name__ == '__main__':
