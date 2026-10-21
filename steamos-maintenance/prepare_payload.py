@@ -20,6 +20,7 @@ import tempfile
 
 from build_bundle import _metadata
 from oxp3_maintenance.bundle import BundleError
+from desktop_hdr_policy import DesktopHdrPolicyError, validate_desktop_hdr_runtime
 from oxp3_maintenance.payload_policy import (
     distributable_path, json_bytes, sanitize_metadata,
     sanitize_options,
@@ -89,6 +90,10 @@ def _allowed(relative):
 
 def _current_source(component, target):
     """Only public component source mappings; never infer research locations."""
+    if component == 'desktop-hdr' and target.startswith('home/deck/.local/lib/oxp3-desktop-hdr-runtime/'):
+        name = target.rsplit('/', 1)[1]
+        if name in ('hdr_trial.py', 'x2mini_device.py', 'install-x2mini-hdr.sh', 'launch.sh'):
+            return 'components/desktop-hdr/' + name
     if component == 'oxp3-cpu':
         cpu_files = {
             'var/lib/oxp3-cpu/cpu_control.py': 'cpu_control.py',
@@ -126,6 +131,10 @@ def _current_source(component, target):
         return 'components/gyro/oxp3-gyro.service'
     if component == 'gyro' and target == 'etc/systemd/system/inputplumber.service.d/oxp3-gyro-v1.conf':
         return 'components/gyro/inputplumber.conf'
+    if component == 'input' and target == 'usr/local/lib/oxp3-input/input_profile.py':
+        return 'components/input_profile.py'
+    if component == 'input' and target == 'etc/systemd/system/inputplumber.service.d/oxp3-input-profile.conf':
+        return 'components/input-profile.conf'
     if component == 'input' and target == 'etc/inputplumber/devices.d/50-onexplayer_3.yaml':
         return 'components/input-profile.yaml'
     return None
@@ -215,6 +224,18 @@ def prepare_payload(workspace, output, maintenance_options=None):
         path = installer / cached
         if path.exists() and _json(_source(installer, cached)) != release:
             raise PreparationError('Cached release disagrees with current release metadata')
+    desktop = manifest.get('desktop-hdr')
+    if isinstance(desktop, dict) and desktop.get('runtime_archive'):
+        runtime_relative = 'cache/integration/' + _relative(desktop['runtime_archive'])
+        try:
+            runtime = _source(installer, runtime_relative)
+        except FileNotFoundError:
+            runtime = None
+        if runtime is not None:
+            try:
+                validate_desktop_hdr_runtime(runtime)
+            except DesktopHdrPolicyError as exc:
+                raise PreparationError('Rebuild the fixed KWin and mapped-HDR frontend with the EDID-only policy before preparing maintenance payloads; rejected cache: ' + str(exc)) from exc
     report = {'schema': 1, 'release': release, 'source_inventory': {},
               'refreshed_integration': [], 'coverage': {},
               'separate_operations': EXCLUDED,
@@ -282,6 +303,10 @@ def prepare_payload(workspace, output, maintenance_options=None):
                 source = _relative(entry['source'])
                 target = _relative(entry['target'])
                 destination = 'integration/' + source
+                if name == 'gyro' and target == 'var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':
+                    module = _source(installer, 'cache/integration/' + source).read_bytes()
+                    if b'oxp3_model_policy=hardware-interface-v2\x00' not in module:
+                        raise PreparationError('Rebuild the model-independent BMI260 module before preparing maintenance payloads')
                 current = _current_source(name, target)
                 if current:
                     raw = _source(installer, current).read_bytes()
@@ -356,6 +381,8 @@ def prepare_payload(workspace, output, maintenance_options=None):
                 'dist/index.js', 'LICENSE', 'LICENSE-HHD', 'LICENSE-HueSync',
                 'THIRD_PARTY_NOTICES.md', 'README.md')],
             'hdr': ['components/hdr/upstream.lua'],
+            'desktop-hdr': ['components/desktop-hdr/' + name for name in (
+                'hdr_trial.py', 'x2mini_device.py', 'install-x2mini-hdr.sh', 'launch.sh')],
             'flathub-ustc': ['components/flathub.flatpakrepo'],
             'input': ['components/input-profile.yaml'],
             'windows-reboot': ['components/windows-reboot/' + name for name in (

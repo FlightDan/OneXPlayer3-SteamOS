@@ -720,6 +720,9 @@ def apply(args, *, bootstrap=False):
                     if item['status'] == 'ready' and name not in previous_components:
                         for unit in item.get('units', []):
                             command('systemctl', 'enable', unit, check=False)
+                if 'desktop-hdr' in plan['selected']:
+                    from .x2mini_hdr_device import reset_after_install
+                    reset_after_install(store.root / 'home/deck')
             except Exception:
                 if package_new:
                     packages.rollback()
@@ -799,6 +802,19 @@ def restore(args, *, previous=False, recovery=False):
             if readonly == 'enabled':
                 command('steamos-readonly', 'disable')
             try:
+                # The file journal may already be queued. Check before
+                # store.recover(), rather than after it has removed a runtime.
+                # The transaction executor also guards missing/older lifecycle
+                # journals and implicit recovery through Store._ready().
+                if saved and saved.get('file_action') in ('restore', 'rollback', 'abort'):
+                    affected = set(saved.get('file_components', []))
+                    if saved.get('file_action') == 'rollback':
+                        generations = store.status()['slots'].get(system['slot']['id'], {})
+                        for name in ('current', 'previous'):
+                            affected.update((generations.get(name) or {}).get('selected', []))
+                    if 'desktop-hdr' in affected:
+                        from .x2mini_hdr_device import cleanup_launchers
+                        cleanup_launchers(store.root / 'home/deck')
                 if saved and saved.get('gyro_binding_stopped') and not saved.get('gyro_binding_quiesced'):
                     # No file mutation is permitted until the fixed helper has
                     # restored the original driver and systemd is truly inactive.
@@ -823,10 +839,16 @@ def restore(args, *, previous=False, recovery=False):
                         committed = True
                 if saved and not committed and _generation(store, system) == saved.get('source_generation'):
                     if saved.get('file_action') == 'restore':
+                        if 'desktop-hdr' in saved.get('file_components', []):
+                            from .x2mini_hdr_device import cleanup_launchers
+                            cleanup_launchers(store.root / 'home/deck')
                         result = store.restore(system['slot']['id'], saved['file_components'])
                         saved['file_generation'] = result.get('generation', _generation(store, system))
                         committed = True
                     elif saved.get('file_action') == 'rollback':
+                        if 'desktop-hdr' in saved.get('file_components', []):
+                            from .x2mini_hdr_device import cleanup_launchers
+                            cleanup_launchers(store.root / 'home/deck')
                         result = store.rollback(system['slot']['id'])
                         saved['file_generation'] = result['generation']
                         committed = True
@@ -851,6 +873,10 @@ def restore(args, *, previous=False, recovery=False):
                 modules = set(saved.get('file_components', []) if saved else [])
                 if current:
                     modules.update(current['selected'])
+                if (saved and saved.get('file_action') == 'apply' and committed
+                        and 'desktop-hdr' in saved.get('file_components', [])):
+                    from .x2mini_hdr_device import reset_after_install
+                    reset_after_install(store.root / 'home/deck')
                 if modules & {'input', 'gyro', 'fan-driver'}:
                     command('depmod', '-a', probe.KERNEL)
                 if saved is not None:
@@ -874,6 +900,9 @@ def restore(args, *, previous=False, recovery=False):
             prior = store.status()['slots'][system['slot']['id']]['previous']
             if prior is None:
                 raise RuntimeError('No previous project generation to roll back to')
+            # Store.rollback switches the entire generation. A partial
+            # --select must not narrow its safety checks or durable intent.
+            selected = sorted(set(current['selected']) | set(prior['selected']))
             if prior and 'waydroid' in prior['selected'] and 'waydroid' not in installed:
                 raise RuntimeError('Reinstall Waydroid from a signed package before rolling back into a generation that requires its host packages')
         if not previous:
@@ -899,6 +928,9 @@ def restore(args, *, previous=False, recovery=False):
         with live_write(store, system, units) as live:
             live['after_services'] = desired
             live['package_removal'] = remove_waydroid
+            if 'desktop-hdr' in selected:
+                from .x2mini_hdr_device import cleanup_launchers
+                cleanup_launchers(store.root / 'home/deck')
             _file_intent(store, system, live, 'rollback' if previous else 'restore', selected)
             # Disable before restoring/removing a unit file, while systemd can
             # still remove the Wants links associated with that unit.

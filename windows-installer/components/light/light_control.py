@@ -105,17 +105,12 @@ def application_usages(descriptor):
 
 class LinuxHardware:
     """Fixed local paths. None of these paths are accepted from Decky RPC."""
-    dmi = Path("/sys/devices/virtual/dmi/id/product_name")
     led_base = Path("/sys/class/leds")
     hid_base = Path("/sys/class/hidraw")
     devices = Path("/sys/devices")
     dev_base = Path("/dev")
     kernel_release = Path("/proc/sys/kernel/osrelease")
     os_release = Path("/etc/os-release")
-
-    def check_model(self):
-        if self.dmi.read_text().strip() != "ONEXPLAYER 3":
-            raise RuntimeError("Lighting is supported only on ONEXPLAYER 3")
 
     def legacy_hid_profile(self):
         """The verified legacy hid-oxp exposes ineffective LED placeholders.
@@ -239,7 +234,6 @@ class LightController:
         self._error = None
 
     def _backend(self):
-        self.hardware.check_model()
         if self.hardware.native_present(): return "native"
         self.hardware.hid_target()  # Read-only discovery; never initialize a controller.
         return "hid-v1"

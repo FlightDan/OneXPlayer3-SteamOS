@@ -6,8 +6,6 @@ def evaluate(profile, component, system, hardware, packages, features):
     target = profile['target']; reasons = []
     for key, source in (('system_version', 'version'), ('system_build', 'build'), ('kernel', 'kernel')):
         if system.get(source) != target[key]: reasons.append(f'{source}: requires {target[key]}')
-    for key in ('vendor', 'product'):
-        if hardware.get(key) != target[key]: reasons.append(f'{key}: requires {target[key]}')
     if component in ('native-tdp', 'manager', 'charging') and packages.get('steamos-manager') != target['manager']:
         reasons.append('Requires the exact SteamOS Manager version and patch baseline')
     if component == 'overlay' and packages.get('mangoapp') != target['mangoapp']:

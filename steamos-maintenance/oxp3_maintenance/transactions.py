@@ -540,6 +540,33 @@ class Store:
     def _after_write(self, relative):
         """Fault-injection seam for tests; successful writes are journaled first."""
 
+    def _guard_hdr_restore(self, pending, operations):
+        """Keep an unconfirmed display trial's recovery code through recovery.
+
+        This belongs at the durable executor boundary: callers can resume a
+        queued transaction directly, or implicitly through _ready(), without a
+        live-operation journal or the operations module's preflight.
+        """
+        if pending.get('result', {}).get('action') not in ('restore', 'rollback', 'abort'):
+            return
+        record = pending['index_after']['slots'].get(pending['slot'], {})
+        hdr_paths = {path for name in ('current', 'previous')
+                     for path, entry in (record.get(name) or {}).get('paths', {}).items()
+                     if entry.get('component') == 'desktop-hdr'}
+        prefixes = ('opt/oxp3-desktop-gamma22/',
+                    'home/deck/.local/lib/oxp3-desktop-hdr-runtime/')
+        entrypoints = {
+            'home/deck/.config/systemd/user/plasma-kwin_wayland.service.d/90-oxp3-gamma22.conf',
+            'home/deck/.local/share/applications/oxp3-mapped-hdr.desktop',
+        }
+        if any(op['before'] != op['after'] and
+               (op['path'] in hdr_paths or op['path'].startswith(prefixes) or op['path'] in entrypoints)
+               for op in operations):
+            # Import only the protected maintenance module. It drops to the
+            # home owner's uid before reading state or removing user icons.
+            from .x2mini_hdr_device import cleanup_launchers
+            cleanup_launchers(self.root / 'home/deck')
+
     def _execute(self, pending, slot=None):
         if slot is not None and pending.get("slot") != self._slot(slot):
             raise TransactionError("Pending transaction belongs to a different slot")
@@ -552,6 +579,7 @@ class Store:
             actual = self._read(op["path"], user=op["user"])
             if actual != op["before"] and actual != op["after"]:
                 raise TransactionError(f"Recovery conflict; target changed externally: {op['path']}")
+        self._guard_hdr_restore(pending, operations)
         for op in operations:
             actual = self._read(op["path"], user=op["user"])
             if actual == op["after"]:

@@ -202,6 +202,14 @@ def inspect(root, *, kernel, dmi, bios, topology):
             'project_updates_only': True}
 
 
+def _dmi_value(name):
+    # Identity is diagnostic only; absent DMI must not block SteamOS devices.
+    try:
+        return Path('/sys/class/dmi/id', name).read_text().strip()
+    except OSError:
+        return ''
+
+
 def live(command=run):
     if os.name != 'posix':
         raise ProbeError('Run this tool in SteamOS Desktop Mode')
@@ -223,9 +231,8 @@ def live(command=run):
         saved = marker.read_text().strip()
     topology = identify_root(mounts[0], devices, saved, verified_device=verified)
     result = inspect('/', kernel=os.uname().release,
-                     dmi={name: Path('/sys/class/dmi/id', name).read_text().strip()
-                          for name in ('sys_vendor', 'product_name')},
-                     bios=Path('/sys/class/dmi/id/bios_version').read_text().strip(),
+                     dmi={name: _dmi_value(name) for name in ('sys_vendor', 'product_name')},
+                     bios=_dmi_value('bios_version'),
                      topology=topology)
     home = json.loads(command('findmnt', '--json', '--target', '/home', '--output',
                               'TARGET,SOURCE,OPTIONS'))['filesystems']

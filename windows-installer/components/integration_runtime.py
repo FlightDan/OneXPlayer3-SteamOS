@@ -1,4 +1,4 @@
-"""First-boot activation. All device writes stay behind live version/model guards."""
+"""First-boot activation. Device activation requires the supported live system/kernel."""
 import argparse
 import base64
 import fcntl
@@ -24,8 +24,6 @@ def current_slot():
 
 def device_guard():
     if any(release('/').get(k)!=v for k,v in VERSION.items()) or os.uname().release!=KERNEL: raise RuntimeError('Live system/kernel is not the accepted target')
-    for name,value in [('sys_vendor','ONE-NETBOOK'),('product_name','ONEXPLAYER 3')]:
-        if Path('/sys/class/dmi/id/'+name).read_text().strip()!=value: raise RuntimeError('Exact ONEXPLAYER 3 required')
 
 def restore_live(component, slot):
     units={'decky':['plugin_loader.service'],'native-tdp':['oxp3-rapl.service'],'fan-driver':['oxp3-fan-module.service'],'oxp3-fan':['oxp3-fan.service','oxp3-fan-sleep.service'],'oxp3-cpu':['oxp3-cpu.service'],'charging':['oxp3-battery.service'],'overlay':['oxp3-overlay-read.service'],'gyro':['oxp3-gyro.service'],'legacy-runtime':['oxp3-volkey-fix.service','oxp3-battery-clamp.service']}
@@ -71,7 +69,6 @@ def execute():
                 if name in result['options']['repairs'] and name not in ('keyboard','gamescope-env','flathub-ustc','partition-mount'): device_guard()
                 if name=='input': run('depmod','-a',KERNEL) # No live HID unbind; next boot uses the installed module.
                 if name=='gyro':
-                    if Path('/sys/class/dmi/id/bios_version').read_text().strip()!='5.09': raise RuntimeError('Gyro requires the accepted BIOS 5.09')
                     if run('/usr/bin/inputplumber','--version').strip()!='inputplumber 0.78.0': raise RuntimeError('Gyro requires InputPlumber 0.78.0')
                 if name=='legacy-runtime':
                     run('/usr/bin/python3','-I','-B','-c','import evdev')

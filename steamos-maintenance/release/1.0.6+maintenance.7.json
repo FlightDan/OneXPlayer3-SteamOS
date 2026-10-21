@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.7",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "X2mini / OP3 兼容与 HDR 安全试用源码候选：通用入口移除机型硬拒绝，保留版本与硬件接口检查；输入配置按 MCU 接口生成；X2mini 475/700 nit 映射及确认超时恢复。BMI260 与固定 HDR 原生运行时尚待重编，未签名、未发布、未完成实机升级或画面验收。"
+}

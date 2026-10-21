@@ -574,6 +574,11 @@ def _materialize(name, payload, root, metadata, planned, probe, owned):
         existing = _existing(root, relative)
         files[relative] = _entry(existing if existing is not None else (json.dumps(default) + '\n').encode(), 0o600, mutable=True)
     if name == 'input':
+        helper = Path(__file__).with_name('input_profile.py').read_bytes()
+        files['usr/local/lib/oxp3-input/input_profile.py'] = _entry(helper)
+        files['etc/systemd/system/inputplumber.service.d/oxp3-input-profile.conf'] = _entry(
+            b'[Service]\nRuntimeDirectory=oxp3-input\nWorkingDirectory=/run/oxp3-input\n'
+            b'ExecStartPre=/usr/bin/python3 -I -B /usr/local/lib/oxp3-input/input_profile.py\n')
         # A live accepted gyro profile must not be shadowed/replaced by the
         # generic input profile. The existing file retains device calibration.
         active_gyro = _existing(root, 'etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml')
@@ -696,8 +701,8 @@ def build_plan(payload: Path, root: Path, selected: list[str], probe: dict, mana
                     raise ValueError('Incompatible package: ' + package + ' requires ' + version)
             if name == 'hdr' and probe.get('packages', {}).get('gamescope') != '3.16.30-1':
                 raise ValueError('HDR requires Gamescope 3.16.30-1')
-            if name == 'gyro' and (probe.get('bios') != '5.09' or not re.fullmatch(r'0\.78\.0(?:-[^\s]+)?', str(probe.get('packages', {}).get('inputplumber', '')))):
-                raise ValueError('Gyro requires BIOS 5.09 and InputPlumber 0.78.0')
+            if name == 'gyro' and not re.fullmatch(r'0\.78\.0(?:-[^\s]+)?', str(probe.get('packages', {}).get('inputplumber', ''))):
+                raise ValueError('Gyro requires InputPlumber 0.78.0')
             units = metadata.get('units', [])
             if not isinstance(units, list) or any(not isinstance(unit, str) or not re.fullmatch(r'[A-Za-z0-9_.@-]+\.service', unit) for unit in units):
                 raise ValueError('Invalid component service unit list')

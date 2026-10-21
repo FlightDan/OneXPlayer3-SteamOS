@@ -146,9 +146,6 @@ class SystemBackend:
     def guard(self, *, input_version):
         if os.uname().release != KERNEL:
             raise BindingError('Gyro requires the exact tested kernel')
-        for name, expected in (('sys_vendor', 'ONE-NETBOOK'), ('product_name', 'ONEXPLAYER 3'), ('bios_version', '5.09')):
-            if (Path('/sys/class/dmi/id') / name).read_text().strip() != expected:
-                raise BindingError('Gyro requires ONEXPLAYER 3 BIOS 5.09')
         if input_version and self.command('/usr/bin/inputplumber', '--version') != 'inputplumber 0.78.0':
             raise BindingError('Gyro requires InputPlumber 0.78.0')
         matches = [path.name for path in DEVICES.iterdir() if path.name.startswith('i2c-10EC5280:')]

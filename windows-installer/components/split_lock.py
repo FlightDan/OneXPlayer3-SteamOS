@@ -176,9 +176,6 @@ def reports(trace=TRACE, *, delete=False):
 def live_guard():
     if os.geteuid() != 0:
         raise RuntimeError('Root required')
-    for name, expected in (('sys_vendor', 'ONE-NETBOOK'), ('product_name', 'ONEXPLAYER 3')):
-        if Path('/sys/class/dmi/id', name).read_text().strip() != expected:
-            raise RuntimeError('ONEXPLAYER 3 required')
     if 'split_lock_detect=off' not in Path('/proc/cmdline').read_text().split():
         raise RuntimeError('Boot with split_lock_detect=off before cleanup')
 

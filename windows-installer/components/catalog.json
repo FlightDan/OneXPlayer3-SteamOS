@@ -114,7 +114,7 @@
       "name": "输入与背键",
       "state": "current_boot_buttons_accepted_persistent_install_pending",
       "default": false,
-      "reason": "本次启动中 M1/L4、M2/R4、Home/L5、A/B/X/Y 已实机通过，用户保留候选；多功能键最终 R5 待复验。精确内核持久安装、休眠/更新/MCU 恢复、模拟量及 gyro 尚未验收，不在 3.8.14 加载研究模块。",
+      "reason": "本次启动中 M1/L4、M2/R4、Home/L5、A/B/X/Y 已实机通过，用户保留候选；多功能键最终 R5 待复验。精确内核持久安装、休眠/更新/MCU 恢复、模拟量及 gyro 尚未验收，不在 3.8.14 加载研究模块。 本次兼容候选取消安装、维护及插件入口的 DMI 机型限制，输入配置改按 MCU 接口生成；BMI260 模块重编及 X2mini 实机验收未完成，尚未发布。",
       "source": "research/input/hid-build-v1/BUILD_STATUS.md"
     },
     {
@@ -179,11 +179,11 @@
     },
     {
       "id": "desktop-hdr",
-      "name": "KDE 桌面 HDR/WCG 安全处理",
-      "state": "research",
+      "name": "KDE 桌面 HDR 映射与恢复（X2mini 安全试用）",
+      "state": "source_candidate_unbuilt",
       "default": false,
-      "reason": "关闭 HDR/WCG 并 DPMS on 后画面恢复；游戏 Gamma22 保留。窗口高亮组未通过；重接 Gamma22 或隐藏内屏 HDR 开关尚未实现。",
-      "source": "research/evidence/20261013-desktop-hdr-recovery.md"
+      "reason": "X2mini 首次 KDE 登录后安装入口；475/700 映射、真实 HDR 四块测试、10 秒独立回退及确认保存源码已实现。原包缺少新运行时和渲染器，未完成重编或实机验收。",
+      "source": "windows-installer/docs/RELEASE_1.0.6_X2MINI_HDR_TRIAL.md"
     },
     {
       "id": "opti2xmx",

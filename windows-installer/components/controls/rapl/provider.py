@@ -92,14 +92,6 @@ def write_number(path, value):
 
 
 def validate_device():
-    expected = {
-        Path("/sys/class/dmi/id/sys_vendor"): "ONE-NETBOOK",
-        Path("/sys/class/dmi/id/product_name"): "ONEXPLAYER 3",
-    }
-    for path, wanted in expected.items():
-        actual = path.read_text(encoding="ascii").strip()
-        if actual != wanted:
-            raise ControllerError(f"DMI guard: {path} is {actual!r}, expected {wanted!r}")
     for root in RAPL_ROOTS:
         for field, wanted in (("name", "package-0"), ("enabled", "1"),
                               ("constraint_0_name", "long_term"),

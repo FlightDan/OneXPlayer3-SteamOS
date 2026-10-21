@@ -22,7 +22,7 @@ RELATIVE = 'home/deck/.config/gamescope/scripts/98-oxp3-oled-hdr.lua'
 VERSION = '20261013-hdr-r1'
 TARGET = {'ID': 'steamos', 'VERSION_ID': '3.10', 'BUILD_ID': '20260924.1000',
           'kernel': '7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9',
-          'gamescope': '3.16.30-1', 'vendor': 'ONE-NETBOOK', 'product': 'ONEXPLAYER 3'}
+          'gamescope': '3.16.30-1'}
 
 
 def ordinary_text(path):
@@ -40,9 +40,6 @@ def live_environment():
     for key in ('ID', 'VERSION_ID', 'BUILD_ID'):
         if release.get(key) != TARGET[key]: raise RuntimeError('HDR system compatibility refused: ' + key)
     if os.uname().release != TARGET['kernel']: raise RuntimeError('HDR kernel compatibility refused')
-    # Sysfs attributes are not ordinary on-disk files; only these fixed identity attributes are read.
-    for key, name in (('vendor', 'sys_vendor'), ('product', 'product_name')):
-        if Path('/sys/class/dmi/id/' + name).read_text().strip() != TARGET[key]: raise RuntimeError('HDR exact-model compatibility refused')
     database=Path('/usr/lib/holo/pacmandb/local')
     if not database.is_dir(): database=Path('/var/lib/pacman/local')
     descriptions = list(database.glob('gamescope-*/desc'))

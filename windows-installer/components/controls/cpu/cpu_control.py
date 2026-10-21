@@ -15,8 +15,6 @@ def atomic(p,data):
     tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(data));tmp.chmod(0o600);tmp.replace(p)
 
 def groups():
-    if Path('/sys/class/dmi/id/product_name').read_text().strip()!='ONEXPLAYER 3':
-        raise RuntimeError('Unsupported device')
     policies=sorted(POLICIES.glob('policy*'),key=lambda p:int(p.name[6:]))
     by_max={}
     for p in policies:

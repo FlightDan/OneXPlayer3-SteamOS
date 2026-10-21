@@ -196,5 +196,6 @@
   "07   完成": "07   Result",
   "启动器安装": "Boot manager",
   "rEFInd 启动菜单与配置。": "rEFInd boot menu and settings.",
-  "所选镜像为 .bz2 格式，解压可能需要较长时间，请耐心等待。": "The selected image uses .bz2 compression. Extraction may take a long time; please wait."
+  "所选镜像为 .bz2 格式，解压可能需要较长时间，请耐心等待。": "The selected image uses .bz2 compression. Extraction may take a long time; please wait.",
+  "KDE 桌面 HDR 映射与恢复（X2mini 安全试用）": "KDE desktop HDR mapping and recovery (X2mini safe trial)"
 }

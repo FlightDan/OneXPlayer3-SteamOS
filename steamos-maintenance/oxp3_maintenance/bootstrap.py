@@ -102,10 +102,8 @@ def check_environment(download_only):
         if '=' in line:
             name, value = line.split('=', 1)
             release[name] = value.strip().strip('\"').strip("'")
-    if (release.get('ID') != 'steamos'
-            or Path('/sys/class/dmi/id/sys_vendor').read_text().strip() != 'ONE-NETBOOK'
-            or Path('/sys/class/dmi/id/product_name').read_text().strip() != 'ONEXPLAYER 3'):
-        raise RuntimeError('请在 OXP3 SteamOS 上安装；其他电脑可使用 --download-only。 Use OXP3 SteamOS, or --download-only on another Linux computer.')
+    if release.get('ID') != 'steamos':
+        raise RuntimeError('请在 SteamOS 上安装；其他 Linux 可使用 --download-only。 Use SteamOS, or --download-only on another Linux distribution.')
     import pwd
     if pwd.getpwuid(os.geteuid()).pw_name != 'deck':
         raise RuntimeError('当前安装适配要求 deck 桌面账户。 Use the deck desktop account.')

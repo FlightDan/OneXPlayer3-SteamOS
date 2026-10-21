@@ -22,9 +22,6 @@ class FakeHardware:
         self.active = 0
         self.maximum_active = 0
         self.fail = False
-        self.supported = True
-    def check_model(self):
-        if not self.supported: raise RuntimeError("Wrong DMI")
     def native_present(self): return self.native
     def hid_target(self): return "read-only-target"
     def _apply(self, backend, zone, config):
@@ -107,8 +104,9 @@ class ControllerTests(unittest.TestCase):
         state["zones"]["xbox"]["color"][0] = 0
         self.assertEqual(controller.status()["zones"]["xbox"]["color"][0], 255)
 
-    def test_model_guard_before_writes(self):
-        hardware = FakeHardware(); hardware.supported = False
+    def test_missing_hardware_before_writes(self):
+        hardware = FakeHardware()
+        hardware.hid_target = mock.Mock(side_effect=RuntimeError("No compatible HID"))
         controller = light.LightController(hardware)
         self.assertFalse(controller.status()["available"])
         with self.assertRaises(RuntimeError): controller.set_zone("rings", CONFIG)
@@ -173,10 +171,8 @@ class LinuxPathTests(unittest.TestCase):
         (entry / "dev").write_text("240:2")
         return entry, device
 
-    def test_exact_dmi_and_native_partial_guard(self):
-        self.hardware.check_model()
-        self.hardware.dmi.write_text("ONEXPLAYER X1 mini")
-        with self.assertRaises(RuntimeError): self.hardware.check_model()
+    def test_native_partial_guard_without_model_requirement(self):
+        self.hardware.dmi.unlink()
         self.assertFalse(self.hardware.native_present())
         (self.hardware.led_base / light.LEDS["rings"]).mkdir()
         with self.assertRaises(RuntimeError): self.hardware.native_present()
@@ -222,7 +218,7 @@ class LinuxPathTests(unittest.TestCase):
         self.assertFalse(self.hardware.legacy_hid_profile())
         with self.assertRaises(RuntimeError): self.hardware.native_present()
 
-    def test_legacy_profile_still_requires_model_and_exact_hid(self):
+    def test_legacy_profile_requires_exact_hid_independent_of_model(self):
         self.hardware.kernel_release.write_text(light.LEGACY_KERNEL)
         (self.hardware.led_base / light.LEDS["rings"]).mkdir()
         controller = light.LightController(self.hardware)
@@ -231,8 +227,11 @@ class LinuxPathTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): controller.set_zone("rings", CONFIG)
             write.assert_not_called()
         self.hid()
-        self.hardware.dmi.write_text("ONEXPLAYER X1 mini")
-        self.assertFalse(controller.status()["available"])
+        for model in ("ONEXPLAYER 3", "ONEXPLAYER X2 MINI", "Other"):
+            self.hardware.dmi.write_text(model)
+            self.assertTrue(controller.status()["available"], model)
+        self.hardware.dmi.unlink()
+        self.assertTrue(controller.status()["available"])
 
     def test_unknown_native_profile_requires_capabilities_without_fallback(self):
         self.leds()
