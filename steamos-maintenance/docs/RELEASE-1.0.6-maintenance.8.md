@@ -10,4 +10,6 @@ HDR 试用仅在 Vulkan present_id / present_wait 扩展和对应特性可用时
 
 发布脚本新增可选 KeyStore 参数，将既有签名身份路径交给原发布器，便于独立公开 checkout 原地复用正式身份；签名、公钥一致性、DPAPI 和 ACL 检查保持。正式公钥固定 LF 换行，避免 Windows Git 自动转换导致相同公钥被字节一致性检查拒绝。
 
+源码文本默认使用 LF，Windows PowerShell/CMD/BAT 保留 CRLF。避免 Windows checkout 将 Linux 服务、配置和 YAML 转为 CRLF，导致部署生成器无法加入原有 ExecCondition 启动校验；第三方 Opti 原始文件仍按现有 -text 规则保留字节。
+
 源码修复和独立审阅已完成，CI 输入按固定白名单重新生成并通过 16 项一致性检查、7 项输入回归。原生构建、最终签名载荷、实机升级与重启恢复验收及公开下载验证尚待完成；本文件不会把源码测试写为实机验收通过。未包含未公开动态功耗研究、设备记录、凭据或私钥。
