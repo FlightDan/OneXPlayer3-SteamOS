@@ -31,6 +31,17 @@ class ActivationChecks(unittest.TestCase):
                 result=runtime.execute()
             return result,commands
 
+    def test_live_guard_has_no_model_dependency_but_requires_system_and_kernel(self):
+        from types import SimpleNamespace
+        with patch.object(runtime, 'release', return_value=dict(runtime.VERSION)), \
+             patch.object(runtime.os, 'uname', return_value=SimpleNamespace(release=runtime.KERNEL), create=True), \
+             patch.object(runtime.Path, 'read_text', side_effect=AssertionError('DMI must not be read')):
+            runtime.device_guard()
+            with patch.object(runtime.os, 'uname', return_value=SimpleNamespace(release='other-kernel')):
+                with self.assertRaises(RuntimeError): runtime.device_guard()
+            with patch.object(runtime, 'release', return_value={'ID': 'arch'}):
+                with self.assertRaises(RuntimeError): runtime.device_guard()
+
     def test_selected_input_starts_on_each_boot(self):
         for _ in range(2):
             result,commands=self.execute_fixture({'input':'files_installed'})

@@ -15,8 +15,8 @@ BASELINE = frozenset({
 
 
 def device_supported(system):
-    return (system.get('os', {}).get('ID') == 'steamos'
-            and all(system.get('dmi', {}).get(key) == value for key, value in DEVICE.items()))
+    # Model names are diagnostic facts, not permission to use an adapter.
+    return system.get('os', {}).get('ID') == 'steamos'
 
 
 def baseline_supported(system):
@@ -37,7 +37,7 @@ def evaluate(name, system, metadata=None):
                 'requirements': {}}
     portable = name in PORTABLE
     requirements = {'os': {'ID': 'steamos'} if portable else dict(BASE),
-                    'dmi': dict(DEVICE), 'packages': dict(metadata.get('packages', {})),
+                    'packages': dict(metadata.get('packages', {})),
                     'shared_policy': 'steamos' if portable else 'exact-baseline'}
     if portable:
         requirements['resources'] = (
@@ -50,14 +50,14 @@ def evaluate(name, system, metadata=None):
     if name == 'hdr':
         requirements['packages']['gamescope'] = '3.16.30-1'
     if name == 'gyro':
-        requirements.update(bios='5.09', package_patterns={'inputplumber': r'0\.78\.0(?:-[^\s]+)?'})
+        requirements.update(package_patterns={'inputplumber': r'0\.78\.0(?:-[^\s]+)?'})
     if name == 'slot-switch':
         requirements['resources'] = ['usr/bin/' + tool for tool in (
             'python3', 'pkexec', 'kdialog', 'steamos-bootconf', 'systemctl', 'busctl')]
     supported = device_supported(system) if portable else baseline_supported(system)
-    reason = ('Supported OXP3 SteamOS adapter; required resources are checked during planning'
-              if portable else 'Supported exact OXP3 SteamOS baseline') if supported else (
-                  'Requires ONEXPLAYER 3 running SteamOS' if portable else
-                  'Requires exact ONEXPLAYER 3, SteamOS 3.10 build 20260924.1000 and kernel ' + KERNEL)
+    reason = ('Supported SteamOS adapter; required resources are checked during planning'
+              if portable else 'Supported exact SteamOS baseline') if supported else (
+                  'Requires SteamOS' if portable else
+                  'Requires SteamOS 3.10 build 20260924.1000 and kernel ' + KERNEL)
     return {'supported': supported, 'profile': 'portable-settings-v1' if portable else 'oxp3-r2-exact-v1',
             'reason': reason, 'requirements': requirements}

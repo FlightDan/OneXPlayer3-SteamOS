@@ -6,6 +6,15 @@ $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
+$packageSource = [IO.File]::ReadAllText($scriptPath)
+$sourceHdrGuard = $packageSource.IndexOf('if (Test-Path -LiteralPath $desktopHdrArchive -PathType Leaf) { & $desktopHdrValidator -RuntimePath $desktopHdrArchive }', [StringComparison]::Ordinal)
+$destinationAssignment = $packageSource.IndexOf('$destination = Join-Path $projectRoot', [StringComparison]::Ordinal)
+$integrationCopy = $packageSource.IndexOf("Copy-PackageTree (Join-Path `$projectRoot 'cache/integration') 'cache/integration'", [StringComparison]::Ordinal)
+$stagedHdrGuard = $packageSource.IndexOf('if (Test-Path -LiteralPath $stagedDesktopHdrArchive -PathType Leaf) { & $desktopHdrValidator -RuntimePath $stagedDesktopHdrArchive }', [StringComparison]::Ordinal)
+if ($sourceHdrGuard -lt 0 -or $destinationAssignment -lt 0 -or $sourceHdrGuard -gt $destinationAssignment -or
+    $integrationCopy -lt 0 -or $stagedHdrGuard -lt 0 -or $stagedHdrGuard -lt $integrationCopy) {
+    throw 'Desktop-HDR cache and staged package must both pass the runtime policy gate.'
+}
 foreach ($name in 'Test-PackageFile','Assert-PackagePluginPolicy','Copy-PackageTree') {
     $definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (!$definition) { throw "Production function missing: $name" }
@@ -62,6 +71,9 @@ try {
     foreach ($name in 'collect-desktop-runtime.py','deploy-windows-reboot-live.py','repair-project-relocation.ps1') {
         if (Test-PackageFile 'scripts' $name) { throw "Local-only helper accepted: $name" }
     }
+foreach ($name in 'desktop_hdr_policy.py','validate-desktop-hdr-runtime.ps1','test-desktop-hdr-runtime.ps1') {
+    if (Test-PackageFile 'scripts' $name) { throw "Build-only HDR guard leaked into installer package: $name" }
+}
     if (!(Test-PackageFile 'scripts' 'read-disks.ps1') -or
         !(Test-PackageFile 'cache/integration' 'sources/manager-source.tar.gz')) { throw 'Runtime helper or attribution was excluded.' }
     if (@(Get-ChildItem -LiteralPath $source -Recurse -File).Count -ne $fixtures.Count) { throw 'Source fixture was mutated.' }

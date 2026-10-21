@@ -1,0 +1,31 @@
+name: Build X2mini HDR native runtime
+on:
+  push:
+    branches: [release/x2mini-op3-compat]
+    paths:
+      - windows-installer/ci/desktop-hdr/**
+      - .github/workflows/build-x2mini-hdr.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-hdr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build exact SteamOS runtime in a separate package root
+        run: bash windows-installer/ci/desktop-hdr/run-portable.sh
+      - name: Save validated runtime and build log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: x2mini-hdr-native-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            windows-installer/ci/desktop-hdr/portable-final-runtime.tar
+            windows-installer/ci/desktop-hdr/portable-final-runtime.sha256
+            windows-installer/ci/desktop-hdr/portable-build.log

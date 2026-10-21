@@ -4,6 +4,17 @@ if ($Stamp -notmatch '^\d{8}-\d{6}$') { throw 'Invalid package version' }
 if ($PublicRelease -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public release must identify its source commit.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot 'check-maintenance.ps1') -RequireKey:$PublicRelease
+$integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
+$desktopHdrRecord = $integrationManifest.'desktop-hdr'
+if ($desktopHdrRecord.runtime_archive -and $desktopHdrRecord.runtime_archive -ne 'desktop-hdr/accepted-runtime.tar') {
+    throw 'Unexpected desktop-HDR runtime archive path.'
+}
+$desktopHdrValidator = Join-Path $PSScriptRoot 'validate-desktop-hdr-runtime.ps1'
+$desktopHdrArchive = Join-Path $projectRoot 'cache/integration/desktop-hdr/accepted-runtime.tar'
+if ($desktopHdrRecord.runtime_archive -and !(Test-Path -LiteralPath $desktopHdrArchive -PathType Leaf)) {
+    throw 'The manifest references a missing fixed desktop-HDR runtime.'
+}
+if (Test-Path -LiteralPath $desktopHdrArchive -PathType Leaf) { & $desktopHdrValidator -RuntimePath $desktopHdrArchive }
 $releasePath = Join-Path $projectRoot 'components/release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
 $selfInstalledPlugins = [version]($release.version -replace '-beta$', '') -ge [version]'0.1.4'
@@ -34,7 +45,6 @@ $binaryVersion = (Get-Item -LiteralPath (Join-Path $projectRoot 'app/bin/Debug/n
 if ($binaryVersion -ne (($release.version -replace '-beta$', '') + '.0')) {
     throw "Application version $binaryVersion does not match release $($release.version). Rebuild before packaging."
 }
-$integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
 $wifiFiles = @($integrationManifest.wifi.files | Where-Object { $_.target -eq 'usr/lib/firmware/iwlwifi-sc-a0-fm-c0-c106.ucode' })
 if ($wifiFiles.Count -ne 1) { throw 'This package must retain the accepted Wi-Fi c106 firmware.' }
 foreach ($suffix in 'iml.sfi','pci.ddc','pci.sfi','usb.ddc','usb.sfi') {
@@ -57,7 +67,8 @@ function Test-PackageFile([string]$relative, [string]$relativeFile) {
         if (!$path.StartsWith('decky/', [StringComparison]::OrdinalIgnoreCase)) { return $false }
     }
     if ($relative -eq 'scripts' -and [IO.Path]::GetFileName($path) -in @(
-        'collect-desktop-runtime.py','deploy-windows-reboot-live.py','repair-project-relocation.ps1')) { return $false }
+        'collect-desktop-runtime.py','deploy-windows-reboot-live.py','repair-project-relocation.ps1',
+        'desktop_hdr_policy.py','validate-desktop-hdr-runtime.ps1','test-desktop-hdr-runtime.ps1')) { return $false }
     return $true
 }
 function Assert-PackagePluginPolicy([string]$PackageRoot) {
@@ -149,6 +160,11 @@ if ($release.version -eq '0.1.3' -and (Test-Path -LiteralPath (Join-Path $projec
 }
 $buildInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
+$stagedDesktopHdrArchive = Join-Path $destination 'cache/integration/desktop-hdr/accepted-runtime.tar'
+if ($desktopHdrRecord.runtime_archive -and !(Test-Path -LiteralPath $stagedDesktopHdrArchive -PathType Leaf)) {
+    throw 'The staged package is missing the manifest-referenced desktop-HDR runtime.'
+}
+if (Test-Path -LiteralPath $stagedDesktopHdrArchive -PathType Leaf) { & $desktopHdrValidator -RuntimePath $stagedDesktopHdrArchive }
 Copy-PackageTree (Join-Path $projectRoot 'cache/maintenance') 'cache/maintenance'
 Copy-PackageTree (Join-Path $projectRoot 'cache/plugins') 'cache/plugins'
 foreach ($name in 'secret-input-check.sh','refind-image.sh','refind-image.py','integration.sh','integration-image.py','integration-check.sh','integration-delta-check.sh','integration-verify.sh','integration-verify.py','upgrade-source.sh','upgrade-source.py','physical-readiness.sh','physical-readiness.py','resize-prepared.sh','resize_prepared.py') { Copy-Item -LiteralPath (Join-Path $projectRoot "guest/$name") -Destination (Join-Path $destination "guest/$name") }

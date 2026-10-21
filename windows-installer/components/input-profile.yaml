@@ -1,13 +1,11 @@
-# ONEXPLAYER 3 profile retained in the accepted 0.78 device tests.
-# Evidence: research/evidence/20261012-input-candidate-preflight.txt, lines 40-84.
+# Shared OXP3 / X2mini profile; source devices still match their interfaces.
 version: 1
 kind: CompositeDevice
 name: ONEXPLAYER 3
 single_source: false
 matches:
-  - dmi_data:
-      product_name: ONEXPLAYER 3
-      sys_vendor: ONE-NETBOOK
+  - udev:
+      sys_path: "/run/oxp3-input/no-device"
 source_devices:
   - group: gamepad
     evdev:

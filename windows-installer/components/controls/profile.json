@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "oxp3-controls",
-  "version": "20261017-r7",
-  "archive": "oxp3-controls-20261017-r7.zip",
+  "version": "20261021-compat1",
+  "archive": "oxp3-controls-20261021-compat1.zip",
   "source_files": [
     "rapl/provider.py",
     "rapl/test_provider.py",

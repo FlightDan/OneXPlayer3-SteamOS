@@ -20,9 +20,16 @@ class ControlGateChecks(unittest.TestCase):
             self.assertTrue(self.check(component)['compatible'])
             self.assertFalse(self.check(component)['installation_allowed'])
 
-    def test_recovery_source_and_other_model_are_rejected(self):
+    def test_recovery_source_is_rejected(self):
         self.system['version'] = '3.8.14'; self.hardware['product'] = 'Other device'
         for component in self.profile['components']: self.assertFalse(self.check(component)['compatible'])
+
+    def test_model_does_not_restrict_matching_interfaces(self):
+        for hardware in ({}, {'vendor': 'ONE-NETBOOK', 'product': 'ONEXPLAYER X2 MINI'},
+                         {'vendor': 'Other', 'product': 'Other'}):
+            self.hardware = hardware
+            for component in self.profile['components']:
+                self.assertTrue(self.check(component)['compatible'], (hardware, component))
 
     def test_unknown_driver_or_core_topology_is_rejected(self):
         self.features['fan_driver_validated'] = False

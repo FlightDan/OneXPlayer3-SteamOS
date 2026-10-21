@@ -3,8 +3,6 @@ from pathlib import Path
 import os
 import pwd
 
-assert Path('/sys/class/dmi/id/sys_vendor').read_text().strip() == 'ONE-NETBOOK'
-assert Path('/sys/class/dmi/id/product_name').read_text().strip() == 'ONEXPLAYER 3'
 paths = [Path('/sys/class/powercap/intel-rapl:0'), Path('/sys/class/powercap/intel-rapl-mmio:0')]
 paths += list(Path('/sys/class/powercap').glob('intel-rapl:0:*'))
 for path in paths:

@@ -67,7 +67,7 @@ public static class Backend
     {
         input = Path.GetFullPath(input);
         if (!File.Exists(input)) throw new FileNotFoundException("恢复镜像不存在。", input);
-        if (input.EndsWith(".img", StringComparison.OrdinalIgnoreCase)) return input;
+        if (input.EndsWith(".img", StringComparison.OrdinalIgnoreCase)) { RecoveryImage.ValidateRaw(input); return input; }
         if (!input.EndsWith(".img.bz2", StringComparison.OrdinalIgnoreCase) && !input.EndsWith(".img.zip", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("只支持 .img、.img.bz2、.img.zip。");
         var archive = Path.Combine(Root, "runtime/archive/7z.exe");
         if (!File.Exists(archive)) throw new FileNotFoundException("缺少工具自带的解压程序。", archive);
@@ -86,6 +86,7 @@ public static class Backend
         await ProcessAsync(archive, ["x", archiveType, $"-o{directory}", "-y", "--", input], log, token);
         var images = Directory.GetFiles(directory, "*.img", SearchOption.AllDirectories);
         if (images.Length != 1) throw new InvalidOperationException("归档必须包含一个 .img 镜像。");
+        RecoveryImage.ValidateRaw(images[0]);
         return images[0];
     }
     public static async Task CopyImageAsync(string input, string output, CancellationToken token)
@@ -118,6 +119,7 @@ public static class Backend
             throw new InvalidOperationException("开发预览更新只允许工具工作区内的输出副本。");
         if (image != null && (!File.Exists(image) || !string.Equals(Path.GetExtension(image), ".img", StringComparison.OrdinalIgnoreCase) || Path.GetFullPath(image).StartsWith(@"\\.\", StringComparison.Ordinal))) throw new InvalidOperationException("虚拟机只接收普通 .img 文件。");
         if ((task == "upgrade-source") != (updateRoot != null)) throw new IOException("Upgrade task requires a root partition image.");
+        if (task == "upgrade-source") RecoveryImage.ValidateRaw(image ?? throw new IOException("Missing recovery image."));
         if (updateRoot != null) { MediaSource.Ordinary(updateRoot, InstallerWorkspace.DirectoryPath); MediaSource.Ordinary(image!,InstallerWorkspace.DirectoryPath); }
         var id = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff") + "-" + task;
         var work = Path.Combine(InstallerWorkspace.DirectoryPath, id); Directory.CreateDirectory(work);

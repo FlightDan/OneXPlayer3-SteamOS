@@ -98,7 +98,10 @@ class AdoptionTests(unittest.TestCase):
         files = {path: {'data': base64.b64decode(item['applied']['data']), 'mode': 0o644,
                         'component': 'desktop-hdr', 'user': False} for path, item in adopted.items()}
         store.apply(files, {'version': '1'}, ['desktop-hdr'], 'A', adopt=adopted)
-        store.restore('A')
+        # This fixture has runtime metadata only; user-home safety is covered by
+        # test_hdr_restore_guard and the launcher helper's dropped-uid tests.
+        with patch('oxp3_maintenance.x2mini_hdr_device.cleanup_launchers'):
+            store.restore('A')
         self.assertEqual((self.root / prefix / 'bin/tool').read_bytes(), b'preproject executable')
         self.assertFalse((self.root / prefix / 'lib/module').exists())
 

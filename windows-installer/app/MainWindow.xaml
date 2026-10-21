@@ -155,8 +155,8 @@
   <Border Background="White" CornerRadius="16" Margin="24" Padding="24" MaxWidth="720" MaxHeight="660">
    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <TextBlock x:Name="BootPrerequisitesTitle" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,16"/>
-    <ScrollViewer Grid.Row="1" PanningMode="VerticalOnly" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><TextBlock x:Name="BootPrerequisitesMessage" TextWrapping="Wrap" LineHeight="24"/></ScrollViewer>
-    <CheckBox x:Name="BootPrerequisitesConsent" Grid.Row="2" Margin="0,16,0,0" Checked="BootPrerequisitesConsentChanged" Unchecked="BootPrerequisitesConsentChanged"/>
+     <ScrollViewer Grid.Row="1" PanningMode="VerticalOnly" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel><TextBlock x:Name="BootPrerequisitesStatus" Margin="0,0,0,12" TextWrapping="Wrap" FontWeight="SemiBold"/><TextBlock x:Name="BootPrerequisitesMessage" TextWrapping="Wrap" LineHeight="24"/></StackPanel></ScrollViewer>
+     <CheckBox x:Name="BootPrerequisitesConsent" Grid.Row="2" Margin="0,16,0,0" Checked="BootPrerequisitesConsentChanged" Unchecked="BootPrerequisitesConsentChanged"/>
     <UniformGrid Grid.Row="3" Columns="2" Margin="0,16,0,0"><Button x:Name="BootPrerequisitesExit" Click="ExitBootPrerequisites"/><Button x:Name="BootPrerequisitesContinue" Click="ConfirmBootPrerequisites" IsEnabled="False" Margin="0" Background="#2968D9" Foreground="White"/></UniformGrid>
    </Grid>
   </Border>

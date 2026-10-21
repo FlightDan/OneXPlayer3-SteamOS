@@ -1,6 +1,8 @@
 import hashlib
+import io
 import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 
@@ -51,6 +53,55 @@ class PreparePayloadTests(unittest.TestCase):
     def options(self, names):
         self.put('components/options.json', {'schema': 1,
             'repairs': [{'id': name, 'dependencies': []} for name in names], 'plugins': []})
+
+    def test_old_model_locked_gyro_cannot_enter_maintenance_payload(self):
+        self.options(['gyro'])
+        self.put('cache/integration/manifest.json', {'gyro': {'files': [{
+            'source': 'gyro/module.bin', 'target': 'var/lib/oxp3-gyro-v1/oxp3_bmi260.ko'}]}})
+        self.put('cache/integration/gyro/module.bin', b'old model-locked fixture')
+        with self.assertRaisesRegex(PreparationError, 'Rebuild the model-independent BMI260'):
+            prepare_payload(self.workspace, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_old_desktop_hdr_runtime_cannot_enter_maintenance_payload(self):
+        self.options(['desktop-hdr'])
+        self.put('cache/integration/manifest.json', {'desktop-hdr': {
+            'files': [], 'runtime_archive': 'desktop-hdr/accepted-runtime.tar'}})
+        runtime = self.installer / 'cache/integration/desktop-hdr/accepted-runtime.tar'
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(runtime, 'w') as archive:
+            for name, data in (
+                ('bin/oxp3-mapped-hdr-control', b'OXP3_GAMMA22_POLICY_EDID_ONLY_V2 ONE-NETBOOK'),
+                ('lib/libkwin.so.6.7.3', b'OXP3_GAMMA22_POLICY_EDID_ONLY_V2 /sys/class/dmi/id/product_name'),
+            ):
+                info = tarfile.TarInfo(name)
+                info.mode = 0o755 if name.startswith('bin/') else 0o644
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        with self.assertRaisesRegex(PreparationError, 'EDID-only policy'):
+            prepare_payload(self.workspace, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_hdr_trial_sources_refresh_cache_without_claiming_native_build(self):
+        self.options(['desktop-hdr'])
+        names = ('hdr_trial.py', 'x2mini_device.py', 'install-x2mini-hdr.sh', 'launch.sh')
+        files = []
+        for name in names:
+            files.append({'source': 'desktop-hdr/' + name,
+                          'target': 'home/deck/.local/lib/oxp3-desktop-hdr-runtime/' + name,
+                          'user': True})
+            self.put('cache/integration/desktop-hdr/' + name, b'stale fixture')
+            self.put('components/desktop-hdr/' + name, ('current ' + name).encode())
+        self.put('cache/integration/manifest.json', {'desktop-hdr': {
+            'files': files, 'missing': ['native KWin trial runtime requires rebuild']}})
+        report = prepare_payload(self.workspace, self.output)
+        for name in names:
+            self.assertEqual((self.output / 'integration/desktop-hdr' / name).read_bytes(),
+                             ('current ' + name).encode())
+            self.assertEqual((self.installer / 'cache/integration/desktop-hdr' / name).read_bytes(),
+                             b'stale fixture')
+        self.assertEqual(report['coverage']['desktop-hdr']['status'], 'missing')
+        self.assertEqual(len(report['refreshed_integration']), 4)
 
     def test_current_sources_replace_stale_cache_without_mutating_it(self):
         report = prepare_payload(self.workspace, self.output)

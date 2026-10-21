@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.7",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "X2mini / OP3 通用入口移除机型硬拒绝，保留系统、版本与硬件接口检查；输入配置按 MCU 接口生成。精确内核 BMI260 与固定 KWin/HDR10 运行时已重编并核验，X2mini KDE 475/700 nit 试用提供 10 秒独立回退和确认保存，保留面板检查。显示版本 1.0.6；不包含未公开动态功耗研究。实际 X2mini DMI、画面与亮度尚待用户实机验收。"
+}

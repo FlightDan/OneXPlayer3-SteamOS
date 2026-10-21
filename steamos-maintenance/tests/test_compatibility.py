@@ -21,13 +21,24 @@ class CompatibilityTests(unittest.TestCase):
         for name in compatibility.BASELINE:
             self.assertFalse(compatibility.evaluate(name, self.system)['supported'], name)
 
-    def test_other_device_or_distribution_never_gets_portable_permission(self):
-        for key, values in [('os', {'ID': 'arch'}), ('dmi', {'product_name': 'Other'})]:
+    def test_other_distribution_never_gets_portable_permission(self):
+        for key, values in [('os', {'ID': 'arch'})]:
             system = copy.deepcopy(self.system)
             system[key].update(values)
             system.update(device_supported=True, baseline_supported=True)
             for name in compatibility.PORTABLE | compatibility.BASELINE:
                 self.assertFalse(compatibility.evaluate(name, system)['supported'], name)
+
+    def test_model_identity_is_not_an_adapter_requirement(self):
+        for dmi in ({}, {'sys_vendor': 'ONE-NETBOOK', 'product_name': 'ONEXPLAYER X2 MINI'},
+                    {'sys_vendor': 'Other', 'product_name': 'Other'}):
+            system = copy.deepcopy(self.system)
+            system['dmi'] = dmi
+            for name in compatibility.PORTABLE | compatibility.BASELINE:
+                with self.subTest(dmi=dmi, component=name):
+                    result = compatibility.evaluate(name, system)
+                    self.assertTrue(result['supported'])
+                    self.assertNotIn('dmi', result['requirements'])
 
     def test_unknown_adapter_is_explicit_even_on_exact_baseline(self):
         result = compatibility.evaluate('future-driver', self.system)
@@ -43,7 +54,7 @@ class CompatibilityTests(unittest.TestCase):
         result['requirements']['os']['ID'] = 'changed'
         self.assertEqual(compatibility.BASE['ID'], 'steamos')
         gyro = compatibility.evaluate('gyro', self.system)['requirements']
-        self.assertEqual(gyro['bios'], '5.09')
+        self.assertNotIn('bios', gyro)
         self.assertIn('inputplumber', gyro['package_patterns'])
 
 

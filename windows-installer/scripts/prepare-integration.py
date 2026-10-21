@@ -3,10 +3,9 @@ from pathlib import Path
 import json
 import hashlib
 import shutil
-import tarfile
 import runpy
-from pathlib import PurePosixPath
 import argparse
+from desktop_hdr_policy import DesktopHdrPolicyError, read_desktop_hdr_runtime, validate_desktop_hdr_runtime
 from opti_payload import read_plugin_tree, validate_runtime
 
 root = Path(__file__).resolve().parents[1]
@@ -19,6 +18,21 @@ parser.add_argument('--opti-only', action='store_true', help='Regenerate only th
 arguments = parser.parse_args()
 store = arguments.output
 manifest_path = store / 'manifest.json'
+if not arguments.opti_only:
+    desktop_hdr_archive = store/'desktop-hdr/accepted-runtime.tar'
+    if desktop_hdr_archive.is_symlink():
+        raise RuntimeError('Desktop-HDR runtime must be a regular file')
+    if desktop_hdr_archive.is_file():
+        try:
+            validate_desktop_hdr_runtime(desktop_hdr_archive)
+        except DesktopHdrPolicyError as exc:
+            raise RuntimeError('Rebuild the fixed KWin and mapped-HDR frontend with the EDID-only policy before preparing integration payloads; rejected cache: '+str(exc)) from exc
+    gyro_module_path=root/'components/gyro/oxp3_bmi260.ko'
+    if not gyro_module_path.is_file():
+        raise RuntimeError('Build components/gyro/oxp3_bmi260.ko against the exact supported kernel before preparing integration payloads')
+    gyro_module=gyro_module_path.read_bytes()
+    if b'oxp3_model_policy=hardware-interface-v2\x00' not in gyro_module:
+        raise RuntimeError('Rebuild the BMI260 module from components/gyro against the exact supported kernel; the old model-locked module cannot be packaged')
 if arguments.opti_only:
     if not store.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
         raise FileNotFoundError('Targeted Opti generation requires an existing integration manifest')
@@ -152,13 +166,15 @@ input_map=input_map[:home_start]+home_block.replace('button: Guide','button: Lef
 component('input', {
     '/usr/lib/modules/7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9/updates/hid-oxp.ko':(research/'input/hid-build-v1/hid-oxp.ko').read_bytes(),
     '/etc/inputplumber/devices.d/50-onexplayer_3.yaml':(root/'components/input-profile.yaml').read_bytes(),
-    '/usr/share/inputplumber/capability_maps/oxp3-installer.yaml':input_map.encode()})
+    '/usr/share/inputplumber/capability_maps/oxp3-installer.yaml':input_map.encode(),
+    '/usr/local/lib/oxp3-input/input_profile.py':(root/'components/input_profile.py').read_bytes(),
+    '/etc/systemd/system/inputplumber.service.d/oxp3-input-profile.conf':(root/'components/input-profile.conf').read_bytes()})
 gyro_profile=(root/'components/input-profile.yaml').read_text()
 needle='      name: "{i2c-BMI0160:00,bmi260,bmi160}"'
 if gyro_profile.count(needle)!=1: raise RuntimeError('Unexpected input profile for gyro')
 gyro_profile=gyro_profile.replace(needle,needle+'\n      sample_rate: 400\n      gyro_bias: [0, 0, 0]\n      gyro_auto_calibrate: false\n      mount_matrix:\n        x: [0, -1, 0]\n        y: [-1, 0, 0]\n        z: [0, 0, -1]\n      accel_bias: [0, 0, 0]')
 component('gyro', {
-    '/var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':(research/'gyro/oxp3_bmi260.ko').read_bytes(),
+    '/var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':gyro_module,
     '/var/lib/oxp3-gyro-v1/inputplumber':(root/'cache/gyro/inputplumber').read_bytes(),
     **{'/var/lib/oxp3-gyro-v1/'+name:(root/'components/gyro'/name).read_bytes() for name in ('load.sh','unload.sh','launch.sh')},
     '/etc/systemd/system/oxp3-gyro.service':(root/'components/gyro/oxp3-gyro.service').read_bytes(),
@@ -169,7 +185,7 @@ for entry in manifest['gyro']['files']:
     if entry['target'].endswith('/inputplumber'):entry['mode']=0o755
 gyro_sources=store/'sources/gyro';gyro_sources.mkdir(parents=True,exist_ok=True)
 for name in ('oxp3_bmi260.c','bmi270.h','onexplayer3-bmi260.patch','Makefile'):
-    shutil.copyfile(research/'gyro'/name,gyro_sources/name)
+    shutil.copyfile(root/'components/gyro'/name,gyro_sources/name)
 shutil.copyfile(root/'docs/GYRO_INTEGRATION.md',gyro_sources/'README.md')
 shutil.copyfile(root.parent/'onexplayer3-steamos-setup/gyro/inputplumber-0.78.0-oxp3-gyro.patch',gyro_sources/'inputplumber-0.78.0-oxp3-gyro.patch')
 shutil.copyfile(research/'input/LICENSE',gyro_sources/'InputPlumber-LICENSE')
@@ -194,35 +210,29 @@ for source in (research/'desktop-hdr').iterdir():
 shutil.copyfile(research/'display-source/kwin-6.7.3-1.6.src.tar.gz',desktop/'kwin-6.7.3-1.6.src.tar.gz')
 manifest['desktop-hdr']['missing'] = ['Accepted fixed-prefix KWin binary bundle (not present in the local workspace)']
 runtime = store/'desktop-hdr/accepted-runtime.tar'
+if runtime.is_symlink():
+    raise RuntimeError('Desktop-HDR runtime must be a regular file')
 if runtime.is_file():
-    files={}
-    with tarfile.open(runtime) as archive:
-        members={m.name.removeprefix('./'):m for m in archive.getmembers() if m.name not in ('.','./')}
-        for name, item in members.items():
-            path=PurePosixPath(name)
-            if path.is_absolute() or '..' in path.parts or '\\' in name: raise RuntimeError('Unsafe runtime archive')
-            if item.isdir(): continue
-            visited=set(); resolved=item
-            while resolved.issym():
-                if resolved.name in visited: raise RuntimeError('Cyclic runtime link')
-                visited.add(resolved.name)
-                link=PurePosixPath(resolved.linkname)
-                if link.is_absolute() or '..' in link.parts: raise RuntimeError('External runtime link')
-                resolved=members[str(PurePosixPath(resolved.name.removeprefix('./')).parent/link)]
-            if not resolved.isfile(): raise RuntimeError('Special runtime entry')
-            files['/opt/oxp3-desktop-gamma22/6.7.3-1.6/'+name]=archive.extractfile(resolved).read()
+    try:
+        runtime_members, runtime_modes = read_desktop_hdr_runtime(runtime)
+    except DesktopHdrPolicyError as exc:
+        raise RuntimeError('Rebuild the fixed KWin and mapped-HDR frontend with the EDID-only policy before preparing integration payloads; rejected cache: '+str(exc)) from exc
+    files={'/opt/oxp3-desktop-gamma22/6.7.3-1.6/'+name:data for name,data in runtime_members.items()}
     files['/home/deck/.local/lib/oxp3-desktop-hdr-runtime/launch.sh']=(research/'desktop-hdr/launch-stable.sh').read_bytes()
     files['/home/deck/.local/lib/oxp3-desktop-hdr-runtime/disable-hdr.py']=(research/'desktop-hdr/disable-hdr.py').read_bytes()
-    files['/home/deck/.config/systemd/user/plasma-kwin_wayland.service.d/90-oxp3-gamma22.conf']=b'[Service]\nUnsetEnvironment=LD_LIBRARY_PATH KWIN_OXP3_GAMMA22_HDR\nExecStart=\nExecStart=/home/deck/.local/lib/oxp3-desktop-hdr-runtime/launch.sh\n'
+    for name in ('hdr_trial.py', 'x2mini_device.py', 'install-x2mini-hdr.sh'):
+        files['/home/deck/.local/lib/oxp3-desktop-hdr-runtime/'+name]=(root/'components/desktop-hdr'/name).read_bytes()
+    files['/home/deck/.config/systemd/user/plasma-kwin_wayland.service.d/90-oxp3-gamma22.conf']=b'[Service]\nUnsetEnvironment=LD_LIBRARY_PATH KWIN_OXP3_GAMMA22_HDR KWIN_X2MINI_HDR_PROFILE\nExecStart=\nExecStart=/home/deck/.local/lib/oxp3-desktop-hdr-runtime/launch.sh\n'
     files['/home/deck/.local/share/applications/oxp3-mapped-hdr.desktop']=b'[Desktop Entry]\nType=Application\nName=Mapped Desktop HDR\nName[zh_CN]=\xe6\xa1\x8c\xe9\x9d\xa2\xe6\x98\xa0\xe5\xb0\x84 HDR\nExec=/opt/oxp3-desktop-gamma22/6.7.3-1.6/bin/oxp3-mapped-hdr-control\nIcon=video-display\nCategories=Settings;\n'
     requirements=manifest['desktop-hdr']['packages']
     component('desktop-hdr',files,packages=requirements)
     for entry in manifest['desktop-hdr']['files']:
         target=entry['target']
         if target.startswith('opt/'):
-            original=members.get(target.split('6.7.3-1.6/',1)[1])
-            if original and original.mode & 0o111: entry['mode']=0o755
-        if target.startswith('home/deck/.local/lib/'): entry['user']=False
+            original_mode=runtime_modes.get(target.split('6.7.3-1.6/',1)[1])
+            if original_mode is not None and original_mode & 0o111: entry['mode']=0o755
+        if target.startswith('home/deck/.local/lib/'):
+            entry['user']=target.rsplit('/',1)[-1] in ('hdr_trial.py','x2mini_device.py','install-x2mini-hdr.sh')
     # Read the large compositor as one archive in the guest; thousands of FAT
     # payload lookups made the first full lifecycle run exceed its old timeout.
     manifest['desktop-hdr']['runtime_archive']='desktop-hdr/accepted-runtime.tar'

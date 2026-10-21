@@ -34,11 +34,22 @@ public static class FirmwareBoot
     }
     private static void Write(string name,byte[] data,uint attributes)
     {if(!SetFirmwareEnvironmentVariableEx(name,Global,data,(uint)data.Length,attributes))throw new Win32Exception(Marshal.GetLastWin32Error(),"Write firmware "+name);}
+    internal static void RequireSecureBootDisabled(byte[]? state)
+    {
+        if (state == null || state.Length != 1 || state[0] > 1)
+            throw new IOException("无法确认安全启动已关闭，请以管理员身份重新检测。 / Could not verify that Secure Boot is disabled. Run as administrator and check again.");
+        if (state[0] != 0)
+            throw new IOException("检测到安全启动仍已开启。请在 BIOS / UEFI 中关闭 Secure Boot，返回 Windows 后重新检测；现在无法继续安装。 / Secure Boot is still enabled. Disable it in BIOS / UEFI, return to Windows and check again before continuing.");
+    }
+    public static void RequireSecureBootDisabled()
+    {
+        if(!GetFirmwareType(out var type)||type!=2)throw new IOException("需要 Windows 以 UEFI 启动才能确认安全启动状态。 / Start Windows in UEFI mode to verify Secure Boot.");
+        Enable();var secure=Read("SecureBoot");
+        RequireSecureBootDisabled(secure?.Data);
+    }
     public static void RequireSupported()
     {
-        if(!GetFirmwareType(out var type)||type!=2)throw new IOException("实际内置安装需要 Windows 以 UEFI 启动。 / UEFI Windows is required.");
-        Enable();var secure=Read("SecureBoot");
-        if(secure==null || secure.Value.Data.Length!=1 || secure.Value.Data[0]!=0)throw new IOException("当前 SteamOS 启动程序要求关闭 Secure Boot。 / Disable Secure Boot before installation.");
+        RequireSecureBootDisabled();
         var order=Read("BootOrder");if(order==null||order.Value.Data.Length%2!=0)throw new IOException("Cannot read firmware boot order.");
     }
     public static byte[] LoadOption(PreparedPartition esp)

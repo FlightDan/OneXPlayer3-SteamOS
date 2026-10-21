@@ -73,8 +73,8 @@
     },
     {
       "id": "desktop-hdr",
-      "zh": "KDE 桌面 HDR 映射与恢复",
-      "en": "KDE desktop HDR mapping and recovery",
+      "zh": "KDE 桌面 HDR 映射与恢复（X2mini 安全试用）",
+      "en": "KDE desktop HDR mapping and recovery (X2mini safe trial)",
       "default": true,
       "dependencies": []
     },
@@ -103,8 +103,8 @@
     },
     {
       "id": "gyro",
-      "zh": "BMI260 陀螺仪 · BIOS 5.09（新装需校准）",
-      "en": "BMI260 gyro · BIOS 5.09 (calibrate after installation)",
+      "zh": "BMI260 陀螺仪（新装需校准）",
+      "en": "BMI260 gyro (calibrate after installation)",
       "default": true,
       "dependencies": [
         "input"

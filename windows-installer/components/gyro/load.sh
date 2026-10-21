@@ -1,9 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 test "$(uname -r)" = '7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'
-test "$(cat /sys/class/dmi/id/sys_vendor)" = 'ONE-NETBOOK'
-test "$(cat /sys/class/dmi/id/product_name)" = 'ONEXPLAYER 3'
-test "$(cat /sys/class/dmi/id/bios_version)" = '5.09'
 test "$(/usr/bin/inputplumber --version)" = 'inputplumber 0.78.0'
 test ! -e /sys/bus/i2c/devices/i2c-10EC5280:00/driver
 modprobe bmi270_core

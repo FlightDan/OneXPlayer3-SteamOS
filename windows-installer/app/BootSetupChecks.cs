@@ -10,11 +10,12 @@ using System.Windows.Media.Imaging;
 
 namespace OxpInstaller;
 
-// Synthetic UI and firmware store only; never invokes firmware APIs or installation.
+// Synthetic UI/store checks; startup may read firmware, never writes it or installs.
 internal static class BootSetupChecks
 {
     internal static string Run(MainWindow window)
     {
+        RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         var directory = Path.Combine(Backend.Root, "logs", "boot-setup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
         Directory.CreateDirectory(directory);
         var events = new List<string>();
@@ -29,11 +30,48 @@ internal static class BootSetupChecks
         Require(!Find<Button>("BootPrerequisitesContinue").IsEnabled, "prerequisites-require-explicit-acknowledgement");
         Click("BootPrerequisitesContinue");
         Require(Find<Grid>("BootPrerequisitesOverlay").IsVisible, "unacknowledged-routed-event-cannot-bypass-prerequisites");
+        FirmwareBoot.RequireSecureBootDisabled([0]);
+        foreach (var state in new byte[]?[] { null, [], [1], [2], [0, 0] })
+            Refuse(() => FirmwareBoot.RequireSecureBootDisabled(state), "secure-boot-rejects-enabled-or-unverified-" + (state == null ? "missing" : Convert.ToHexString(state)));
+        foreach (var failure in new[] { "Secure Boot is still enabled", "Firmware read failed" })
+        {
+            window.SecureBootPreflight = () => throw new IOException(failure);
+            Click("BootPrerequisitesShow");
+            Find<CheckBox>("BootPrerequisitesConsent").IsChecked = true;
+            Click("BootPrerequisitesContinue");
+            Require(Find<Grid>("BootPrerequisitesOverlay").IsVisible && !picker.BootPrerequisitesReady
+                && !Find<Button>("NextButton").IsEnabled && Find<TextBlock>("BootPrerequisitesStatus").Text.Contains(failure),
+                "enabled-or-unreadable-secure-boot-blocks-warning-dismissal-" + failure);
+        }
+        var probes = 0;
+        window.SecureBootPreflight = () => { if (++probes > 1) throw new IOException("changed-before-dismissal"); };
+        Click("BootPrerequisitesShow");
+        Find<CheckBox>("BootPrerequisitesConsent").IsChecked = true;
+        Click("BootPrerequisitesContinue");
+        Require(probes == 2 && Find<Grid>("BootPrerequisitesOverlay").IsVisible && !picker.BootPrerequisitesReady,
+            "warning-dismissal-rechecks-current-firmware-state");
+        window.SecureBootPreflight = () => { };
         foreach (var english in new[] { false, true })
         {
             // Check entry into the warning from the location page in both languages.
             if (Find<Grid>("BootPrerequisitesOverlay").IsVisible) Acknowledge(window);
             Find<RadioButton>(english ? "EnglishLanguage" : "ChineseLanguage").IsChecked = true;
+            window.SecureBootPreflight = () => FirmwareBoot.RequireSecureBootDisabled([1]);
+            Click("BootPrerequisitesShow");
+            Find<CheckBox>("BootPrerequisitesConsent").IsChecked = true;
+            Click("BootPrerequisitesContinue");
+            window.Width = 640; window.Height = 360; window.UpdateLayout();
+            foreach (var name in new[] { "BootPrerequisitesExit", "BootPrerequisitesContinue", "BootPrerequisitesConsent" })
+            {
+                var element = Find<FrameworkElement>(name);
+                var root = Find<Grid>("WindowRoot"); var at = element.TransformToAncestor(root).Transform(new Point());
+                Require(at.X >= 0 && at.Y >= 0 && at.X + element.ActualWidth <= root.ActualWidth + 1
+                    && at.Y + element.ActualHeight <= root.ActualHeight + 1, "blocked-prerequisites-controls-visible-" + english + "-" + name);
+            }
+            Require(Find<Grid>("BootPrerequisitesOverlay").IsVisible && !picker.BootPrerequisitesReady,
+                "actual-enabled-state-message-blocks-entry-" + english);
+            Capture(Find<Grid>("WindowRoot"), Path.Combine(directory, $"prerequisites-enabled-{(english ? "en" : "zh")}-640x360.png"));
+            window.SecureBootPreflight = () => { };
             Click("BootPrerequisitesShow");
             Require(Find<TextBlock>("BootPrerequisitesMessage").Text.Contains("BitLocker") && Find<TextBlock>("BootPrerequisitesMessage").Text.Contains("Secure Boot"), "prerequisites-name-encryption-and-secure-boot-" + english);
             foreach (var size in new[] { new Size(640, 360), new Size(853, 480), new Size(1280, 720) })
@@ -94,8 +132,14 @@ internal static class BootSetupChecks
     }
     internal static void Acknowledge(MainWindow window)
     {
-        ((CheckBox)window.FindName("BootPrerequisitesConsent")).IsChecked = true;
-        ((Button)window.FindName("BootPrerequisitesContinue")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var native = window.SecureBootPreflight;
+        window.SecureBootPreflight = () => { };
+        try
+        {
+            ((CheckBox)window.FindName("BootPrerequisitesConsent")).IsChecked = true;
+            ((Button)window.FindName("BootPrerequisitesContinue")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+        finally { window.SecureBootPreflight = native; }
     }
     private static void CheckFirmware(string directory, Action<bool, string> require, Action<Action, string> refuse)
     {
@@ -146,6 +190,7 @@ internal static class BootSetupChecks
     }
     private static void Capture(FrameworkElement root, string path)
     {
+        root.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         root.UpdateLayout();
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth), (int)Math.Ceiling(root.ActualHeight), 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));

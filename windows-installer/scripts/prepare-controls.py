@@ -7,7 +7,7 @@ root = Path(__file__).resolve().parents[1]
 research = root.parent / 'research'
 controls = root / 'components/controls'
 destination = root / 'cache/components/oxp3-controls'; destination.mkdir(parents=True, exist_ok=True)
-archive = destination / 'oxp3-controls-20261017-r7.zip'
+archive = destination / 'oxp3-controls-20261021-compat1.zip'
 selected = {
     'rapl/provider.py': 'rapl/provider.py', 'rapl/test_provider.py': 'rapl/test_provider.py',
     'manager/tdp-error-propagation.patch': 'manager/tdp-error-propagation.patch',
@@ -40,11 +40,11 @@ def source_path(source):
 
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
     for target, source in selected.items():
-        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 17, 0, 0, 0))
+        entry = zipfile.ZipInfo(target, date_time=(2026, 10, 21, 0, 0, 0))
         entry.compress_type = zipfile.ZIP_DEFLATED; entry.external_attr = 0o100644 << 16
         package.writestr(entry, source_path(source).read_bytes())
 profile = {
-    'schema': 1, 'id': 'oxp3-controls', 'version': '20261017-r7', 'archive': archive.name,
+    'schema': 1, 'id': 'oxp3-controls', 'version': '20261021-compat1', 'archive': archive.name,
     'source_files': list(selected), 'deployment': 'resources_only', 'default': False,
     'target': {'vendor': 'ONE-NETBOOK', 'product': 'ONEXPLAYER 3', 'cpu': 'Intel Arc G3 Extreme',
                'system_version': '3.10', 'system_build': '20260924.1000',

@@ -85,16 +85,19 @@ class PlannerTests(unittest.TestCase):
             with self.subTest(choices=choices), self.assertRaises(ValueError):
                 self.plan(choices)
 
-    def test_every_plugin_has_exact_device_os_kernel_guard(self):
+    def test_every_plugin_has_exact_os_kernel_guard(self):
         self.component('decky')
         self.write(self.payload, 'plugins/decky/PluginLoader', b'\x7fELFfixture')
-        for field in ('kernel', 'os', 'dmi'):
+        for field in ('kernel', 'os'):
             saved = copy.deepcopy(self.probe)
             self.probe[field] = 'other' if field == 'kernel' else {}
             plan = self.plan(['decky'])
             self.assertEqual(plan['components']['decky']['status'], 'blocked')
             self.assertEqual(plan['files'], {})
             self.probe = saved
+        for model in ('ONEXPLAYER 3', 'ONEXPLAYER X2 MINI'):
+            self.probe['dmi'] = {'product_name': model}
+            self.assert_ready(self.plan(['decky']), 'decky')
 
     def test_cross_version_keyboard_uses_portable_shared_policy_only(self):
         self.component('keyboard')
@@ -196,12 +199,15 @@ class PlannerTests(unittest.TestCase):
         self.assert_ready(plan, 'xe-dsb')
         self.assertNotIn('etc/tdp.conf', plan['files'])
 
-    def test_packages_bios_and_missing_resources_are_actionable(self):
+    def test_packages_and_missing_resources_are_actionable(self):
         self.component('input', {'etc/inputplumber/a.yaml': b'input'})
         self.component('gyro', {'etc/inputplumber/oxp3-gyro-steer.conf': b'enabled=0'}, ['input'])
         self.probe['bios'] = '5.08'
         plan = self.plan(['gyro'])
-        self.assertIn('BIOS 5.09', plan['components']['gyro']['reason'])
+        self.assert_ready(plan, 'gyro')
+        self.probe['packages']['inputplumber'] = '0.79.0'
+        plan = self.plan(['gyro'])
+        self.assertIn('InputPlumber 0.78.0', plan['components']['gyro']['reason'])
         self.component('manager', {'usr/bin/steamos-manager': b'elf'}, packages={'steamos-manager': '26.4.1-2'})
         plan = self.plan(['manager'])
         self.assertIn('26.4.1-2', plan['components']['manager']['reason'])

@@ -286,6 +286,11 @@ def apply_files(root,state,name,files,owner):
                 directory.rename(directory.with_name(name+'-history-'+uuid.uuid4().hex))
         transaction=LogicalFiles(directory,root,selected,owner)
         transaction.apply({str(Path(root)/p):v['data'] for p,v in selected.items()})
+    if name == 'desktop-hdr' and 'home/deck/.local/lib/oxp3-desktop-hdr-runtime/hdr_trial.py' in files:
+        # Login may create icons, but only a completed deployment can release
+        # the durable interlock set by restore/uninstall.
+        from x2mini_hdr_device import reset_after_install
+        reset_after_install(Path(root)/'home/deck')
 
 def seed_decky_order(root, state, owner):
     from decky_order import SETTINGS, files as order_files
@@ -680,7 +685,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         result={'schema':1,'release':bundle_release,'system':release(root),'options':options,'components':reports,'services':services,'slot':slot}
         atomic_write(state/'result.json',(json.dumps(result)+'\n').encode(),0o600,0,0)
         return result
-    for name in ('integration_runtime.py','system_update_policy.py','update_hold.py','serial_console.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','maintenance_tool.py','shared_storage.py','ntfs_steam.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','options.json','release.json','release_notes.py'):
+    for name in ('integration_runtime.py','system_update_policy.py','update_hold.py','serial_console.py','boot_repairs.py','waydroid_setup.py','file_transaction.py','integration.py','maintenance_tool.py','shared_storage.py','ntfs_steam.py','decky_order.py','plugin_installer.py','directory_transaction.py','shared_state.py','x2mini_hdr_device.py','options.json','release.json','release_notes.py'):
         runtime['usr/local/lib/oxp3-integration/'+name]={'data':(payload/'components'/name).read_bytes()}
     runtime['usr/local/lib/oxp3-integration/slot']={'data':(slot+'\n').encode()}
     for name in ('installer.py','generate.py','upstream.lua','UPSTREAM_LICENSE'):
@@ -756,8 +761,13 @@ def restore(root,slot,name,_boot_group=False):
             state_path=root/str(relative).lstrip('/')/'plugin.json'
             if json.loads(base64.b64decode(snapshot(state_path)['data'])).get('status')!='restored': raise RuntimeError('Restore configured games in Opti2XMX before removing its runtime')
         if (root/'opt/oxp3-opti2xmx/.installer-state/state.json').exists():LogicalDirectory(root,name).rollback()
-    if name=='desktop-hdr' and (root/'opt/oxp3-desktop-gamma22/.installer-state/state.json').exists():
-        LogicalDirectory(root).rollback()
+    if name=='desktop-hdr':
+        # Canonical installer code drops to the home's uid before touching
+        # user-created launchers. Never execute a helper from the target home.
+        from x2mini_hdr_device import cleanup_launchers
+        cleanup_launchers(root/'home/deck')
+        if (root/'opt/oxp3-desktop-gamma22/.installer-state/state.json').exists():
+            LogicalDirectory(root).rollback()
     if name in ('windows-reboot','slot-switch','shared-storage','partition-mount'):
         # Keep each component's configuration, helpers and entry points together
         # when an administrator has edited any journal-owned file.

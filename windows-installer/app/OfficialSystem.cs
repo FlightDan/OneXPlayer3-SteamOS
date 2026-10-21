@@ -241,6 +241,7 @@ public static class OfficialSystem
     public static async Task<string> PrepareAsync(string recovery,string directory,Action<string> log,CancellationToken token,
         Action<OfficialPreparationProgress>? report = null)
     {
+        RecoveryImage.ValidateRaw(recovery);
         var source = RequirePreparedSource();
         var root = source.EndsWith(".raucb", StringComparison.OrdinalIgnoreCase)
             ? await DownloadAsync(log, token, report, source) : source;
