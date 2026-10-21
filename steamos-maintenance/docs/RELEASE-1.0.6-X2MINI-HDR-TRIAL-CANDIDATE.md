@@ -1,5 +1,7 @@
 # X2mini KDE HDR 试用：维护候选
 
+本页保留早期源码候选时的状态；最终重编、签名和交付结果见 [maintenance.7 记录](RELEASE-1.0.6-maintenance.7.md)。
+
 2026-10-21，源码候选，未签名/发布；版本保持 1.0.6。
 
 更新、验收和九项交付状态详见 [安装器候选记录](../../windows-installer/docs/RELEASE_1.0.6_X2MINI_HDR_TRIAL.md)。维护器增加同源的 X2mini 用户入口助手，准备载荷时刷新四个脚本；普通恢复、整代回滚和中断恢复均在删除试用运行文件前检查未确认状态和已保存 HDR/WCG。

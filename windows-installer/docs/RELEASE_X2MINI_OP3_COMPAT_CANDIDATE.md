@@ -1,5 +1,7 @@
 # X2mini / OP3 机型兼容分支候选
 
+本页保留早期源码候选时的状态；最终重编、签名和交付结果见 [maintenance.7 记录](../../steamos-maintenance/docs/RELEASE-1.0.6-maintenance.7.md)。
+
 日期：2026-10-21。分支：`release/x2mini-op3-compat`。
 本记录是本地源码候选，不是新 Release；整合版本仍为 `1.0.6`。
 
