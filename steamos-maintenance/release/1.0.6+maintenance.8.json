@@ -4,5 +4,5 @@
   "version": "1.0.6+maintenance.8",
   "display_version": "1.0.6",
   "channel": "stable",
-  "notes": "继承 maintenance.7 的 X2mini / OP3 兼容更新，修复 HDR 图案呈现同步：试用必须取得真实呈现完成回执后才允许确认；缺少呈现等待能力时安全拒绝并恢复。Windows 安装器新增恢复镜像前置校验，提前识别误选 rootfs.img。显示版本仍为 1.0.6，不包含未公开动态功耗研究。"
+  "notes": "继承 maintenance.7 的 X2mini / OP3 兼容更新，修复 HDR 图案呈现同步：试用必须取得真实呈现完成回执后才允许确认；缺少呈现等待能力时安全拒绝并恢复。移除陀螺仪重启激活遗漏的 BIOS 5.09 字符串限制，保留硬件和软件版本检查。Windows 安装器新增恢复镜像前置校验，提前识别误选 rootfs.img。显示版本仍为 1.0.6，不包含未公开动态功耗研究。"
 }

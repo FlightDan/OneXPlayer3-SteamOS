@@ -1,12 +1,14 @@
 """No device writes: model-independent entry with interface/version safeguards."""
 import contextlib
+import json
 from pathlib import Path
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-from oxp3_maintenance import bootstrap, gyro_binding, probe
+from oxp3_maintenance import bootstrap, gyro_binding, operations, probe
 
 
 class ModelIndependenceTests(unittest.TestCase):
@@ -68,6 +70,49 @@ class ModelIndependenceTests(unittest.TestCase):
             command.return_value = 'inputplumber 0.78.0'
             devices.iterdir.return_value = []
             with self.assertRaises(gyro_binding.BindingError): backend.guard(input_version=True)
+
+    def activate_gyro(self, **facts):
+        system = {'slot': {'id': 'test-B'}, 'os': dict(probe.BASE),
+                  'kernel': probe.KERNEL, 'packages': {'inputplumber': '0.78.0-1'}}
+        system.update(facts)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / 'runtime'; runtime.mkdir()
+            state = root / 'state'; state.mkdir()
+            (runtime / 'activation.json').write_text(json.dumps({
+                'release': {'version': '1.0.6+maintenance.8'},
+                'components': {'gyro': {'status': 'ready',
+                    'compatibility': {'requirements': {'packages': {'inputplumber': '0.78.0-1'}}},
+                    'units': ['oxp3-gyro.service']}}}), encoding='utf8')
+            store = MagicMock()
+            store.lock.side_effect = contextlib.nullcontext
+            store.status.return_value = {'pending': None, 'slots': {
+                'test-B': {'current': {'selected': ['gyro']}}}}
+            with patch.object(operations, 'require_root'), patch.object(operations, 'trusted_code'), \
+                 patch.object(probe, 'live', return_value=system), \
+                 patch.object(operations, 'store_for', return_value=store), \
+                 patch.object(operations, 'STATE', state), patch.object(operations, 'RUNTIME', runtime), \
+                 patch.object(operations, 'PackageStore') as packages, \
+                 patch.object(operations, 'command', return_value='enabled') as command:
+                packages.return_value._read.return_value = None
+                result = operations.activate()
+            saved = json.loads((state / 'activation-test-B.json').read_text(encoding='utf8'))
+            self.assertEqual(saved['components'], result)
+            return result, command
+
+    def test_gyro_activation_accepts_other_empty_or_missing_bios(self):
+        for facts in ({'bios': 'X2-test'}, {'bios': ''}, {}):
+            with self.subTest(facts=facts):
+                result, command = self.activate_gyro(**facts)
+                self.assertEqual(result, {'gyro': 'configured'})
+                command.assert_any_call('systemctl', 'start', 'oxp3-gyro.service')
+
+    def test_gyro_activation_still_rejects_changed_kernel_or_inputplumber(self):
+        for facts in ({'kernel': 'wrong-kernel'}, {'packages': {'inputplumber': '0.79.0-1'}}):
+            with self.subTest(facts=facts):
+                result, command = self.activate_gyro(**facts)
+                self.assertEqual(result, {'gyro': 'incompatible_after_system_change'})
+                command.assert_not_called()
 
 
 if __name__ == '__main__':

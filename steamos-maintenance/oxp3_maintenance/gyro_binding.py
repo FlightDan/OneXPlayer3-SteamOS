@@ -114,7 +114,7 @@ class BindingManager:
                 return {'status': 'unchanged'}
             validate_state(record, backend.boot())
             # Cleanup must remain possible if InputPlumber was upgraded/stopped.
-            # Device, exact kernel, DMI and BIOS checks still apply.
+            # Exact kernel and the unique hardware interface are still required.
             backend.guard(input_version=False)
             return self._restore(record)
 

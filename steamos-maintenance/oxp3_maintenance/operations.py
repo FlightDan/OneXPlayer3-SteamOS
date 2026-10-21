@@ -768,8 +768,6 @@ def activate():
                 raise RuntimeError('Waydroid host packages need recovery before activation')
             if name == 'waydroid':
                 package_store.recover()  # Installed phase: read-only version verification.
-            if name == 'gyro' and system['bios'] != '5.09':
-                raise RuntimeError('Gyro activation requires BIOS 5.09')
             for unit in item.get('units', []):
                 if not UNIT.fullmatch(unit):
                     raise RuntimeError('Invalid activation service')
