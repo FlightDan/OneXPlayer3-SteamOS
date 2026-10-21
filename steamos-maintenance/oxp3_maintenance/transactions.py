@@ -30,7 +30,7 @@ import stat
 import threading
 import uuid
 
-from . import state_io
+from . import state_io, runtime_directories
 from .opti_migration import (PLUGIN as OPTI_PLUGIN, RUNTIME as OPTI_RUNTIME,
                              RUNTIME_CONFIG as OPTI_RUNTIME_CONFIG, runtime_path,
                              retain_legacy_runtime, transfer_allowed)
@@ -102,6 +102,8 @@ class Store:
         self.enforce_owner = enforce_owner
         self._depth = 0
         self._lock_fd = None
+        self._runtime_directory_pending = None
+        self._runtime_filesystem_cache = {}
         with _LOCAL_LOCKS_GUARD:
             self._mutex = _LOCAL_LOCKS.setdefault(str(self.state), threading.RLock())
         if self.enforce_owner and os.name != "posix":
@@ -252,6 +254,7 @@ class Store:
                             self._legacy_choices(generation[field])
                     if 'adoption_before' in generation:
                         self._adoption_snapshots(generation['adoption_before'])
+                    runtime_directories.validate(self, generation.get('runtime_directories', {}))
                     if 'decky_order_edit' in generation:
                         from .decky_order import SETTINGS
                         order_edit = self._order_edit(generation['decky_order_edit'])
@@ -381,17 +384,25 @@ class Store:
                         if not create:
                             yield None, parts[-1]
                             return
+                        runtime_directories.before_create(self, label, fd)
                         os.mkdir(part, 0o755, dir_fd=fd)
                         os.fsync(fd)
                         nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                        if user and label.startswith("home/"):
-                            os.fchown(nxt, self.uid, self.gid)
+                        try:
+                            if user and label.startswith("home/"):
+                                os.fchown(nxt, self.uid, self.gid)
+                                os.fsync(nxt)
                             os.fsync(nxt)
+                            runtime_directories.created(self, label, os.fstat(nxt), nxt)
+                        except BaseException:
+                            os.close(nxt)
+                            raise
                     except OSError as exc:
                         raise TransactionError(f"Unsafe target ancestor: {label}") from exc
                     os.close(fd)
                     fd = nxt
                     self._check_dir(os.fstat(fd), label, user)
+                    runtime_directories.existing(self, label, os.fstat(fd), fd)
                 yield fd, parts[-1]
             finally:
                 os.close(fd)
@@ -405,11 +416,15 @@ class Store:
                     if not create:
                         yield None, parts[-1]
                         return
+                    label = current.relative_to(self.root).as_posix()
+                    runtime_directories.before_create(self, label, current.parent)
                     current.mkdir()
                     info = current.lstat()
+                    runtime_directories.created(self, label, info, current)
                 if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
                     raise TransactionError(f"Unsafe target ancestor: {current}")
                 self._check_dir(info, str(current), user)
+                runtime_directories.existing(self, current.relative_to(self.root).as_posix(), info, current)
             yield current, parts[-1]
 
     def _read(self, relative, *, user=False):
@@ -540,6 +555,19 @@ class Store:
     def _after_write(self, relative):
         """Fault-injection seam for tests; successful writes are journaled first."""
 
+    @staticmethod
+    def _directory_error(message):
+        return TransactionError(message)
+
+    def _after_runtime_directory_create(self, relative):
+        """Crash before a creation receipt: recovery must refuse to guess."""
+
+    def _after_runtime_directory_receipt(self, relative):
+        """Crash after durable ownership: recovery may safely resume."""
+
+    def _after_runtime_directory_remove(self, relative):
+        """Crash after rmdir: recovery treats the recorded absence as complete."""
+
     def _guard_hdr_restore(self, pending, operations):
         """Keep an unconfirmed display trial's recovery code through recovery.
 
@@ -579,20 +607,30 @@ class Store:
             actual = self._read(op["path"], user=op["user"])
             if actual != op["before"] and actual != op["after"]:
                 raise TransactionError(f"Recovery conflict; target changed externally: {op['path']}")
+        self._runtime_filesystem_cache = {}
+        runtime_directories.hydrate(self, pending)
+        runtime_directories.preflight(self, pending, operations)
         self._guard_hdr_restore(pending, operations)
-        for op in operations:
-            actual = self._read(op["path"], user=op["user"])
-            if actual == op["after"]:
-                continue
-            if actual != op["before"]:
-                raise TransactionError(f"Concurrent target modification: {op['path']}")
-            self._write(op["path"], op["after"], user=op["user"])
-            self._after_write(op["path"])
-            if self._read(op["path"], user=op["user"]) != op["after"]:
-                raise TransactionError(f"Target verification failed: {op['path']}")
+        runtime_directories.preflight(self, pending, operations)
+        self._runtime_directory_pending = pending
+        try:
+            for op in operations:
+                actual = self._read(op["path"], user=op["user"])
+                if actual == op["after"]:
+                    continue
+                if actual != op["before"]:
+                    raise TransactionError(f"Concurrent target modification: {op['path']}")
+                self._write(op["path"], op["after"], user=op["user"])
+                self._after_write(op["path"])
+                if self._read(op["path"], user=op["user"]) != op["after"]:
+                    raise TransactionError(f"Target verification failed: {op['path']}")
+            runtime_directories.cleanup(self, pending)
+        finally:
+            self._runtime_directory_pending = None
         self._state_write("index.json", pending["index_after"])
         (self.state / "pending.json").unlink()
         self._sync_state()
+        runtime_directories.finish(self, pending)
         return pending["result"]
 
     def recover(self, slot: str | None = None):
@@ -609,6 +647,8 @@ class Store:
         if previous == generation and not operations:
             return {"changed": False, "slot": slot, "generation": previous.get("id") if previous else None,
                     "preserved": sorted(preserved), "paths": [], "action": action}
+        self._runtime_filesystem_cache = {}
+        directory_plan = runtime_directories.plan(self, index, slot, previous, generation, operations)
         generation["id"] = index["next_generation"]
         index["next_generation"] += 1
         index["slots"][slot] = {"current": generation, "previous": previous}
@@ -619,6 +659,7 @@ class Store:
                   "preserved": sorted(preserved), "paths": [op["path"] for op in operations], "action": action}
         pending = {"format": 1, "root": self._identity(), "slot": slot,
                    "operations": operations, "index_after": index, "result": result}
+        pending.update(directory_plan)
         self._state_write("pending.json", pending)
         return self._execute(pending, slot)
 

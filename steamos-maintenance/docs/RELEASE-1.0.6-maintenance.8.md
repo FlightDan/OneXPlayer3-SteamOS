@@ -10,6 +10,8 @@ HDR 试用仅在 Vulkan present_id / present_wait 扩展和对应特性可用时
 
 发布脚本新增可选 KeyStore 参数，将既有签名身份路径交给原发布器，便于独立公开 checkout 原地复用正式身份；签名、公钥一致性、DPAPI 和 ACL 检查保持。正式公钥固定 LF 换行，避免 Windows Git 自动转换导致相同公钥被字节一致性检查拒绝。
 
+维护事务为两个固定的受保护 `/opt` 运行库记录新建目录收据。回退、恢复和中断重放仅清理本事务创建、身份一致、无其他槽位使用且仍为空的目录，保留原有空目录；未知文件、符号链接、目录替换或挂载身份变化继续拒绝。收据以文件系统 UUID、挂载根、inode 和权限绑定，使用独立小日志，避免逐目录重写大型维护索引。创建目录后、收据落盘前的极短断电窗口会保守保留目录并停止恢复，须先审查证据，不能自动认领或清空。
+
 源码文本默认使用 LF，Windows PowerShell/CMD/BAT 保留 CRLF。避免 Windows checkout 将 Linux 服务、配置和 YAML 转为 CRLF，导致部署生成器无法加入原有 ExecCondition 启动校验；第三方 Opti 原始文件仍按现有 -text 规则保留字节。
 
 源码修复和独立审阅已完成，CI 输入按固定白名单重新生成并通过 16 项一致性检查、9 项输入回归。[原生 CI](https://github.com/FlightDan/OneXPlayer3-SteamOS/actions/runs/39638225385) 已成功，构建源码提交为 `b5abcea728a1ddf9191035cf32ff10a2c3f12fcb`；最终运行时归档为 46,653,440 字节，SHA-256 `0b70c2342b86f3d1c908e47d001037a01b76a81d2c5989a5bd2626048511bc58`，目标 SteamOS ABI 核验仍待完成。维护源码回归完成 782 项（34 项按平台跳过），退出码为 0。
