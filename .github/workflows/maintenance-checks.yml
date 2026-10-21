@@ -1,0 +1,21 @@
+name: Maintenance transaction checks
+on:
+  push:
+    branches: [main, release/x2mini-op3-compat]
+    paths:
+      - steamos-maintenance/**
+      - .github/workflows/maintenance-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-transactions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test maintenance with POSIX ownership and directory semantics
+        working-directory: steamos-maintenance
+        run: sudo python3 -B -m unittest discover -s tests -v
