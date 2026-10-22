@@ -1,0 +1,14 @@
+.gitignore
+LICENSE
+README.md
+THIRD_PARTY_NOTICES.md
+adapter.py
+scripts/apply.sh
+scripts/build.py
+scripts/fetch-input.py
+scripts/restore.sh
+scripts/verify.sh
+selection.example.json
+source-files.txt
+tests/test_adapter.py
+upstream-lock.json

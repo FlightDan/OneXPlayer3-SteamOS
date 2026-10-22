@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "slot": "guest",
+  "repairs": ["oxp3:input", "oxp3:multifunction", "oxp3:gyro", "oxp3:xe-dsb", "oxp3:split-lock"],
+  "plugins": [],
+  "installer_language": "en-US",
+  "kde_language": "system",
+  "acknowledge_legacy_update_hold": true
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "repository": "FlightDan/OneXPlayer3-SteamOS",
+  "source_commit": "e181a9055e1c94e8d758e2b9575f60fb5fc5109c",
+  "release_tag": "v1.0.6+installer.20261022.220437",
+  "asset": {
+    "url": "https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/v1.0.6%2Binstaller.20261022.220437/oxp3-steamos-installer-1.0.6-20261022-220437.zip",
+    "name": "oxp3-steamos-installer-1.0.6-20261022-220437.zip",
+    "size": 555684389,
+    "sha256": "d8bee8bad14f4cd136c814ebcaa3299fa59202b6cdc6d26ec9c52af0e055f4d4"
+  },
+  "export_prefixes": ["components/", "cache/integration/", "cache/plugins/", "cache/maintenance/", "cache/components/waydroid/", "licenses/"],
+  "export_files": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "excluded": ["research/", "app/", "guest/", "runtime/", "scripts/", "cache/alpine-virt-3.23.6-x86_64.iso", "all non-whitelisted paths"],
+  "purpose": "Byte-exact previously published model integration only. New unapproved research is never an input."
+}
