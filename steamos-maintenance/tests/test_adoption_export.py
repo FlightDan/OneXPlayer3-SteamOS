@@ -139,18 +139,22 @@ class AdoptionExportTests(unittest.TestCase):
         system = {'compatible': True, 'device_supported': True, 'slot': {'id': LIVE_SLOT, 'label': 'B'}, 'uid': 1000, 'gid': 1000}
         collect = export._collect_export
         captured = {}
-        def translated(root, slot, key, *, legacy_slot):
+        def translated(root, slot, key, *, legacy_slot, destination):
             self.assertEqual(store._depth, 1)
             self.assertEqual(root, Path('/'))
             self.assertEqual((slot, legacy_slot), ('B', LIVE_SLOT))
-            return collect(self.root, slot, key, legacy_slot=legacy_slot)
+            receipt=collect(self.root, slot, key, legacy_slot=legacy_slot)
+            receipt.update(schema_version=2,blob_directory=Path(destination).name+'.blobs',blobs=[])
+            data=json.dumps(receipt).encode()
+            write(destination,data)
+            return receipt,data
         def write(path, data):
             self.assertEqual(store._depth, 1)
             captured['receipt'] = json.loads(data)
             captured['raw'] = data
         with mock.patch.object(operations, 'require_root'), mock.patch.object(operations, 'trusted_code'), \
              mock.patch.object(operations, 'store_for', return_value=store), mock.patch.object(probe, 'live', return_value=system) as live_probe, \
-             mock.patch.object(export, '_collect_export', side_effect=translated), mock.patch.object(export, '_write_receipt', side_effect=write), self.reader_context():
+             mock.patch('oxp3_maintenance.adoption_stream.export_bundle', side_effect=translated), self.reader_context():
             summary = cli.dispatch(cli.parser().parse_args(['export-adoption', '--output', '/root/adoption.json']))
         self.assertEqual(summary['sha256'], hashlib.sha256(captured['raw']).hexdigest())
         self.assertEqual((captured['receipt']['slot'], captured['receipt']['legacy_slot']), ('B', LIVE_SLOT))

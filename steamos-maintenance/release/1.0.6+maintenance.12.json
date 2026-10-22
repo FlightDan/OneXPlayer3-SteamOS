@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.12",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "Boiler 接管导出改用受限流式解析和私有二进制备份包，支持已存在的大型旧维护索引；保留正式公钥、旧组件和恢复记录，不自动接管。新通用维护器验证完整包后显式提交所有权。"
+}

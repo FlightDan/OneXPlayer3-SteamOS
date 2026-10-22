@@ -318,11 +318,12 @@ def export_live(destination):
         again = probe.live()
         if again != system:
             raise RuntimeError('Live target identity changed before adoption export')
-        receipt = _collect_export(Path('/'), slot, key, legacy_slot=legacy_slot)
-        data = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(',', ':'))+'\n').encode('utf-8')
-        _write_receipt(destination, data)
+        from .adoption_stream import export_bundle
+        receipt, data = export_bundle(Path('/'), slot, key, legacy_slot=legacy_slot, destination=destination)
     return {'status': 'adoption_receipt_exported', 'slot': slot, 'legacy_slot': legacy_slot, 'path': str(destination),
             'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data),
             'components': [item['id'] for item in receipt['components']],
+            'schema_version': 2, 'blob_directory': receipt['blob_directory'],
+            'blobs': len(receipt['blobs']), 'blob_bytes': sum(item['size'] for item in receipt['blobs']),
             'migration_complete': False, 'preserve_legacy': True,
             'remaining': 'Review the private receipt and explicitly adopt it with the trusted Boiler runtime.'}
