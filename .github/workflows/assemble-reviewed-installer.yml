@@ -6,15 +6,18 @@ permissions:
   contents: read
 jobs:
   assemble:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Recreate exact reviewed ZIP
-        run: python3 ci/installer-assembly/rebuild.py
+        run: python ci/installer-assembly/rebuild.py
       - name: Upload only to the reviewed draft
         env:
           GH_TOKEN: ${{ github.token }}
@@ -24,7 +27,7 @@ jobs:
           set -euo pipefail
           tag='v1.0.6+installer.20261022.220437'
           gh release view "$tag" --json isDraft,targetCommitish,assets > release.json
-          python3 - <<'PY'
+          python - <<'PY'
           import json
           r=json.load(open('release.json'))
           assert r['isDraft'] is True
@@ -34,7 +37,7 @@ jobs:
           PY
           gh release upload "$tag" ci/installer-assembly/oxp3-steamos-installer-1.0.6-20261022-220437.zip
           gh release view "$tag" --json isDraft,targetCommitish,assets > uploaded.json
-          python3 - <<'PY'
+          python - <<'PY'
           import json
           r=json.load(open('uploaded.json'))
           assert r['isDraft'] is True
