@@ -192,6 +192,20 @@ class ModelPackageTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 adapter.target_root()
 
+    def test_adapter_shared_parent_is_created_privately_before_model_state(self):
+            root = Path('/fixture')
+            parent, child = root/'home/.boiler', root/'home/.boiler/oxp3-adapter'
+            create = mock.Mock()
+            with mock.patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=stat.S_IFDIR|0o700, st_uid=0)):
+                self.assertEqual(adapter.ensure_adapter_state(root, create), child)
+            self.assertEqual(create.call_args_list, [mock.call(parent,0o700), mock.call(child,0o700)])
+            for mode, uid in ((stat.S_IFDIR|0o755,0), (stat.S_IFDIR|0o700,1000), (stat.S_IFLNK|0o700,0)):
+                create.reset_mock()
+                with mock.patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=mode,st_uid=uid)):
+                    with self.assertRaisesRegex(RuntimeError,'private and root-owned'):
+                        adapter.ensure_adapter_state(root, create)
+                self.assertEqual(create.call_args_list,[mock.call(parent,0o700)])
+
     def test_legacy_events_are_distinct_and_preserve_chunked_logs_and_results(self):
             output, errors = io.StringIO(), io.StringIO()
             evidence = {'components': {'input': {'status': 'files_installed'}}}

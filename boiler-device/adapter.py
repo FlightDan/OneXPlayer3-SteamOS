@@ -128,6 +128,17 @@ def target_root(*, metadata_only=False):
     return root
 
 
+def ensure_adapter_state(root, ensure_directory):
+    """Create the shared Boiler parent privately before the model child."""
+    paths = (Path(root)/'home/.boiler', Path(root)/'home/.boiler/oxp3-adapter')
+    for path in paths:
+        ensure_directory(path, 0o700)
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o077:
+            raise RuntimeError('Adapter state must be private and root-owned; existing permissions are preserved')
+    return paths[-1]
+
+
 def run(action):
     root = target_root()
     choice = json.loads((PACKAGE/'selection.json').read_text())
@@ -171,7 +182,7 @@ def run(action):
             previous_link = LINK_TARGET
         else:
             previous_link = None
-        ensure_directory(state, 0o700)
+        ensure_adapter_state(root, ensure_directory)
         record = {'schema_version': 1, 'phase': 'applying', 'selection': choice, 'previous_runtime_link': previous_link}
         atomic_write(record_path, (json.dumps(record)+'\n').encode(), 0o600, 0, 0)
         with legacy_events():
