@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.9",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "Opti2XMX 0.2.8 修复 Steam 原生下拉菜单重建面板后下载源恢复 GitHub；普通安装和高级版本安装保留所选源。显示版本仍为 1.0.6；OptiScaler 与 XMX 运行库不变，不包含未公开动态功耗研究。"
+}

@@ -6,7 +6,7 @@ let current = '', writes = 0, unregisters = 0, cursor = 0, enableCalls = 0, reje
 const slots = [], effects = [], notifications = [], cleanups = [], timers = new Map();
 const progressTimeouts = new Map();
 let savedSelection=null, timeoutId=0, inspectCount=0;
-let timerId=0;
+let timerId=0, uiEpoch=0;
 let operation={schema:1,instance_id:'backend-1',operation_id:null,appid:null,kind:'',version:'',phase:'completed',running:false,downloaded_bytes:0,total_bytes:null,error:null,revision:0};
 let runtime={ready:false,available:true,version:'fixture',size_bytes:195433378,host_issue:'',error:'',availability_message:''};
 const info = {appid:42,name:'Demo',executables:['game.exe','Launcher.exe'],libraries:[{path:'libxess.dll'}],optis:[],
@@ -31,8 +31,9 @@ const methods = {
   restore: async () => {info.state.status='pending_restore_launch';return {ok:true,data:copy(info.state)};},
 };
 const hook = init => {
+  const epoch=uiEpoch;
   const n=cursor++;if(!(n in slots))slots[n]=init;
-  return [slots[n],value=>{slots[n]=value;}];
+  return [slots[n],value=>{if(epoch===uiEpoch)slots[n]=value;}];
 };
 const jsx = (type,props) => ({type,props});
 const context = vm.createContext({
@@ -124,7 +125,7 @@ for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout
 assert.doesNotMatch(textOf(render()),/50%/,'unknown total must not invent a percentage');
 releaseDownload();await settle();
 operation={...operation,running:false,phase:'completed',revision:3};for(const timer of timers.values())timer();await new Promise(resolve=>setTimeout(resolve,20));
-assert.equal(installCount,1);assert.equal(current,'/opti/launch %command%');assert.ok(button('打开 Opti 面板'));
+assert.equal(installCount,1);assert.equal(current,'/opti/launch %command%');assert.ok(button('打开 / 关闭 Opti 面板'));
 info.runtime_ready=true;info.automatic.reason='';
 button('高级设置').onClick();
 assert.ok(button('卸载 Opti'));assert.ok(button('回退上次操作'));
@@ -142,10 +143,10 @@ methods.opti_toggle=async(id,want,before)=>{
 button('刷新').onClick();await settle();
 const optiToggle=()=>nodes(render()).find(n=>n.type==='toggle'&&n.props.label==='Opti 注入').props;
 optiToggle().onChange(false);await settle();
-assert.equal(optiToggle().checked,false);assert.equal(button('打开 Opti 面板'),undefined);
+assert.equal(optiToggle().checked,false);assert.equal(button('打开 / 关闭 Opti 面板'),undefined);
 assert.equal(current,'/opti/launch %command%');
 optiToggle().onChange(true);await settle();
-assert.equal(optiToggle().checked,true);assert.ok(button('打开 Opti 面板'));
+assert.equal(optiToggle().checked,true);assert.ok(button('打开 / 关闭 Opti 面板'));
 console.log('PASS: independent Opti injection toggle and hidden panel when disabled.');
 
 context.document={documentElement:{lang:'en'}};
@@ -156,7 +157,7 @@ assert.ok(englishXmx);
 assert.equal(textOf(englishXmx.props.description),'Intel only. Exit the game before changing.');
 const englishOpti=englishNodes.find(n=>n.props?.label==='Opti injection');
 assert.equal(textOf(englishOpti.props.description),'Turn off for native XeSS Frame Generation.');
-assert.ok(button('Open Opti overlay'));assert.ok(button('Uninstall Opti'));
+assert.ok(button('Toggle Opti overlay'));assert.ok(button('Uninstall Opti'));
 methods.opti_toggle=async()=>({ok:false,error:'游戏仍在运行。请从 Steam 退出游戏，再操作 XMX 开关。'});
 englishOpti.props.onChange(false);await settle();
 assert.match(notifications.at(-1).body,/game is still running/);
@@ -333,7 +334,7 @@ info.automatic={executable:'ds.exe',route:'opti',reason:'OptiScaler 文件不完
 info.executables=['ds.exe'];
 info.opti={...info.opti,installed:true,incomplete:true};
 button('刷新').onClick();await settle();
-assert.equal(button('迁移现有 Opti'),undefined);assert.equal(button('打开 Opti 面板'),undefined);
+assert.equal(button('迁移现有 Opti'),undefined);assert.equal(button('打开 / 关闭 Opti 面板'),undefined);
 assert.equal(button('修复安装 Opti 0.9.4').disabled,false);
 assert.match(textOf(button('修复安装 Opti 0.9.4').description),/备份现有文件/);
 let repairCalls=0;
@@ -350,7 +351,7 @@ for(const cleanup of cleanups)cleanup();
 console.log('PASS: Control prerequisites and executable selection, visible XMX reasons, incomplete Death Stranding repair, failed journal and English copy.');
 
 // Native Steam dropdowns unmount Quick Access before invoking their callback.
-function clearUI(){for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;}
+function clearUI(){uiEpoch++;for(const cleanup of cleanups)cleanup();cleanups.length=0;slots.length=0;effects.length=0;}
 async function mountUI(){render();for(const effect of effects){const cleanup=effect();if(cleanup)cleanups.push(cleanup);}await settle();}
 const exeChoice=()=>nodes(render()).find(n=>n.props?.label==='确认游戏程序')?.props;
 const gameChoice=()=>nodes(render()).find(n=>n.props?.label==='游戏')?.props;
@@ -381,3 +382,35 @@ await mountUI();assert.equal(gameChoice().selectedOption,43);assert.equal(exeCho
 originalExeMenu.onChange({data:'Control_DX12.exe'});assert.equal(exeChoice().selectedOption,'','late previous-game callback cannot change this game');
 clearUI();
 console.log('PASS: native-menu unmount/callback/remount, late callback subscription, refresh/invalidation, appid isolation and real selected-EXE RPC.');
+
+// Source callbacks must survive the same Steam native-menu lifecycle as EXE choices.
+savedSelection='42';
+info.automatic={executable:'game.exe',route:'native',reason:'',candidates:['game.exe']};
+info.executables=['game.exe'];info.state=null;
+const sourceChoice=()=>nodes(render()).find(n=>n.type==='select'&&n.props.label==='下载源')?.props;
+for(const managedSource of [false,true]) {
+  info.opti={managed:managedSource,installed:managedSource,incomplete:false,version:'0.9.4',status:managedSource?'active':'',injection_enabled:true,rollback:false,settings:{sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real'}};
+  for(const wanted of ['ghfast','ghproxy','github']) {
+    clearUI();await mountUI();
+    if(managedSource)button('高级设置').onClick();
+    const menu=sourceChoice();
+    clearUI();menu.onChange({data:wanted});await mountUI();
+    if(managedSource)button('高级设置').onClick();
+    assert.equal(sourceChoice().selectedOption,wanted,'source survives callback while unmounted');
+    // A late callback must also notify a replacement instance that is already mounted.
+    menu.onChange({data:'ghfast'});assert.equal(sourceChoice().selectedOption,'ghfast');
+    menu.onChange({data:wanted});
+    for(const invalid of ['github-api','https://evil.invalid/','unknown',''])menu.onChange({data:invalid});
+    assert.equal(sourceChoice().selectedOption,wanted,'unknown source never enters session');
+    button('刷新').onClick();await settle();assert.equal(sourceChoice().selectedOption,wanted);
+    let received=null;
+    methods.opti_install=async(...args)=>{received=args.at(-1);return {ok:false,error:'fixture stopped before mutation'};};
+    button(managedSource?'安装所选版本':'安装 Opti 0.9.4').onClick();await settle();
+    assert.equal(received,wanted,'install RPC uses selected source after native menu remount');
+    clearUI();await mountUI();
+    if(managedSource)button('高级设置').onClick();
+    assert.equal(sourceChoice().selectedOption,wanted,'failed download and reopening preserve source');
+  }
+}
+clearUI();
+console.log('PASS: all three download sources, both install entries, native-menu remount/late callbacks, invalid choices, refresh, failed-download retry and RPC source.');

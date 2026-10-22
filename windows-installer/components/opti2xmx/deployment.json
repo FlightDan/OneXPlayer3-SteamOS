@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "plugin_version": "0.2.7",
-  "plugin_sha256": "3f0ee2ac41f42b2da480b108f7c6b055c2c58f930d3c0be852603a44b854f548",
+  "plugin_version": "0.2.8",
+  "plugin_sha256": "63a25f4911edf9534c6fc8e600287d7b6427216b9da6cd940d98d48a2ed0d9e6",
   "plugin_source": "https://github.com/FlightDan/Opti2XMX",
   "runtime": {
     "schema": 1,
@@ -14,7 +14,7 @@
   "contains_game_state": false,
   "files": {
     "plugin.json": "60120e7e4d1914b49805c1a3499bffc43c3833e5190b3896d0f8f3ab72482bcf",
-    "package.json": "dcac58f8645f43b461335e6a51a3c622b730268d365850b4d626a184772fc13f",
+    "package.json": "3d4461cd5df550a55446e17f99e2a6ac3391358852fe24db0605040c786df0d1",
     "main.py": "fd8a655a5e618acf3237eee46a663b0aab43aa2ff43a0a5303bf0555177fceb2",
     "manager.py": "08d6fbcb91e0735e99abb237085120ace7d629b3899ff3930eaef184e7e4a01b",
     "opti.py": "916f323eebf5a1362e9b4f784c058ec7b042d58d9fff3a06e9ee0fa053fa3530",
@@ -22,9 +22,9 @@
     "runtime_setup.py": "dfda0289c9e2ec8d2568e31217b5cb780bd515538a06f159d693d8c55bb42dc0",
     "runtime-source.json": "2b207a1c94a92f4a695e787096ad6e2268e038e32e5368217ceff9c8bb158670",
     "per_game.py": "fcd34a7393fb6c9cb0ee4b22313794544f6d031d67dfaf38137fcc483f7a79af",
-    "dist/index.js": "3c19b7faef2b6882934365b37968e217de0d4f5c37f828b2922a11cf21fb490e",
-    "README.md": "c2178fb5bcb40f13e921332fd6dd9ee09617c8e29799b7bb1ba50cb6e63fca8b",
-    "README.zh-CN.md": "e6a8fac740575fdf342ec979f5c9a2bf828d4ee0f94f6efcff39092b78159ee4",
+    "dist/index.js": "e035b0dfd082ac995ba7825ddee3701b0a37d96c307494f0fb00879562c046bf",
+    "README.md": "56dc636cb3319549a44c5a4e9a16c63033255d245678f6bf115bf857e8d751e5",
+    "README.zh-CN.md": "c4138edbfa5ffadb168f2a3f4bc33c1d93f61420189fbbf6805200560f9db065",
     "LICENSE": "9cf448c34a21ce7a4f637264c7bc89ed46403ad939d08aa1d35584a975ad354d",
     "THIRD_PARTY_NOTICES.md": "0e0ac0e8dd1c8142bea425dfc638539260fa937c66bf11fd7a6e02af9263bbd5",
     "docs/RUNTIME.md": "355957683b63c950425e2e9a85da33d48226278152aa6f94ca953236da824da1",

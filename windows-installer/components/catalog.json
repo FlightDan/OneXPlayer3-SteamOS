@@ -187,8 +187,8 @@
     },
     {
       "id": "opti2xmx",
-      "name": "Opti2XMX 0.2.7 每游戏 XMX / Opti 注入与版本管理",
-      "version": "0.2.7",
+      "name": "Opti2XMX 0.2.8 每游戏 XMX / Opti 注入与版本管理",
+      "version": "0.2.8",
       "state": "live_device_repair_confirmed",
       "default": true,
       "available": true,

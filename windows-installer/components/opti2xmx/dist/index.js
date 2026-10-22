@@ -167,7 +167,7 @@ const definePlugin = (fn) => {
     };
 };
 
-let selection = { appid: 0, executables: {} };
+let selection = { appid: 0, executables: {}, source: 'github' };
 const selectionListeners = new Set();
 const selectionSnapshot = () => selection;
 function subscribeSelection(listener) {
@@ -178,6 +178,10 @@ function updateSelection(next) {
     selection = next;
     for (const listener of selectionListeners)
         listener();
+}
+function setSource(value) {
+    if (value === 'github' || value === 'ghfast' || value === 'ghproxy')
+        updateSelection({ ...selection, source: value });
 }
 const inventory = callable('inventory');
 const inspect = callable('inspect_game');
@@ -241,7 +245,6 @@ function Content() {
     const lock = SP_REACT.useRef(false);
     const [advanced, setAdvanced] = SP_REACT.useState(false);
     const [version, setVersion] = SP_REACT.useState('0.9.4');
-    const [source, setSource] = SP_REACT.useState('github');
     const [settings, setSettings] = SP_REACT.useState({ sr: 'xess', fg: 'native', fg_input: 'upscaler', spoof: 'real', fg_multiplier: 'native' });
     const [removeConfirm, setRemoveConfirm] = SP_REACT.useState(false);
     const [operation, setOperation] = SP_REACT.useState(null);
@@ -255,6 +258,7 @@ function Content() {
     const refreshNeeded = SP_REACT.useRef(null);
     const [runtime, setRuntime] = SP_REACT.useState(null);
     const session = SP_REACT.useSyncExternalStore(subscribeSelection, selectionSnapshot);
+    const source = session.source;
     const busy = localBusy || operation?.running === true;
     function acceptOperation(value) {
         if (!mounted.current || value.schema !== 1 || !Number.isSafeInteger(value.revision)

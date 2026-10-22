@@ -4,7 +4,7 @@
 
 **在 SteamOS 上按游戏管理 OptiScaler 和 Intel XeSS XMX 的 Decky 插件。**
 
-版本 **0.2.7** · AGPL-3.0-only 许可证
+版本 **0.2.8** · AGPL-3.0-only 许可证
 
 本次发布新增实验性 XeSS FG 2x/3x/4x 请求、独立设置撤销，以及防止 Proton 覆盖的 XMX shim 路径。已在一台 Intel 掌机完成赛博朋克 2077 短时基准与回滚测试，FG 控件继续保留实验性标记。见[帧生成测试与恢复说明](docs/FRAME_GENERATION.md)。
 
@@ -53,7 +53,7 @@ XMX 路线在 Intel ONEXPLAYER 3 上开发。AMD Steam Deck 不具备 Intel XMX 
 
 ## 安装
 
-从 [Releases 页面](https://github.com/FlightDan/Opti2XMX/releases/tag/v0.2.7)下载 `opti2xmx-0.2.7.zip`，也可按下方步骤构建 ZIP。
+从 [Releases 页面](https://github.com/FlightDan/Opti2XMX/releases/tag/v0.2.8)下载 `opti2xmx-0.2.8.zip`，也可按下方步骤构建 ZIP。
 进入 Decky 设置，启用开发者模式，使用 **Install Plugin from ZIP File / 从 ZIP 文件安装插件**（名称可能随 Loader 版本变化），选择安装包后打开 Opti2XMX。
 
 插件以 Steam 用户身份运行，加载插件本身不会修改游戏。安装包不包含上游 DLL、私有运行库二进制、游戏文件或生成的编译缓存。
@@ -91,7 +91,7 @@ python3 -B -m unittest discover -v
 python3 package_plugin.py
 ```
 
-输出为 `opti2xmx-0.2.7.zip`，包含 Python 后端、构建后的前端、固定运行环境描述、文档和许可证，不含运行库 DLL 和驱动；仓库中的截图不放入安装 ZIP，保持小体积。测试夹具覆盖恢复、中断、运行环境校验／解压失败和文件冲突，不能替代真实游戏和硬件测试。上方插件截图为之前的 0.2.2 界面。
+输出为 `opti2xmx-0.2.8.zip`，包含 Python 后端、构建后的前端、固定运行环境描述、文档和许可证，不含运行库 DLL 和驱动；仓库中的截图不放入安装 ZIP，保持小体积。测试夹具覆盖恢复、中断、运行环境校验／解压失败和文件冲突，不能替代真实游戏和硬件测试。上方插件截图为之前的 0.2.2 界面。
 
 ## 开发与致谢
 

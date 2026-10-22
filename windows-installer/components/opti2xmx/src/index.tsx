@@ -17,8 +17,9 @@ type RuntimeStatus = {ready:boolean;available:boolean;version:string;size_bytes:
 type Operation = {schema:number;instance_id:string;operation_id:string|null;appid:number|null;kind:string;version:string;phase:string;running:boolean;downloaded_bytes:number;total_bytes:number|null;error:string|null;revision:number};
 // Steam moves dropdown menus out of Quick Access and unmounts Content. Menu
 // callbacks must update the session, not only a component that no longer exists.
-type Selection = { appid: number; executables: Record<number, string> };
-let selection: Selection = { appid: 0, executables: {} };
+type DownloadSource = 'github' | 'ghfast' | 'ghproxy';
+type Selection = { appid: number; executables: Record<number, string>; source: DownloadSource };
+let selection: Selection = { appid: 0, executables: {}, source: 'github' };
 const selectionListeners = new Set<() => void>();
 const selectionSnapshot = () => selection;
 function subscribeSelection(listener: () => void) {
@@ -28,6 +29,10 @@ function subscribeSelection(listener: () => void) {
 function updateSelection(next: Selection) {
   selection = next;
   for (const listener of selectionListeners) listener();
+}
+function setSource(value: string) {
+  if (value === 'github' || value === 'ghfast' || value === 'ghproxy')
+    updateSelection({...selection, source:value});
 }
 declare const SteamClient: { Apps: {
   RegisterForAppDetails(id: number, callback: (...args: unknown[]) => void): Registration;
@@ -90,7 +95,6 @@ function Content() {
   const lock = useRef(false);
   const [advanced, setAdvanced] = useState(false);
   const [version, setVersion] = useState('0.9.4');
-  const [source, setSource] = useState('github');
   const [settings, setSettings] = useState<Settings>({sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'native'});
   const [removeConfirm, setRemoveConfirm] = useState(false);
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -104,6 +108,7 @@ function Content() {
   const refreshNeeded = useRef<{appid:number;instance:string;operation:string|null} | null>(null);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const session = useSyncExternalStore(subscribeSelection, selectionSnapshot);
+  const source = session.source;
   const busy = localBusy || operation?.running === true;
   function acceptOperation(value: Operation) {
     if (!mounted.current || value.schema !== 1 || !Number.isSafeInteger(value.revision)
@@ -329,9 +334,9 @@ function Content() {
       {opti?.managed && <ToggleField label={t('Opti 注入')} checked={opti.injection_enabled} disabled={busy || pending || configBlocked}
         description={t('原生 XeSS 帧生成请关闭。')}
         onChange={want => void toggleOpti(want)} />}
-      {opti?.installed && !opti.incomplete && opti.injection_enabled !== false && <ButtonItem layout="below" disabled={busy || configBlocked} onClick={() => task(t('正在打开 Opti 面板…'), async () => {
+      {opti?.installed && !opti.incomplete && opti.injection_enabled !== false && <ButtonItem layout="below" disabled={busy || configBlocked} onClick={() => task(t('正在切换 Opti 面板…'), async () => {
         Navigation.CloseSideMenus(); unwrap(await optiPanel(appid)); setMessage(t('已发送面板快捷键。'));
-      })}>{t('打开 Opti 面板')}</ButtonItem>}
+      })}>{t('打开 / 关闭 Opti 面板')}</ButtonItem>}
       {runtimeControl}
       {opti && !opti.managed && !optiPending && <>
         {!migrateOpti && <DropdownItem layout="below" label={t('下载源')} selectedOption={source} disabled={busy}
