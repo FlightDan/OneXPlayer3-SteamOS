@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.10",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "新增显式 root-only export-adoption 命令，将已验证的旧维护器或安装器原始备份转换为私有接管回执，供独立 Boiler 维护运行时显式审查和接管；保留正式公钥、原发现、修复、恢复入口及历史资产。不自动迁移，不升级 SteamOS，不宣称完成新栈实机验收。"
+}

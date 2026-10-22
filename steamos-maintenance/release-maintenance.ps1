@@ -7,7 +7,7 @@ param(
     [string]$OutputDirectory,
     [string]$PreviousCatalog,
     [string]$PreviousSignature,
-    [string]$KeyStore,
+    [Alias('Store')][string]$KeyStore,
     [string]$Python
 )
 $ErrorActionPreference = 'Stop'

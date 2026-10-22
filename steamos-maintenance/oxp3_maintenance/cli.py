@@ -369,7 +369,7 @@ def parser():
     result.add_argument('action', nargs='?', default='gui', choices=(
         'gui', 'status', 'plan', 'apply', 'bootstrap', 'check-updates', 'update',
         'rollback', 'restore', 'recover', 'guard', 'activate', 'logs', 'catalog', 'download', 'health',
-        'partition-mount', 'installation-status', 'session-service'))
+        'partition-mount', 'installation-status', 'session-service', 'export-adoption'))
     result.add_argument('--bundle', help='Signed maintenance .tar.gz')
     result.add_argument('--bundle-dir', help='Extracted signed maintenance directory')
     result.add_argument('--select', nargs='*', default=[], help='Component IDs; dependencies are included')
@@ -380,7 +380,7 @@ def parser():
     result.add_argument('--json', action='store_true', help='Structured result (also the CLI default)')
     result.add_argument('--channel', choices=('stable', 'beta'), help='Project release channel')
     result.add_argument('--version', help='Exact project release to browse/download; defaults to newest')
-    result.add_argument('--output', help='User download directory (download action)')
+    result.add_argument('--output', help='Download directory, or a create-only root-private receipt filename for export-adoption')
     result.add_argument('--tool-only', action='store_true', help='Update only the signed maintenance engine; keep existing repairs unchanged')
     result.add_argument('--selected-only', action='store_true', help='Refresh only --select components and dependencies; keep other installed components unchanged')
     from .network import NETWORK_MODES
@@ -407,6 +407,9 @@ def dispatch(args):
         return check_updates(args.background, args.channel, getattr(args, 'github_network', None))
     if args.action in ('catalog', 'download'):
         return online(args)
+    if args.action == 'export-adoption':
+        from .adoption_export import export_live
+        return export_live(args.output)
     from . import operations, probe
     if args.action == 'guard':
         operations.require_root()

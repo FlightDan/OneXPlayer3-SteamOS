@@ -135,7 +135,7 @@ def prepare_release(payload, release_metadata, opti_plugin, output, opti_runtime
         report = {'release': release, 'plugin_version': json.loads(records['package.json'])['version'],
                   'plugin_sha256': hashlib.sha256(opti_plugin.read_bytes()).hexdigest(),
                   'plugin_files': len(records), 'excluded': policy['excluded'],
-                  'source_payload': str(payload.absolute()), 'published': False}
+                  'source_payload': payload.name, 'published': False}
         if runtime_overlay is not None:
             report['runtime_overlay'] = runtime_overlay
         (stage / 'components/release-preparation.json').write_bytes(json_bytes(report))

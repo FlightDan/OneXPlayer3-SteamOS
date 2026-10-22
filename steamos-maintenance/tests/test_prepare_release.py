@@ -57,6 +57,17 @@ class PrepareReleaseTests(unittest.TestCase):
                 prepare.prepare_release(self.payload, self.metadata, bad, self.root / 'bad-output')
             self.assertFalse((self.root / 'bad-output').exists())
 
+    def test_exported_preparation_metadata_contains_no_absolute_workspace_path(self):
+        (self.payload / 'components/preparation-report.json').write_text(json.dumps({
+            'schema': 1, 'coverage': {}, 'source_inventory': {}, 'release': {'version': '0.1.3'}}))
+        output = self.root / 'release-private-path-check'
+        report = prepare.prepare_release(self.payload, self.metadata, self.plugin, output)
+        self.assertEqual(report['source_payload'], 'payload')
+        for name in ('preparation-report.json', 'release-preparation.json'):
+            value = json.loads((output / 'components' / name).read_text())
+            self.assertNotIn(str(self.root), json.dumps(value))
+        self.assertEqual(json.loads((output / 'components/preparation-report.json').read_text())['release_overlay']['source_payload'], 'payload')
+
     def test_explicit_runtime_overlay_is_pinned_and_leaves_cache_unchanged(self):
         runtime = self.root / 'published-runtime.tar.gz'
         runtime.write_bytes(b'reviewed runtime with license notices')
