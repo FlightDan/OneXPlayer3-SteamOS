@@ -84,15 +84,19 @@ def _protected_snapshot(root, name, *, user_uid=None):
     return {'exists': True, 'data': base64.b64encode(data).decode(), 'mode': stat.S_IMODE(info.st_mode), 'uid': info.st_uid, 'gid': info.st_gid}
 
 
-def collect_adoption(root, slot, expected_key, *, reader=None):
+def collect_adoption(root, slot, expected_key, *, legacy_slot, reader=None):
     """Translate exact known OXP3 metadata; never mutate old journals or keys.
 
     The returned receipt contains private original snapshots. A generic engine
     must validate it again and commit ownership before calling migration done.
+    ``slot`` is the explicit A/B installer label; ``legacy_slot`` separately
+    selects the maintenance index/originals identity and is never inferred.
     """
     root = Path(root).absolute()
     if slot not in ('A', 'B'):
         raise RuntimeError('Explicit legacy slot is required')
+    if not isinstance(legacy_slot, str) or not re.fullmatch(r'(?:partuuid-[a-z0-9-]{8,64}|[AB])', legacy_slot):
+        raise RuntimeError('Explicit stable legacy slot identity is required')
     read = reader or (lambda name, **kw: _protected_snapshot(root, name, **kw))
     evidence = []
     def raw(name, role, *, private=True):
@@ -140,14 +144,14 @@ def collect_adoption(root, slot, expected_key, *, reader=None):
         index = document(index_name, 'maintenance-index')
         if index.get('format') != 1 or not isinstance(index.get('originals'), dict):
             raise RuntimeError('Unsupported legacy maintenance index')
-        generation = index.get('slots', {}).get(slot, {}).get('current')
+        generation = index.get('slots', {}).get(legacy_slot, {}).get('current')
         if not isinstance(generation, dict) or type(generation.get('id')) is not int or not isinstance(generation.get('paths'), dict):
             raise RuntimeError('No known current legacy maintenance generation for this slot')
         if generation.get('aborted_apply'):
             raise RuntimeError('Recover aborted legacy maintenance generation before adoption')
         for name, entry in generation['paths'].items():
             _relative(name)
-            scope = ('shared' if name.startswith(('home/', 'opt/')) else slot) + ':' + name
+            scope = ('shared' if name.startswith(('home/', 'opt/')) else legacy_slot) + ':' + name
             if scope not in index['originals'] or not isinstance(entry, dict):
                 raise RuntimeError('Legacy original snapshot missing')
             add(name, entry.get('component'), index['originals'][scope], entry.get('snapshot'))
@@ -196,7 +200,7 @@ def collect_adoption(root, slot, expected_key, *, reader=None):
     components = {}
     for item in sorted(operations.values(), key=lambda value: value['target']):
         components.setdefault(item['component'], []).append({key: item[key] for key in ('target', 'before', 'after')})
-    return {'schema_version': 1, 'kind': 'LegacyAdoptionReceipt', 'device_id': 'oxp3', 'slot': slot,
+    return {'schema_version': 1, 'kind': 'LegacyAdoptionReceipt', 'device_id': 'oxp3', 'slot': slot, 'legacy_slot': legacy_slot,
             'source_format': source_format, 'source_release': release, 'evidence': evidence,
             'trusted_public_key': next(item for item in evidence if item['role'] == 'trusted-public-key'),
             'components': [{'id': name, 'version': release.get('version', '1.0.6'), 'operations': entries} for name, entries in sorted(components.items())],
@@ -257,8 +261,8 @@ def _write_receipt(destination, data):
         os.close(directory)
 
 
-def _collect_export(root, slot, expected_key):
-    """Collect and recheck all evidence while the caller holds the old lock."""
+def _collect_export(root, slot, expected_key, *, legacy_slot):
+    """Recheck evidence under the old lock, preserving separate slot identities."""
     root = Path(root)
     lifecycle = root/'home/.oxp3-maintenance/live-operation.json'
     if os.path.lexists(lifecycle):
@@ -266,9 +270,9 @@ def _collect_export(root, slot, expected_key):
         if snapshot['mode'] & 0o077:
             raise RuntimeError('Legacy lifecycle state is not private')
         record = json.loads(base64.b64decode(snapshot['data']), object_pairs_hook=_pairs)
-        if record.get('phase') != 'coherent' or record.get('slot') != slot:
+        if record.get('phase') != 'coherent' or record.get('slot') != legacy_slot:
             raise RuntimeError('Recover the legacy live operation before adoption export')
-    receipt = collect_adoption(root, slot, expected_key)
+    receipt = collect_adoption(root, slot, expected_key, legacy_slot=legacy_slot)
     if os.path.lexists(lifecycle):
         receipt['evidence'].append({'path': lifecycle.relative_to(root).as_posix(), 'role': 'legacy-lifecycle',
                                     'sha256': hashlib.sha256(base64.b64decode(snapshot['data'])).hexdigest(),
@@ -301,16 +305,23 @@ def export_live(destination):
     system = probe.live()
     if not system.get('compatible') or not system.get('device_supported'):
         raise RuntimeError('This legacy adoption bridge requires the supported OXP3 SteamOS baseline')
+    topology = system.get('slot', {})
+    slot, legacy_slot = topology.get('label'), topology.get('id')
+    # A/B labels select the historical installer's logical journals only. Live
+    # maintenance generations, originals and lifecycle always use the probed
+    # PARTUUID identity. Never guess an A/B fallback key in a live index.
+    if slot not in ('A', 'B') or not isinstance(legacy_slot, str) or not re.fullmatch(r'partuuid-[a-z0-9-]{8,64}', legacy_slot):
+        raise RuntimeError('Verified A/B label and stable live legacy slot identity are required')
     key = (Path(__file__).resolve().parent.parent/'trusted-public-key.pem').read_bytes()
     store = operations.store_for(system)
     with store.lock():
         again = probe.live()
         if again != system:
             raise RuntimeError('Live target identity changed before adoption export')
-        receipt = _collect_export(Path('/'), system['slot']['id'], key)
+        receipt = _collect_export(Path('/'), slot, key, legacy_slot=legacy_slot)
         data = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(',', ':'))+'\n').encode('utf-8')
         _write_receipt(destination, data)
-    return {'status': 'adoption_receipt_exported', 'slot': system['slot']['id'], 'path': str(destination),
+    return {'status': 'adoption_receipt_exported', 'slot': slot, 'legacy_slot': legacy_slot, 'path': str(destination),
             'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data),
             'components': [item['id'] for item in receipt['components']],
             'migration_complete': False, 'preserve_legacy': True,

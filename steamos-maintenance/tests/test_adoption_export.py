@@ -15,6 +15,7 @@ from oxp3_maintenance.transactions import Store
 SOURCE = Path(__file__).resolve().parents[1]
 POSIX_ROOT = os.name == 'posix' and os.geteuid() == 0
 INSTALLER_SOURCE = os.environ.get('BOILER_INSTALLER_SOURCE')
+LIVE_SLOT = 'partuuid-5136a001-2345-6789-abcd-0123456789ab'
 
 
 class AdoptionExportTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class AdoptionExportTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.key = (SOURCE/'trusted-public-key.pem').read_bytes()
 
-    def fixture(self, maintenance):
+    def fixture(self, maintenance, *, slot='A', legacy_slot='A', lifecycle=False):
         def write(name, data, mode=0o600):
             path = self.root/name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,20 +42,22 @@ class AdoptionExportTests(unittest.TestCase):
         originals, paths = {}, {}
         for name, (component, before, after) in targets.items():
             write(name, after, 0o644)
-            originals['A:'+name] = snapshot(before)
+            originals[legacy_slot+':'+name] = snapshot(before)
             paths[name] = {'component': component, 'snapshot': snapshot(after)}
         if maintenance:
             write('home/.oxp3-maintenance/index.json', json.dumps({'format': 1, 'originals': originals,
-                  'slots': {'A': {'current': {'id': 7, 'release': {'version': '1.0.6+maintenance.9'}, 'paths': paths}}}}).encode())
+                  'slots': {legacy_slot: {'current': {'id': 7, 'release': {'version': '1.0.6+maintenance.9'}, 'paths': paths}}}}).encode())
         else:
-            write('home/.oxp3-installer/integration/A/result.json', json.dumps({'schema': 1, 'slot': 'A',
+            write('home/.oxp3-installer/integration/'+slot+'/result.json', json.dumps({'schema': 1, 'slot': slot,
                   'release': {'version': '1.0.6'}, 'components': {'input': {'status': 'files_installed'}}}).encode())
             for name, (component, before, after) in targets.items():
                 group = 'runtime' if component == '_maintenance' else component
-                write('home/.oxp3-installer/integration/A/'+group+'/state.json', json.dumps({'phase': 'installed', 'allowed': [name],
+                write('home/.oxp3-installer/integration/'+slot+'/'+group+'/state.json', json.dumps({'phase': 'installed', 'allowed': [name],
                       'original': {name: snapshot(before)}, 'applied': {name: snapshot(after)['data']}, 'metadata': {name: {}}}).encode())
         (self.root/'home/.oxp3-maintenance').mkdir(parents=True, exist_ok=True)
         (self.root/'home/.oxp3-maintenance').chmod(0o700)
+        if lifecycle:
+            write('home/.oxp3-maintenance/live-operation.json', json.dumps({'slot': legacy_slot, 'phase': 'coherent'}).encode())
         return targets
 
     def reader(self, root, name, **kwargs):
@@ -82,7 +85,7 @@ class AdoptionExportTests(unittest.TestCase):
                     before = self.files()
                     store = Store(self.root, self.root/'home/.oxp3-maintenance', enforce_owner=POSIX_ROOT)
                     with store.lock(), self.reader_context():
-                        receipt = export._collect_export(self.root, 'A', self.key)
+                        receipt = export._collect_export(self.root, 'A', self.key, legacy_slot='A')
                     self.assertEqual({item['id'] for item in receipt['components']}, {'oxp3:input', 'oxp3:maintenance-runtime' if maintenance else 'oxp3:runtime'})
                     operations_by_path = {op['target']: op for item in receipt['components'] for op in item['operations']}
                     for name, (_, original, current) in targets.items():
@@ -106,7 +109,7 @@ class AdoptionExportTests(unittest.TestCase):
                 if change == 'format': self.write('home/.oxp3-maintenance/index.json', b'{"format":2}')
                 before = self.files()
                 with self.reader_context(), self.assertRaises(RuntimeError):
-                    export._collect_export(self.root, 'A', expected_key)
+                    export._collect_export(self.root, 'A', expected_key, legacy_slot='A')
                 self.assertEqual(self.files(), before)
 
     def test_rechecks_evidence_and_live_bytes_before_publication(self):
@@ -119,7 +122,7 @@ class AdoptionExportTests(unittest.TestCase):
                 self.write(name, b'concurrent edit\n', 0o644)
             return real(root, name, **kwargs)
         with mock.patch.object(export, '_protected_snapshot', side_effect=change), self.assertRaisesRegex(RuntimeError, 'changed during'):
-            export._collect_export(self.root, 'A', self.key)
+            export._collect_export(self.root, 'A', self.key, legacy_slot='A')
 
     def test_cli_is_explicit_and_not_exposed_to_window_session(self):
         arguments = cli.parser().parse_args(['export-adoption', '--output', '/root/adoption.json'])
@@ -131,28 +134,91 @@ class AdoptionExportTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'root required'): export.export_live('/root/adoption.json')
 
     def test_live_dispatch_takes_old_lock_and_returns_only_summary(self):
-        self.fixture(True)
+        self.fixture(True, slot='B', legacy_slot=LIVE_SLOT, lifecycle=True)
         store = Store(self.root, self.root/'home/.oxp3-maintenance', enforce_owner=POSIX_ROOT)
-        system = {'compatible': True, 'device_supported': True, 'slot': {'id': 'A'}, 'uid': 1000, 'gid': 1000}
+        system = {'compatible': True, 'device_supported': True, 'slot': {'id': LIVE_SLOT, 'label': 'B'}, 'uid': 1000, 'gid': 1000}
         collect = export._collect_export
         captured = {}
-        def translated(root, slot, key):
+        def translated(root, slot, key, *, legacy_slot):
             self.assertEqual(store._depth, 1)
             self.assertEqual(root, Path('/'))
-            return collect(self.root, slot, key)
+            self.assertEqual((slot, legacy_slot), ('B', LIVE_SLOT))
+            return collect(self.root, slot, key, legacy_slot=legacy_slot)
         def write(path, data):
             self.assertEqual(store._depth, 1)
             captured['receipt'] = json.loads(data)
             captured['raw'] = data
         with mock.patch.object(operations, 'require_root'), mock.patch.object(operations, 'trusted_code'), \
-             mock.patch.object(operations, 'store_for', return_value=store), mock.patch.object(probe, 'live', return_value=system), \
+             mock.patch.object(operations, 'store_for', return_value=store), mock.patch.object(probe, 'live', return_value=system) as live_probe, \
              mock.patch.object(export, '_collect_export', side_effect=translated), mock.patch.object(export, '_write_receipt', side_effect=write), self.reader_context():
             summary = cli.dispatch(cli.parser().parse_args(['export-adoption', '--output', '/root/adoption.json']))
         self.assertEqual(summary['sha256'], hashlib.sha256(captured['raw']).hexdigest())
+        self.assertEqual((captured['receipt']['slot'], captured['receipt']['legacy_slot']), ('B', LIVE_SLOT))
+        self.assertEqual((summary['slot'], summary['legacy_slot']), ('B', LIVE_SLOT))
+        self.assertEqual(live_probe.call_count, 2)
         self.assertNotIn('data', json.dumps(summary))
         self.assertNotIn('applied configuration', json.dumps(summary))
         self.assertFalse(summary['migration_complete'])
         self.assertEqual(store._depth, 0)
+
+    def test_partuuid_index_and_logical_installer_journals_use_separate_identities(self):
+        for maintenance in (True, False):
+            with self.subTest(maintenance=maintenance), tempfile.TemporaryDirectory(dir='/root' if POSIX_ROOT else None) as fresh:
+                self.root = Path(fresh)
+                targets = self.fixture(maintenance, slot='B', legacy_slot=LIVE_SLOT, lifecycle=True)
+                before = self.files()
+                with self.reader_context():
+                    receipt = export._collect_export(self.root, 'B', self.key, legacy_slot=LIVE_SLOT)
+                self.assertEqual((receipt['slot'], receipt['legacy_slot']), ('B', LIVE_SLOT))
+                self.assertEqual(receipt['source_format'], 'oxp3-maintenance-format-1' if maintenance else 'oxp3-installer-logical-files-v1')
+                self.assertEqual({op['target'] for item in receipt['components'] for op in item['operations']}, set(targets))
+                self.assertIn('legacy-lifecycle', {item['role'] for item in receipt['evidence']})
+                self.assertEqual(self.files(), before)
+
+    def test_stable_index_originals_and_lifecycle_never_fall_back_to_label(self):
+        for change in ('index', 'originals', 'lifecycle'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory(dir='/root' if POSIX_ROOT else None) as fresh:
+                self.root = Path(fresh)
+                self.fixture(True, slot='B', legacy_slot=LIVE_SLOT, lifecycle=True)
+                path = self.root/'home/.oxp3-maintenance/index.json'
+                index = json.loads(path.read_text())
+                if change == 'index':
+                    index['slots']['B'] = index['slots'].pop(LIVE_SLOT)
+                    self.write(path.relative_to(self.root).as_posix(), json.dumps(index).encode())
+                elif change == 'originals':
+                    index['originals'] = {key.replace(LIVE_SLOT+':', 'B:', 1): value for key, value in index['originals'].items()}
+                    self.write(path.relative_to(self.root).as_posix(), json.dumps(index).encode())
+                else:
+                    self.write('home/.oxp3-maintenance/live-operation.json', b'{"slot":"B","phase":"coherent"}')
+                before = self.files()
+                with self.reader_context(), self.assertRaises(RuntimeError):
+                    export._collect_export(self.root, 'B', self.key, legacy_slot=LIVE_SLOT)
+                self.assertEqual(self.files(), before)
+        with self.assertRaises(TypeError):
+            export.collect_adoption(self.root, 'B', self.key)
+
+    def test_live_export_requires_verified_label_stable_identity_and_unchanged_second_probe(self):
+        self.fixture(True, slot='B', legacy_slot=LIVE_SLOT, lifecycle=True)
+        system = {'compatible': True, 'device_supported': True, 'slot': {'id': LIVE_SLOT, 'label': 'B'}}
+        store = Store(self.root, self.root/'home/.oxp3-maintenance', enforce_owner=POSIX_ROOT)
+        for slot in ({'id': LIVE_SLOT}, {'id': LIVE_SLOT, 'label': 'C'}, {'id': 'B', 'label': 'B'}):
+            with self.subTest(slot=slot), mock.patch.object(operations, 'require_root'), \
+                 mock.patch.object(operations, 'trusted_code'), mock.patch.object(probe, 'live', return_value=dict(system, slot=slot)), \
+                 mock.patch.object(export, '_collect_export') as collect, mock.patch.object(export, '_write_receipt') as write:
+                with self.assertRaisesRegex(RuntimeError, 'stable live legacy slot'):
+                    export.export_live('/root/adoption.json')
+                collect.assert_not_called()
+                write.assert_not_called()
+        for slot in ({'id': 'partuuid-99999999-2345-6789-abcd-0123456789ab', 'label': 'B'}, {'id': LIVE_SLOT, 'label': 'A'}):
+            with self.subTest(changed_slot=slot), mock.patch.object(operations, 'require_root'), \
+                 mock.patch.object(operations, 'trusted_code'), mock.patch.object(operations, 'store_for', return_value=store), \
+                 mock.patch.object(probe, 'live', side_effect=[system, dict(system, slot=slot)]) as live_probe, \
+                 mock.patch.object(export, '_collect_export') as collect, mock.patch.object(export, '_write_receipt') as write:
+                with self.assertRaisesRegex(RuntimeError, 'identity changed'):
+                    export.export_live('/root/adoption.json')
+                self.assertEqual(live_probe.call_count, 2)
+                collect.assert_not_called()
+                write.assert_not_called()
 
     @unittest.skipUnless(INSTALLER_SOURCE, 'Set BOILER_INSTALLER_SOURCE for the separate new-runtime integration')
     def test_export_adopt_verify_restore_both_formats_without_legacy_mutation(self):
@@ -164,12 +230,12 @@ class AdoptionExportTests(unittest.TestCase):
         for maintenance in (True, False):
             with self.subTest(maintenance=maintenance), tempfile.TemporaryDirectory(dir='/root' if POSIX_ROOT else None) as fresh:
                 self.root = Path(fresh)
-                targets = self.fixture(maintenance)
+                targets = self.fixture(maintenance, slot='B', legacy_slot=LIVE_SLOT, lifecycle=True)
                 before = self.files()
                 store = Store(self.root, self.root/'home/.oxp3-maintenance', enforce_owner=POSIX_ROOT)
                 receipt_path = self.root/'receipt.json'
                 with store.lock(), self.reader_context():
-                    receipt = export._collect_export(self.root, 'A', self.key)
+                    receipt = export._collect_export(self.root, 'B', self.key, legacy_slot=LIVE_SLOT)
                     data = json.dumps(receipt).encode()
                     if POSIX_ROOT:
                         export._write_receipt(receipt_path, data)
@@ -213,13 +279,13 @@ class AdoptionExportTests(unittest.TestCase):
         self.fixture(True)
         index = self.root/'home/.oxp3-maintenance/index.json'
         index.chmod(0o644)
-        with self.assertRaisesRegex(RuntimeError, 'not protected'): export._collect_export(self.root, 'A', self.key)
+        with self.assertRaisesRegex(RuntimeError, 'not protected'): export._collect_export(self.root, 'A', self.key, legacy_slot='A')
         index.chmod(0o600)
         target = self.root/'etc/model.conf'
         renamed = target.with_suffix('.saved')
         target.rename(renamed)
         target.symlink_to(renamed)
-        with self.assertRaisesRegex(RuntimeError, 'Untrusted'): export._collect_export(self.root, 'A', self.key)
+        with self.assertRaisesRegex(RuntimeError, 'Untrusted'): export._collect_export(self.root, 'A', self.key, legacy_slot='A')
 
 
 if __name__ == '__main__':

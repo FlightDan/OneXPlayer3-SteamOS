@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.11",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "修正 Boiler 接管导出的实机槽位身份：维护日志以稳定 PARTUUID 寻址，安装器日志与回执使用已验证 A/B 标签；保留双重实机身份核验、正式公钥及旧恢复记录。此前 .10 工具升级已验证，回执导出会安全拒绝该实机格式；本修订不自动接管组件。"
+}
