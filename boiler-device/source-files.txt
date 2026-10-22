@@ -12,3 +12,7 @@ selection.example.json
 source-files.txt
 tests/test_adapter.py
 upstream-lock.json
+maintenance-static-lock.json
+scripts/build-maintenance.py
+tests/test_maintenance_package.py
+docs/MAINTENANCE_PACKAGE.md

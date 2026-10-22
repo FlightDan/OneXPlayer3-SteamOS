@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "upstream_lock_sha256": "8475c3363bae582198ec71ccce85357b4541fc75dda1c0fa256aa0e7f4ee3ced",
+  "package_id": "device:oxp3-maintenance",
+  "component_id": "oxp3:xe-dsb",
+  "component_version": "1.0.6",
+  "source": "cache/integration/xe-dsb/000.bin",
+  "target": "etc/modprobe.d/xe-oxp3.conf",
+  "size": 112,
+  "sha256": "1a1e2c951fec8a8a3c10977c78205e30d7052582c36c3e0700ffd03bd748b690",
+  "mode": 420,
+  "meaning": "Unchanged published 1.0.6 component baseline; no new repair or higher legacy revision is asserted."
+}

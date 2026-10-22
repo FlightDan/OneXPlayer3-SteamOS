@@ -26,7 +26,9 @@ VERSION = '0.1.0-dev.1'
 REPOSITORY = 'FlightDan/OneXPlayer3-SteamOS'
 SOURCE_FILES = ('.gitignore', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.md', 'adapter.py',
                 'scripts/apply.sh', 'scripts/build.py', 'scripts/fetch-input.py', 'scripts/restore.sh',
-                'scripts/verify.sh', 'selection.example.json', 'source-files.txt', 'tests/test_adapter.py', 'upstream-lock.json')
+                'scripts/verify.sh', 'selection.example.json', 'source-files.txt', 'tests/test_adapter.py', 'upstream-lock.json',
+                'maintenance-static-lock.json', 'scripts/build-maintenance.py', 'tests/test_maintenance_package.py',
+                'docs/MAINTENANCE_PACKAGE.md')
 COMPATIBILITY = {'architectures': ['x86_64'], 'os_ids': ['steamos'], 'device_ids': ['oxp3'], 'os_versions': ['3.10'],
                  'kernels': ['7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9']}
 
@@ -142,7 +144,7 @@ def committed_model(root, source_commit):
         raise ValueError('Public model source must be clean')
     whitelist = (root/'source-files.txt').read_text(encoding='utf-8').splitlines()
     if len(whitelist) != len(SOURCE_FILES) or set(whitelist) != set(SOURCE_FILES):
-        raise ValueError('Public model source whitelist must contain exactly the reviewed 14 files')
+        raise ValueError('Public model source whitelist must contain exactly the reviewed source files')
     tracked = {}
     for entry in git('ls-tree', '-rz', source_commit, '--', 'boiler-device').split(b'\x00'):
         if not entry:
