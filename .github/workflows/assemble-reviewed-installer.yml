@@ -1,0 +1,43 @@
+name: Assemble reviewed Windows installer
+on:
+  push:
+    branches: [release/opti-source-assembly]
+permissions:
+  contents: read
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Recreate exact reviewed ZIP
+        run: python3 ci/installer-assembly/rebuild.py
+      - name: Upload only to the reviewed draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: FlightDan/OneXPlayer3-SteamOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='v1.0.6+installer.20261022.220437'
+          gh release view "$tag" --json isDraft,targetCommitish,assets > release.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('release.json'))
+          assert r['isDraft'] is True
+          assert r['targetCommitish']=='e181a9055e1c94e8d758e2b9575f60fb5fc5109c'
+          names={a['name'] for a in r['assets']}
+          assert names <= {'SHA256SUMS'}, names
+          PY
+          gh release upload "$tag" ci/installer-assembly/oxp3-steamos-installer-1.0.6-20261022-220437.zip
+          gh release view "$tag" --json isDraft,targetCommitish,assets > uploaded.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('uploaded.json'))
+          assert r['isDraft'] is True
+          a=next(a for a in r['assets'] if a['name']=='oxp3-steamos-installer-1.0.6-20261022-220437.zip')
+          assert a['size']==555684389
+          PY
