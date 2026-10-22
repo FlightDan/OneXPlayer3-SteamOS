@@ -6,7 +6,7 @@ source for legacy bytes; the local workspace and research trees are never read.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import hashlib
 import importlib.util
 import json
@@ -17,6 +17,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import types
 import zipfile
 
@@ -73,12 +74,30 @@ def public_input(path, expected):
             raise
     else:
         descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-    with os.fdopen(descriptor, 'rb') as stream:
+    with os.fdopen(descriptor, 'rb') as stream, ExitStack() as stack:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size != expected['size'] or stream_digest(stream) != expected['sha256']:
+        if not stat.S_ISREG(info.st_mode) or info.st_size != expected['size']:
             raise ValueError('Public input does not match the locked size and SHA-256')
-        yield stream
-        if os.fstat(stream.fileno()).st_size != expected['size'] or stream_digest(stream) != expected['sha256']:
+        authenticated = stream
+        if os.name != 'nt':
+            # POSIX permits in-place writers despite a held reader descriptor.
+            # Authenticate an unlinked private snapshot, then parse only that
+            # snapshot; mutate-and-restore of the source cannot influence it.
+            authenticated = stack.enter_context(tempfile.TemporaryFile('w+b'))
+            os.fchmod(authenticated.fileno(), 0o600)
+            remaining = expected['size'] + 1
+            while remaining:
+                block = stream.read(min(1024*1024, remaining))
+                if not block:
+                    break
+                authenticated.write(block)
+                remaining -= len(block)
+            if authenticated.tell() != expected['size']:
+                raise ValueError('Public input does not match the locked size and SHA-256')
+        if stream_digest(authenticated) != expected['sha256']:
+            raise ValueError('Public input does not match the locked size and SHA-256')
+        yield authenticated
+        if os.fstat(authenticated.fileno()).st_size != expected['size'] or stream_digest(authenticated) != expected['sha256']:
             raise ValueError('Public input changed during extraction')
 
 

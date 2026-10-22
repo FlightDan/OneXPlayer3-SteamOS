@@ -77,7 +77,7 @@ class ModelPackageTests(unittest.TestCase):
                         self.assertEqual(archive.read('payload.txt'), b'locked public bytes')
                 self.assertEqual(calls, [expected['sha256'], expected['sha256']])
 
-    def test_public_archive_rechecks_same_handle_or_denies_concurrent_writes(self):
+    def test_public_archive_snapshots_input_or_denies_concurrent_writes(self):
             with tempfile.TemporaryDirectory() as work:
                 source = Path(work)/'input.zip'
                 source.write_bytes(b'locked bytes')
@@ -87,9 +87,10 @@ class ModelPackageTests(unittest.TestCase):
                         with self.assertRaises(PermissionError):
                             source.write_bytes(b'edited bytes')
                 else:
-                    with self.assertRaisesRegex(ValueError, 'changed during extraction'):
-                        with builder.public_input(source, expected):
-                            source.write_bytes(b'edited bytes')
+                    with builder.public_input(source, expected) as authenticated:
+                        source.write_bytes(b'edited bytes')
+                        self.assertEqual(authenticated.read(), b'locked bytes')
+                        source.write_bytes(b'locked bytes')
 
     def test_release_source_binds_exact_public_commit_and_rejects_dirty_or_unlisted_files(self):
             with tempfile.TemporaryDirectory() as work:
