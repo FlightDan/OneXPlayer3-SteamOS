@@ -110,13 +110,18 @@ class DesktopService:
             ('No compatible', '当前系统不满足这项功能的兼容条件。'),
             ('requires SteamOS', '此项需要匹配的 SteamOS 版本、内核和软件包。'),
             ('Unsupported', '当前设备或系统不满足这项功能的兼容条件。'),
+            ('Supported exact OXP3 SteamOS baseline', '系统版本检查通过；点击“检查更改”继续安装预检。'),
+            ('Supported exact SteamOS baseline', '系统版本检查通过；点击“检查更改”继续安装预检。'),
+            ('Supported SteamOS adapter', '适用于此 SteamOS 系统；点击“检查更改”继续安装预检。'),
             ('Supported OXP3 SteamOS', '适用于此 OXP3 系统；安装前仍需检查资源和冲突。'),
             ('requires the tested', '此项需要已验证的 SteamOS 底座与内核。'),
         ]
         for marker, translation in patterns:
             if marker.lower() in text.lower():
                 return translation
-        return self.t('暂不可安装；详细原因：', '') + text
+        # Reasons include advisory successes and pending checks, not just refusals.
+        # Installation eligibility comes from the structured catalog/plan status.
+        return self.t('详细说明：', '') + text if text else ''
 
     def error_text(self, error):
         text = str(error)

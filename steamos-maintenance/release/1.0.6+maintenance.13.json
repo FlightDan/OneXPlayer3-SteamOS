@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.13",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "修复中文组件列表把已通过的 SteamOS 基线检查误显示为暂不可安装；安装前仍须执行检查更改，兼容性与冲突门槛保持不变。未知说明使用中性前缀。保留现有组件、正式公钥与维护恢复记录。"
+}
