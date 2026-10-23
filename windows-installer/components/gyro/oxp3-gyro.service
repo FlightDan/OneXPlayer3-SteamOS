@@ -9,8 +9,8 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/var/lib/oxp3-gyro-v1/load.sh
 ExecStopPost=/var/lib/oxp3-gyro-v1/unload.sh
-TimeoutStartSec=20
-TimeoutStopSec=10
+TimeoutStartSec=40
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target

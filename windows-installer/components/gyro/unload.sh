@@ -1,3 +1,2 @@
-#!/bin/bash
-set -eu
-if test -d /sys/module/oxp3_bmi260; then rmmod oxp3_bmi260; fi
+#!/bin/sh
+exec /usr/bin/python3 -I -B /var/lib/oxp3-gyro-v1/binding.py stop

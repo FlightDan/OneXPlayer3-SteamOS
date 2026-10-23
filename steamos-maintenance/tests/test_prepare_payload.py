@@ -63,6 +63,19 @@ class PreparePayloadTests(unittest.TestCase):
             prepare_payload(self.workspace, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_stale_cached_gyro_binding_helper_is_rejected_before_output(self):
+        self.options(['gyro'])
+        self.put('steamos-maintenance/oxp3_maintenance/gyro_binding.py',
+                 b'current canonical binding helper\n', workspace=True)
+        self.put('cache/integration/manifest.json', {'gyro': {'files': [{
+            'source': 'gyro/binding.bin', 'target': 'var/lib/oxp3-gyro-v1/binding.py'}]}})
+        self.put('cache/integration/gyro/binding.bin', b'stale cached helper\n')
+
+        with self.assertRaisesRegex(PreparationError, 'Rebuild gyro integration payload from the current binding helper'):
+            prepare_payload(self.workspace, self.output)
+
+        self.assertFalse(self.output.exists())
+
     def test_old_desktop_hdr_runtime_cannot_enter_maintenance_payload(self):
         self.options(['desktop-hdr'])
         self.put('cache/integration/manifest.json', {'desktop-hdr': {

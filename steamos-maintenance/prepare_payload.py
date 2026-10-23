@@ -303,6 +303,10 @@ def prepare_payload(workspace, output, maintenance_options=None):
                 source = _relative(entry['source'])
                 target = _relative(entry['target'])
                 destination = 'integration/' + source
+                if name == 'gyro' and target == 'var/lib/oxp3-gyro-v1/binding.py':
+                    helper = _source(workspace, 'steamos-maintenance/oxp3_maintenance/gyro_binding.py').read_bytes()
+                    if _source(installer, 'cache/integration/' + source).read_bytes() != helper:
+                        raise PreparationError('Rebuild gyro integration payload from the current binding helper')
                 if name == 'gyro' and target == 'var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':
                     module = _source(installer, 'cache/integration/' + source).read_bytes()
                     if b'oxp3_model_policy=hardware-interface-v2\x00' not in module:

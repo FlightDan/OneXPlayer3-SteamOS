@@ -14,11 +14,13 @@ controls = root / 'components/controls'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path, default=root / 'cache/integration')
 parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
-parser.add_argument('--opti-only', action='store_true', help='Regenerate only the pinned Opti2XMX component while preserving other manifest entries')
+targeted = parser.add_mutually_exclusive_group()
+targeted.add_argument('--opti-only', action='store_true', help='Regenerate only the pinned Opti2XMX component while preserving other manifest entries')
+targeted.add_argument('--gyro-only', action='store_true', help='Regenerate only gyro from current sources while preserving other manifest entries')
 arguments = parser.parse_args()
 store = arguments.output
 manifest_path = store / 'manifest.json'
-if not arguments.opti_only:
+if not arguments.opti_only and not arguments.gyro_only:
     desktop_hdr_archive = store/'desktop-hdr/accepted-runtime.tar'
     if desktop_hdr_archive.is_symlink():
         raise RuntimeError('Desktop-HDR runtime must be a regular file')
@@ -27,18 +29,21 @@ if not arguments.opti_only:
             validate_desktop_hdr_runtime(desktop_hdr_archive)
         except DesktopHdrPolicyError as exc:
             raise RuntimeError('Rebuild the fixed KWin and mapped-HDR frontend with the EDID-only policy before preparing integration payloads; rejected cache: '+str(exc)) from exc
+if not arguments.opti_only:
     gyro_module_path=root/'components/gyro/oxp3_bmi260.ko'
     if not gyro_module_path.is_file():
         raise RuntimeError('Build components/gyro/oxp3_bmi260.ko against the exact supported kernel before preparing integration payloads')
     gyro_module=gyro_module_path.read_bytes()
     if b'oxp3_model_policy=hardware-interface-v2\x00' not in gyro_module:
         raise RuntimeError('Rebuild the BMI260 module from components/gyro against the exact supported kernel; the old model-locked module cannot be packaged')
-if arguments.opti_only:
+if arguments.opti_only or arguments.gyro_only:
+    label = 'Opti' if arguments.opti_only else 'gyro'
+    selected = 'opti2xmx' if arguments.opti_only else 'gyro'
     if not store.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
-        raise FileNotFoundError('Targeted Opti generation requires an existing integration manifest')
+        raise FileNotFoundError('Targeted '+label+' generation requires an existing integration manifest')
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    if not isinstance(manifest, dict) or not manifest or 'opti2xmx' not in manifest:
-        raise ValueError('Targeted Opti generation requires a complete existing integration manifest')
+    if not isinstance(manifest, dict) or not manifest or selected not in manifest:
+        raise ValueError('Targeted '+label+' generation requires a complete existing integration manifest')
 else:
     store.mkdir(parents=True, exist_ok=True)
     manifest = {}
@@ -62,6 +67,38 @@ def emitted_definitions(path):
     scope = {'__file__': str(path)}
     exec(compile(code, str(path), 'exec'), scope)
     return scope
+
+def prepare_gyro():
+    # Read all inputs before replacing payload files, including provenance.
+    sources = {name:(root/'components/gyro'/name).read_bytes() for name in (
+        'oxp3_bmi260.c','bmi270.h','onexplayer3-bmi260.patch','Makefile')}
+    sources['README.md'] = (root/'docs/GYRO_INTEGRATION.md').read_bytes()
+    sources['inputplumber-0.78.0-oxp3-gyro.patch'] = (root.parent/'onexplayer3-steamos-setup/gyro/inputplumber-0.78.0-oxp3-gyro.patch').read_bytes()
+    sources['InputPlumber-LICENSE'] = (research/'input/LICENSE').read_bytes()
+    gyro_profile=(root/'components/input-profile.yaml').read_text()
+    needle='      name: "{i2c-BMI0160:00,bmi260,bmi160}"'
+    if gyro_profile.count(needle)!=1: raise RuntimeError('Unexpected input profile for gyro')
+    gyro_profile=gyro_profile.replace(needle,needle+'\n      sample_rate: 400\n      gyro_bias: [0, 0, 0]\n      gyro_auto_calibrate: false\n      mount_matrix:\n        x: [0, -1, 0]\n        y: [-1, 0, 0]\n        z: [0, 0, -1]\n      accel_bias: [0, 0, 0]')
+    component('gyro', {
+        '/var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':gyro_module,
+        '/var/lib/oxp3-gyro-v1/inputplumber':(root/'cache/gyro/inputplumber').read_bytes(),
+        **{'/var/lib/oxp3-gyro-v1/'+name:(root/'components/gyro'/name).read_bytes() for name in ('load.sh','unload.sh','launch.sh')},
+        '/etc/systemd/system/oxp3-gyro.service':(root/'components/gyro/oxp3-gyro.service').read_bytes(),
+        '/etc/systemd/system/inputplumber.service.d/oxp3-gyro-v1.conf':(root/'components/gyro/inputplumber.conf').read_bytes(),
+        '/etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml':gyro_profile.encode(),
+        '/etc/inputplumber/oxp3-gyro-steer.conf':b'# Preserve physical angular velocity; calibrate each device separately.\nenabled=0\n',
+        '/var/lib/oxp3-gyro-v1/binding.py':(root.parent/'steamos-maintenance/oxp3_maintenance/gyro_binding.py').read_bytes()}, ['oxp3-gyro.service'])
+    for entry in manifest['gyro']['files']:
+        if entry['target'].endswith('/inputplumber'):entry['mode']=0o755
+    gyro_sources=store/'sources/gyro';gyro_sources.mkdir(parents=True,exist_ok=True)
+    for name, data in sources.items():
+        (gyro_sources/name).write_bytes(data)
+
+if arguments.gyro_only:
+    prepare_gyro()
+    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+    print(json.dumps({'components':list(manifest),'gyro':manifest['gyro']},indent=2))
+    raise SystemExit(0)
 
 opti=arguments.opti_source
 runtime_archive=store/'opti2xmx/runtime.tar.gz'
@@ -169,26 +206,7 @@ component('input', {
     '/usr/share/inputplumber/capability_maps/oxp3-installer.yaml':input_map.encode(),
     '/usr/local/lib/oxp3-input/input_profile.py':(root/'components/input_profile.py').read_bytes(),
     '/etc/systemd/system/inputplumber.service.d/oxp3-input-profile.conf':(root/'components/input-profile.conf').read_bytes()})
-gyro_profile=(root/'components/input-profile.yaml').read_text()
-needle='      name: "{i2c-BMI0160:00,bmi260,bmi160}"'
-if gyro_profile.count(needle)!=1: raise RuntimeError('Unexpected input profile for gyro')
-gyro_profile=gyro_profile.replace(needle,needle+'\n      sample_rate: 400\n      gyro_bias: [0, 0, 0]\n      gyro_auto_calibrate: false\n      mount_matrix:\n        x: [0, -1, 0]\n        y: [-1, 0, 0]\n        z: [0, 0, -1]\n      accel_bias: [0, 0, 0]')
-component('gyro', {
-    '/var/lib/oxp3-gyro-v1/oxp3_bmi260.ko':gyro_module,
-    '/var/lib/oxp3-gyro-v1/inputplumber':(root/'cache/gyro/inputplumber').read_bytes(),
-    **{'/var/lib/oxp3-gyro-v1/'+name:(root/'components/gyro'/name).read_bytes() for name in ('load.sh','unload.sh','launch.sh')},
-    '/etc/systemd/system/oxp3-gyro.service':(root/'components/gyro/oxp3-gyro.service').read_bytes(),
-    '/etc/systemd/system/inputplumber.service.d/oxp3-gyro-v1.conf':(root/'components/gyro/inputplumber.conf').read_bytes(),
-    '/etc/inputplumber/devices.d/49-onexplayer_3-gyro.yaml':gyro_profile.encode(),
-    '/etc/inputplumber/oxp3-gyro-steer.conf':b'# Preserve physical angular velocity; calibrate each device separately.\nenabled=0\n'}, ['oxp3-gyro.service'])
-for entry in manifest['gyro']['files']:
-    if entry['target'].endswith('/inputplumber'):entry['mode']=0o755
-gyro_sources=store/'sources/gyro';gyro_sources.mkdir(parents=True,exist_ok=True)
-for name in ('oxp3_bmi260.c','bmi270.h','onexplayer3-bmi260.patch','Makefile'):
-    shutil.copyfile(root/'components/gyro'/name,gyro_sources/name)
-shutil.copyfile(root/'docs/GYRO_INTEGRATION.md',gyro_sources/'README.md')
-shutil.copyfile(root.parent/'onexplayer3-steamos-setup/gyro/inputplumber-0.78.0-oxp3-gyro.patch',gyro_sources/'inputplumber-0.78.0-oxp3-gyro.patch')
-shutil.copyfile(research/'input/LICENSE',gyro_sources/'InputPlumber-LICENSE')
+prepare_gyro()
 component('legacy-runtime', {
     '/var/lib/oxp3-runtime-hardened/volume.py':(research/'runtime_hardening/volume.py').read_bytes(),
     '/var/lib/oxp3-runtime-hardened/battery.sh':(research/'runtime_hardening/battery.sh').read_bytes(),

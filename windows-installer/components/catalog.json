@@ -114,7 +114,7 @@
       "name": "输入与背键",
       "state": "current_boot_buttons_accepted_persistent_install_pending",
       "default": false,
-      "reason": "本次启动中 M1/L4、M2/R4、Home/L5、A/B/X/Y 已实机通过，用户保留候选；多功能键最终 R5 待复验。精确内核持久安装、休眠/更新/MCU 恢复、模拟量及 gyro 尚未验收，不在 3.8.14 加载研究模块。 本次取消安装、维护及插件入口的 DMI 机型限制，输入配置改按 MCU 接口生成；BMI260 已针对精确内核重编并核对硬件接口策略标记，实际模块加载及 X2mini 实机验收尚未完成。",
+      "reason": "本次启动中 M1/L4、M2/R4、Home/L5、A/B/X/Y 已实机通过，用户保留候选；多功能键最终 R5 待复验。精确内核持久安装、休眠/更新/MCU 恢复、模拟量及 gyro 尚未验收，不在 3.8.14 加载研究模块。 本次取消安装、维护及插件入口的 DMI 机型限制，输入配置改按 MCU 接口生成；BMI260 已针对精确内核重编并核对硬件接口策略标记，OP3 当前启动模块加载和六轴报告输出已核验，X2mini 实机验收尚未完成；新装与维护共用可恢复的 BMI260 驱动接管助手，完整新装、重启、休眠和反馈用户游戏映射仍待验收。",
       "source": "research/input/hid-build-v1/BUILD_STATUS.md"
     },
     {

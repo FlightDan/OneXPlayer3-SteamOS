@@ -205,6 +205,9 @@ for slot in ('A','B'):
                     subprocess.run(['chroot',str(root),'/usr/bin/python3','-I','-B','-c',code],check=True,timeout=30)
                     assert not (root/'home/deck/.local/share/opti2xmx/games').exists()
             if 'gyro' in installed:
+                # Import without executing start/stop or accessing live sysfs.
+                subprocess.run(['chroot',str(root),'/usr/bin/python3','-I','-B','-c',
+                    "import runpy; m=runpy.run_path('/var/lib/oxp3-gyro-v1/binding.py'); assert m['KERNEL']=='7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'; assert callable(m['BindingManager'])"],check=True,timeout=30)
                 assert subprocess.check_output(['chroot',str(root),'/usr/bin/inputplumber','--version'],text=True).strip()=='inputplumber 0.78.0'
                 assert subprocess.check_output(['chroot',str(root),'/var/lib/oxp3-gyro-v1/inputplumber','--version'],text=True).strip()=='inputplumber 0.78.0'
                 vermagic=subprocess.check_output(['chroot',str(root),'/usr/bin/modinfo','-F','vermagic','/var/lib/oxp3-gyro-v1/oxp3_bmi260.ko'],text=True)

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.14",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "修复新装陀螺仪遇系统驱动已绑定时加载失败；新装与维护共用可恢复绑定助手，清理失败保留恢复入口。基于 maintenance.13 保留后续迁移和状态兼容。现有系统可选择陀螺仪修复，无需重装；其他原生及插件分片沿用公开版本。"
+}
