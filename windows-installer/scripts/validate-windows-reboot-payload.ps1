@@ -15,7 +15,7 @@ $package = Get-Content -LiteralPath (Join-Path $component 'package.json') -Raw |
 $catalog = Get-Content -LiteralPath (Join-Path $ProjectRoot 'components/catalog.json') -Raw | ConvertFrom-Json
 $entry = @($catalog.plugins | Where-Object id -eq 'windows-reboot')
 if ($plugin.name -ne 'Restart into Windows' -or @($plugin.flags).Count -ne 1 -or $plugin.flags[0] -ne 'root') {
-    throw 'Windows restart must use the root flag recognized by Decky 3.2.10.'
+    throw 'Windows restart must use the root flag recognized by Decky 3.3.0.'
 }
 if ($entry.Count -ne 1 -or $entry[0].version -ne $package.version) {
     throw 'Windows restart catalog and bundled plugin versions do not match.'

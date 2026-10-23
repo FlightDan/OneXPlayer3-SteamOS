@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, 'licenses'); await mkdir(output, { recursive: true });
+let previous = { runtime: [] };
+try { previous = JSON.parse(await readFile(path.join(output, 'runtime-inventory.json'), 'utf8')); }
+catch (error) { if (error.code !== 'ENOENT') throw error; }
+const decky = JSON.parse(await readFile(path.join(root, 'components/decky-release.json'), 'utf8'));
 const files = [];
 async function inventory(directory) {
   for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {
@@ -24,9 +28,18 @@ const inventoryResult = {
     { name: '.NET Core and Windows Desktop', version: '10.0.12', source: 'https://github.com/dotnet/runtime', notices: ['runtime/dotnet/LICENSE.txt', 'runtime/dotnet/ThirdPartyNotices.txt'], pending: 'Review notices for the exact Windows Desktop runtime build' },
     { name: '7-Zip', source: 'https://www.7-zip.org/', notices: ['licenses/7-Zip-License.txt'], pending: 'Pin installed binary version and preserve corresponding source for public release' },
     { name: 'kmscon + libtsm', version: 'Debian 9.0.0-4 / 4.0.2-0.4', source: 'https://deb.debian.org/debian/pool/main/', notices: ['runtime/console/licenses/kmscon-copyright', 'runtime/console/licenses/libtsm-copyright'], sources: 'runtime/console/sources/', pending: 'Review combined notices with the exact target SteamOS libraries before public release' },
-    { name: 'Decky Loader', version: '3.2.10', source: 'https://github.com/SteamDeckHomebrew/decky-loader', pending: 'Release binary source and bundled dependency notices; include source cache for a public release' },
+    { name: 'Decky Loader', version: decky.version, source: 'https://github.com/SteamDeckHomebrew/decky-loader', notices: ['cache/plugins/decky/LICENSE'], sources: `cache/plugins/decky/source-v${decky.version}.zip`, releaseMetadata: 'components/decky-release.json', pending: undefined },
     { name: 'Waydroid OXP3 r2', version: 'steamos-3.10-b20260924.1000-wlroots0.20.2-oxp3-r2', source: 'https://github.com/pjohno/steamos-waydroid-bundle', notices: ['cache/components/waydroid/waydroid-source-ibt-r2.tar', 'cache/components/waydroid/intel-ibt-kernel-calls.patch'], pending: 'Review complete nested package sources/licenses before public redistribution' }
   ], files, alpinePackages: packages
 };
+// Retain independently maintained runtime entries such as aria2 and rEFInd.
+// Rebuilding the native inventory must not erase their existing attribution.
+const generated = new Map(inventoryResult.runtime.map(item => [item.name, item]));
+inventoryResult.runtime = (previous.runtime || []).map(item => {
+  const current = generated.get(item.name);
+  generated.delete(item.name);
+  return current ? { ...item, ...current } : item;
+});
+inventoryResult.runtime.push(...generated.values());
 await writeFile(path.join(output, 'runtime-inventory.json'), JSON.stringify(inventoryResult, null, 2) + '\n');
 console.log(JSON.stringify({ nativeFiles: files.length, alpinePackages: packages.length, publicReleaseReady: false }));

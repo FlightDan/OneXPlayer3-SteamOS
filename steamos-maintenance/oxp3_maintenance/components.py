@@ -463,6 +463,12 @@ WantedBy=multi-user.target
 '''
     output = {'var/lib/oxp3-installer/decky/runtime/services/PluginLoader': _entry(binary, 0o755),
               'etc/systemd/system/plugin_loader.service': _entry(unit)}
+    # Older signed bundles have no marker; retain compatibility with them.
+    if (Path(payload) / 'plugins/decky/VERSION').exists():
+        version = _read(payload, 'plugins/decky/VERSION')
+        if not re.fullmatch(rb'\d+\.\d+\.\d+\n', version):
+            raise ValueError('Invalid Decky version marker')
+        output['var/lib/oxp3-installer/decky/runtime/services/VERSION'] = _entry(version)
     marker = 'home/deck/.local/share/Steam/.cef-enable-remote-debugging'
     if _existing(root, marker) is None:
         output[marker] = _entry(b'', user=True)

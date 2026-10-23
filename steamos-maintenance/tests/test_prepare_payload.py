@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from prepare_payload import PreparationError, prepare_payload, _current_source, _maintenance_options
+from decky_fixture import decky_fixture
 
 
 class PreparePayloadTests(unittest.TestCase):
@@ -53,6 +54,23 @@ class PreparePayloadTests(unittest.TestCase):
     def options(self, names):
         self.put('components/options.json', {'schema': 1,
             'repairs': [{'id': name, 'dependencies': []} for name in names], 'plugins': []})
+
+    def test_decky_missing_pin_cannot_fall_back_to_old_cache(self):
+        self.options(['decky'])
+        self.put('cache/integration/manifest.json', {})
+        self.put('cache/plugins/decky/PluginLoader', b'\x7fELFold')
+        with self.assertRaisesRegex(PreparationError, 'Missing pinned Decky'):
+            prepare_payload(self.workspace, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_decky_changed_source_cannot_enter_signed_payload(self):
+        self.options(['decky'])
+        self.put('cache/integration/manifest.json', {})
+        decky_fixture(self.installer)
+        self.put('cache/plugins/decky/source-v3.3.0.zip', b'old source fixture')
+        with self.assertRaisesRegex(PreparationError, 'Stale Decky payload'):
+            prepare_payload(self.workspace, self.output)
+        self.assertFalse(self.output.exists())
 
     def test_old_model_locked_gyro_cannot_enter_maintenance_payload(self):
         self.options(['gyro'])
@@ -208,13 +226,17 @@ class PreparePayloadTests(unittest.TestCase):
         self.put('cache/plugins/third-party.json', [{'id': 'hltb', 'version': '2.0.12', 'archive': 'selected.zip'}])
         self.put('cache/plugins/hltb/selected.zip', b'pinned archive')
         self.put('cache/plugins/hltb/old.zip', b'old archive')
-        self.put('cache/plugins/decky/PluginLoader', b'ELF fixture')
+        decky_fixture(self.installer, b'ELF fixture')
         self.put('cache/windows.exe', b'Windows')
         self.put('runtime/secret.json', b'private')
         self.put('research/secret.json', b'private', workspace=True)
         report = prepare_payload(self.workspace, self.output)
         paths = set(report['source_inventory'])
         self.assertIn('plugins/decky/PluginLoader', paths)
+        self.assertIn('plugins/decky/VERSION', paths)
+        self.assertIn('plugins/decky/LICENSE', paths)
+        self.assertIn('plugins/decky/source-v3.3.0.zip', paths)
+        self.assertIn('plugins/decky/manifest.json', paths)
         self.assertNotIn('hltb', report['coverage'])
         self.assertFalse(any('hltb' in x for x in paths))
         options = json.loads((self.output / 'components/options.json').read_text())

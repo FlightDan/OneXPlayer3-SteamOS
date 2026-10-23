@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from prepare_payload import prepare_payload
+from decky_fixture import decky_fixture
 from oxp3_maintenance import catalog, compatibility
 from oxp3_maintenance.components import build_plan, PLUGIN_ROOT
 from oxp3_maintenance.decky_order import SETTINGS, PRIORITY, ordered_settings
@@ -27,7 +28,7 @@ class LightIntegrationTests(unittest.TestCase):
         self.options = {'schema': 1, 'repairs': [{'id': 'oxp3-light', 'default': True, 'dependencies': ['decky']}],
                         'plugins': [{'id': 'decky', 'dependencies': []}]}
         self.put(self.installer, 'components/options.json', self.options)
-        self.put(self.installer, 'cache/plugins/decky/PluginLoader', b'\x7fELFfixture')
+        decky_fixture(self.installer)
         self.names = ('main.py', 'light_control.py', 'plugin.json', 'package.json', 'dist/index.js',
                       'LICENSE', 'LICENSE-HHD', 'LICENSE-HueSync', 'THIRD_PARTY_NOTICES.md', 'README.md')
         manifest = {'oxp3-light': {'files': [], 'units': [], 'packages': {}, 'missing': []}}

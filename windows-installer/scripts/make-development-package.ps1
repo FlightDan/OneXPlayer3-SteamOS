@@ -3,6 +3,28 @@ $ErrorActionPreference = 'Stop'
 if ($Stamp -notmatch '^\d{8}-\d{6}$') { throw 'Invalid package version' }
 if ($PublicRelease -and $SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'A public release must identify its source commit.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
+function Assert-PinnedDeckyPayload([string]$ProjectRoot) {
+    $pin = Get-Content -LiteralPath (Join-Path $ProjectRoot 'components/decky-release.json') -Raw | ConvertFrom-Json
+    $cache = Join-Path $ProjectRoot 'cache/plugins/decky'
+    $manifest = Get-Content -LiteralPath (Join-Path $cache 'manifest.json') -Raw | ConvertFrom-Json
+    $catalog = Get-Content -LiteralPath (Join-Path $ProjectRoot 'components/catalog.json') -Raw | ConvertFrom-Json
+    $component = @(@($catalog.components) + @($catalog.plugins) | Where-Object id -eq 'decky')
+    if ($pin.schema -ne 1 -or $manifest.schema -ne 1 -or $pin.version -notmatch '^\d+\.\d+\.\d+$' -or
+        $pin.source_commit -notmatch '^[a-f0-9]{40}$' -or $manifest.source_commit -ne $pin.source_commit -or
+        $component.Count -ne 1 -or $component[0].version -ne $pin.version -or $manifest.version -ne $pin.version -or
+        [IO.File]::ReadAllText((Join-Path $cache 'VERSION')) -cne ($pin.version + "`n")) { throw 'Stale Decky version metadata.' }
+    $expected = @('PluginLoader','LICENSE','VERSION','plugin_loader-release.service',"source-v$($pin.version).zip")
+    if ((Compare-Object ($expected | Sort-Object) (@($manifest.files.PSObject.Properties.Name) | Sort-Object)) -or
+        (Compare-Object (($expected + 'manifest.json') | Sort-Object) (@(Get-ChildItem -LiteralPath $cache -Force | ForEach-Object Name) | Sort-Object))) { throw 'Unexpected or stale Decky cache files.' }
+    foreach ($name in $expected) {
+        $file = Get-Item -LiteralPath (Join-Path $cache $name)
+        $record = $manifest.files.$name
+        if ($file.Length -ne $record.bytes -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $record.sha256) { throw "Stale Decky manifest: $name" }
+        $trusted = if ($name -eq 'PluginLoader') { $pin.binary } elseif ($name -eq "source-v$($pin.version).zip") { $pin.source } else { $null }
+        if ($trusted -and ($record.bytes -ne $trusted.bytes -or $record.sha256 -ne $trusted.sha256)) { throw "Decky payload differs from its pinned official release: $name" }
+    }
+}
+Assert-PinnedDeckyPayload $projectRoot
 & (Join-Path $PSScriptRoot 'check-maintenance.ps1') -RequireKey:$PublicRelease
 $integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
 $desktopHdrRecord = $integrationManifest.'desktop-hdr'

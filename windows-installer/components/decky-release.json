@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "version": "3.3.0",
+  "source_commit": "67196adfa9b299f20dfb0cc932e88a169417b7d5",
+  "binary": {
+    "url": "https://github.com/SteamDeckHomebrew/decky-loader/releases/download/v3.3.0/PluginLoader",
+    "bytes": 34906704,
+    "sha256": "e80d03e641d1766a33a817cb27ab8d2e0a4633685e5d27e4de948a6687526181"
+  },
+  "source": {
+    "url": "https://codeload.github.com/SteamDeckHomebrew/decky-loader/zip/67196adfa9b299f20dfb0cc932e88a169417b7d5",
+    "bytes": 458459,
+    "sha256": "8a111350fb9c826ae7ef91c2c34f089d2f75e2c7938749ff36400faeb48ff96d"
+  }
+}

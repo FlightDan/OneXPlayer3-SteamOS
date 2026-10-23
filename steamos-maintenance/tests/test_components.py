@@ -99,6 +99,19 @@ class PlannerTests(unittest.TestCase):
             self.probe['dmi'] = {'product_name': model}
             self.assert_ready(self.plan(['decky']), 'decky')
 
+    def test_decky_version_marker_is_planned_without_touching_settings_or_plugins(self):
+        self.component('decky')
+        self.write(self.payload, 'plugins/decky/PluginLoader', b'\x7fELFfixture')
+        self.write(self.payload, 'plugins/decky/VERSION', b'3.3.0\n')
+        marker = 'var/lib/oxp3-installer/decky/runtime/services/VERSION'
+        self.write(self.root, marker, b'3.2.10\n')
+        plan = self.plan(['decky'], {'paths': {marker: {'component': 'decky'}}})
+        self.assert_ready(plan, 'decky')
+        self.assertEqual(plan['selected'], ['decky'])
+        self.assertEqual(plan['files'][marker]['data'], b'3.3.0\n')
+        self.assertFalse(any('/settings/' in p or '/plugins/' in p for p in plan['files']))
+        self.assertEqual((self.root / marker).read_bytes(), b'3.2.10\n')
+
     def test_cross_version_keyboard_uses_portable_shared_policy_only(self):
         self.component('keyboard')
         self.component('fan-driver', {'usr/lib/modules/current/driver.ko': b'native'})

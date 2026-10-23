@@ -28,7 +28,7 @@ $projectRoot = Join-Path $fixtureRoot 'source'
 $source = Join-Path $projectRoot 'cache/plugins'
 $PublicRelease = $false
 $fixtures = @('plugins.json','third-party.json','unknown.json','decky/PluginLoader',
-    'decky/plugin_loader-release.service','decky/source-v3.2.10.zip',
+    'decky/plugin_loader-release.service','decky/source-v3.3.0.zip','decky/manifest.json','decky/VERSION','decky/LICENSE',
     'steamgriddb/steamgriddb-1.8.1.zip','protondb/protondb-1.3.4.zip',
     'tabmaster/tabmaster-2.15.1+oxp3.1.zip','autoflatpaks/autoflatpaks-1.6.8+oxp3.1.zip',
     'hltb/hltb-2.0.12.zip','animation-changer/animation-changer-1.3.2.zip',

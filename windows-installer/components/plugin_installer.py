@@ -14,6 +14,8 @@ import zipfile
 from file_transaction import FileTransaction, atomic_write, snapshot, directory_fd, serialized
 from directory_transaction import DirectoryTransaction
 
+DECKY_VERSION = '3.3.0'
+
 PLUGINS = {
     'steamgriddb': ('SteamGridDB', '1.8.1', 'decky-steamgriddb'),
     'protondb': ('ProtonDB Badges', '1.3.4', 'protondb-decky'),
@@ -173,7 +175,7 @@ class PluginInstaller:
                 if len(binary) < 1024 * 1024 or not binary.startswith(b'\x7fELF'):
                     raise RuntimeError('Missing pinned Linux Decky binary')
                 atomic_write(staging / 'PluginLoader', binary, 0o755)
-                atomic_write(staging / 'VERSION', b'3.2.10\n', 0o644)
+                atomic_write(staging / 'VERSION', (DECKY_VERSION + '\n').encode('ascii'), 0o644)
                 DirectoryTransaction(journal / 'code', self.code / 'services', self.code).apply(staging)
                 FileTransaction(journal / 'unit', [self.unit]).apply({str(self.unit): UNIT})
             else:

@@ -550,8 +550,10 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             elif name=='decky':
                 binary=(payload/'plugins/decky/PluginLoader').read_bytes()
                 if not binary.startswith(b'\x7fELF'): raise RuntimeError('Invalid Linux Decky binary')
-                from plugin_installer import UNIT
-                files={'var/lib/oxp3-installer/decky/runtime/services/PluginLoader':{'data':binary,'mode':0o755},'etc/systemd/system/plugin_loader.service':{'data':UNIT}}
+                from plugin_installer import UNIT, DECKY_VERSION
+                files={'var/lib/oxp3-installer/decky/runtime/services/PluginLoader':{'data':binary,'mode':0o755},
+                       'var/lib/oxp3-installer/decky/runtime/services/VERSION':{'data':(DECKY_VERSION+'\n').encode('ascii')},
+                       'etc/systemd/system/plugin_loader.service':{'data':UNIT}}
                 marker='home/deck/.local/share/Steam/.cef-enable-remote-debugging'
                 ensure_user_directory((root/marker).parent,0o755,owner,root/'home/deck')
                 # Include our shared marker on repeated A/B preparation so its

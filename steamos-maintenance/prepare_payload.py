@@ -332,7 +332,34 @@ def prepare_payload(workspace, output, maintenance_options=None):
         copy('cache/integration/manifest.json', 'integration/manifest.json')
         # Third-party archives/profiles (including stale source caches) are no
         # longer distribution inputs. Existing device plugins are unaffected.
-        if 'decky' in items:
+        if 'decky' in items and (installer / 'cache/plugins/decky/PluginLoader').exists():
+            try:
+                pin = _json(_source(installer, 'components/decky-release.json'))
+            except FileNotFoundError as error:
+                raise PreparationError('Missing pinned Decky release metadata') from error
+            if pin.get('schema') != 1 or not re.fullmatch(r'\d+\.\d+\.\d+', pin.get('version', '')):
+                raise PreparationError('Invalid pinned Decky release metadata')
+            version = pin['version']
+            source_name = 'source-v' + version + '.zip'
+            cached = _json(_source(installer, 'cache/plugins/decky/manifest.json'))
+            expected = {'PluginLoader', 'VERSION', 'LICENSE', 'plugin_loader-release.service', source_name}
+            if (cached.get('schema') != 1 or cached.get('version') != version or
+                    cached.get('source_commit') != pin['source_commit'] or set(cached.get('files', {})) != expected):
+                raise PreparationError('Stale Decky payload manifest')
+            for filename in sorted(expected):
+                raw = _source(installer, 'cache/plugins/decky/' + filename).read_bytes()
+                record = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+                if record != cached['files'][filename]:
+                    raise PreparationError('Stale Decky payload: ' + filename)
+                if filename in ('PluginLoader', source_name):
+                    trusted = pin['binary' if filename == 'PluginLoader' else 'source']
+                    if any(record[key] != trusted[key] for key in ('bytes', 'sha256')):
+                        raise PreparationError('Decky artifact differs from its pinned release: ' + filename)
+                if filename == 'VERSION' and raw != (version + '\n').encode('ascii'):
+                    raise PreparationError('Decky version marker does not match its pinned release')
+                copy('cache/plugins/decky/' + filename, 'plugins/decky/' + filename)
+            copy('cache/plugins/decky/manifest.json', 'plugins/decky/manifest.json')
+        elif 'decky' in items:
             copy('cache/plugins/decky/PluginLoader', 'plugins/decky/PluginLoader', optional_for='decky')
         for source_name, destination, owner in (('hdr', 'hdr', 'hdr'), ('oxp3-controls', 'controls', 'native-tdp'), ('waydroid', 'waydroid', 'waydroid')):
             if owner not in items:

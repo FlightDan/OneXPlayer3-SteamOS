@@ -6,7 +6,13 @@
       "name": "rEFInd x86-64 EFI with Graphite Quiet theme",
       "version": "0.14.2 / Arch 0.14.2-3",
       "source": "https://archive.archlinux.org/packages/r/refind/refind-0.14.2-3-x86_64.pkg.tar.zst",
-      "notices": ["components/refind/LICENSE.txt", "components/refind/COPYING.txt", "components/refind/SOURCE.md", "components/refind/Outfit-OFL.txt", "components/refind/DMMono-OFL.txt"],
+      "notices": [
+        "components/refind/LICENSE.txt",
+        "components/refind/COPYING.txt",
+        "components/refind/SOURCE.md",
+        "components/refind/Outfit-OFL.txt",
+        "components/refind/DMMono-OFL.txt"
+      ],
       "pending": "Public redistribution source inventory; current package is a private test build"
     },
     {
@@ -57,9 +63,13 @@
     },
     {
       "name": "Decky Loader",
-      "version": "3.2.10",
+      "version": "3.3.0",
       "source": "https://github.com/SteamDeckHomebrew/decky-loader",
-      "pending": "Release binary source and bundled dependency notices; include source cache for a public release"
+      "notices": [
+        "cache/plugins/decky/LICENSE"
+      ],
+      "sources": "cache/plugins/decky/source-v3.3.0.zip",
+      "releaseMetadata": "components/decky-release.json"
     },
     {
       "name": "Waydroid OXP3 r2",
@@ -943,6 +953,14 @@
       "source": "https://invisible-island.net/ncurses/",
       "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ncurses-terminfo-base-6.5_p20251123-r0.apk",
       "bytes": 21855
+    },
+    {
+      "name": "e2fsprogs-extra",
+      "version": "1.47.3-r0",
+      "license": "GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT",
+      "source": "https://e2fsprogs.sourceforge.net/",
+      "download": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/e2fsprogs-extra-1.47.3-r0.apk",
+      "bytes": 214319
     }
   ]
 }

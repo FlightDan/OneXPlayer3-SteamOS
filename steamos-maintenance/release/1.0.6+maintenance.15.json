@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.15",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "更新 Decky Loader 至官方 3.3.0，修复旧版 3.2.10 被官方商场接口以 HTTP 426 拒绝导致列表空白。同步新装、维护升级的版本标记与固定来源校验；保留已有插件及设置。其余组件沿用 maintenance.14 的公开载荷。"
+}
