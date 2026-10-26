@@ -7,13 +7,16 @@ from pathlib import Path
 import tempfile
 import unittest
 import runpy
+import stat
+from types import SimpleNamespace
+from unittest import mock
 import zipfile
 
 from build_distribution import _group
 from prepare_payload import PreparationError, prepare_payload
 from decky_fixture import decky_fixture
 from oxp3_maintenance import catalog, compatibility
-from oxp3_maintenance.components import build_plan, PLUGIN_ROOT
+from oxp3_maintenance.components import build_plan, PLUGIN_ROOT, _empty_plugin_tree
 from oxp3_maintenance.transactions import Store
 from oxp3_maintenance import bundle, distribution
 import test_bundle
@@ -143,6 +146,65 @@ class LsfgIntegrationTests(unittest.TestCase):
         self.assertEqual(plan['components']['lsfg-vk']['status'], 'blocked')
         self.assertIn('Unmanaged plugin', plan['components']['lsfg-vk']['reason'])
         self.assertEqual(existing.read_bytes(), b'custom existing plugin')
+
+    def restored_store(self):
+        self.prepare()
+        store = Store(self.root, self.base / 'state',
+                      uid=getattr(os, 'getuid', lambda: 0)(),
+                      gid=getattr(os, 'getgid', lambda: 0)(), enforce_owner=False)
+        plan = self.plan()
+        store.apply(plan['files'], {'version': '1'}, plan['selected'], 'A')
+        store.restore('A', ['lsfg-vk'])
+        plugin = self.root / self.plugin
+        self.assertTrue(plugin.is_dir())
+        self.assertTrue(all(path.is_dir() for path in plugin.rglob('*')))
+        return store
+
+    def test_restore_then_reinstall_reuses_retained_empty_directories(self):
+        store = self.restored_store()
+        plan = self.plan(store.managed())
+        self.assertEqual(plan['components']['lsfg-vk']['status'], 'ready', plan['components']['lsfg-vk'])
+        store.apply(plan['files'], {'version': '2'}, plan['selected'], 'A')
+        for name, data in self.files.items():
+            self.assertEqual((self.root / self.plugin / name).read_bytes(), data)
+
+    def test_restored_tree_with_unknown_empty_file_is_not_reused(self):
+        store = self.restored_store()
+        occupied = self.put(self.root, self.plugin + 'dist/assets/unknown', b'')
+        plan = self.plan(store.managed())
+        self.assertEqual(plan['components']['lsfg-vk']['status'], 'blocked')
+        self.assertIn('Unmanaged plugin directory conflict', plan['components']['lsfg-vk']['reason'])
+        self.assertTrue(occupied.is_file())
+
+    def test_restored_tree_with_nested_directory_link_is_not_reused(self):
+        store = self.restored_store()
+        outside = self.base / 'outside'
+        outside.mkdir()
+        link = self.root / self.plugin / 'dist/assets'
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest('Directory symlinks unavailable: ' + str(exc))
+        plan = self.plan(store.managed())
+        self.assertEqual(plan['components']['lsfg-vk']['status'], 'blocked')
+        self.assertIn('Unmanaged plugin directory conflict', plan['components']['lsfg-vk']['reason'])
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_empty_tree_requires_root_owned_nonwritable_directories(self):
+        def directory(mode=0o755, uid=0, children=(), reparse=0):
+            return SimpleNamespace(
+                lstat=lambda: SimpleNamespace(st_mode=stat.S_IFDIR | mode, st_uid=uid,
+                                               st_file_attributes=reparse),
+                iterdir=lambda: iter(children))
+        with mock.patch('oxp3_maintenance.components.os', SimpleNamespace(name='posix')):
+            self.assertTrue(_empty_plugin_tree(directory(children=[directory()])))
+            for child in (directory(uid=1000), directory(mode=0o775),
+                          directory(mode=0o757), directory(reparse=0x400)):
+                self.assertFalse(_empty_plugin_tree(directory(children=[child])))
+            link = SimpleNamespace(lstat=lambda: SimpleNamespace(st_mode=stat.S_IFLNK | 0o755,
+                                                                  st_uid=0, st_file_attributes=0))
+            self.assertFalse(_empty_plugin_tree(directory(children=[link])))
 
     def test_missing_manifest_is_rejected_before_preparation(self):
         self.put(self.installer, 'cache/integration/manifest.json', {})

@@ -69,6 +69,20 @@ def _read(base, relative):
     return path.read_bytes()
 
 
+def _empty_plugin_tree(path):
+    """Recognize only safe empty directories left by a file-only restore."""
+    pending = [path]
+    while pending:
+        directory = pending.pop()
+        info = directory.lstat()
+        if (not stat.S_ISDIR(info.st_mode)
+                or getattr(info, 'st_file_attributes', 0) & 0x400
+                or os.name == 'posix' and (info.st_uid != 0 or info.st_mode & 0o022)):
+            return False
+        pending.extend(directory.iterdir())
+    return True
+
+
 def _existing(root, relative):
     path = _safe(root, relative)
     return _read(root, relative) if os.path.lexists(path) else None
@@ -778,6 +792,9 @@ def build_plan(payload: Path, root: Path, selected: list[str], probe: dict, mana
                 for prefix in ('home/deck/homebrew/plugins/', PLUGIN_ROOT + '/'):
                     path = _safe(root, prefix + folder)
                     if os.path.lexists(path) and not any(p.startswith(prefix + folder + '/') for p in own):
+                        if (name == 'lsfg-vk' and prefix == PLUGIN_ROOT + '/'
+                                and folder == 'Decky LSFG-VK' and _empty_plugin_tree(path)):
+                            continue
                         raise ValueError('Unmanaged plugin directory conflict; adopt explicitly: ' + prefix + folder)
             if name == 'decky':
                 for relative in ('home/deck/homebrew/services/PluginLoader', 'home/deck/homebrew/services/plugin_loader.service'):

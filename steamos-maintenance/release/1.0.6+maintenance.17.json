@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.17",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "新增默认关闭、依赖 Decky 的 LSFG-VK 0.14.4 可选组件，携带官方 2.0.0 离线资源；修复恢复后残留空目录导致重新安装被误判为非托管插件的情况。仅允许安全、root 拥有且完全无文件/链接的 LSFG 标准目录复用，其他插件冲突规则不变。用户需自行安装 Lossless Scaling 的 lsfg-vk 分支；不分发付费 DLL，不改用户运行层、配置或游戏启动项。"
+}
