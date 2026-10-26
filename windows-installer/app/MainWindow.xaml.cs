@@ -451,6 +451,14 @@ public partial class MainWindow : Window
                 : group.Key == "serial-console-policy" ? PartitionInventory.L("串口兼容性", "Serial console compatibility")
                 : group.Key == "system-update-hold" ? PartitionInventory.L("保留当前系统版本", "Preserve current system version")
                 : group.Key == "system-update-policy" ? PartitionInventory.L("历史系统更新策略", "Historical system update policy") : PartitionInventory.L("KDE 语言", "KDE language");
+                if (group.Key == "lsfg-vk" && failed.Length == 0)
+                {
+                    var nextStepKey = InstallerI18n.Language == "en-US" ? "next_step_en" : "next_step_zh";
+                    var nextStep = group.Select(x => x.TryGetProperty(nextStepKey, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null)
+                        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+                    return "Decky LSFG-VK 0.14.4: " + PartitionInventory.L("插件文件已部署；下一步：", "Plugin files are staged; next step: ")
+                        + (nextStep ?? PartitionInventory.L("先购买并安装 Lossless Scaling、切换至 lsfg-vk 分支，再在 Decky 中点击 Install LSFG。", "Purchase and install Lossless Scaling, select its lsfg-vk branch, then click Install LSFG in Decky."));
+                }
                 if (group.Key == "system-update-hold" && failed.Length == 0) return label + ": " + PartitionInventory.L(
                     "本次安装暂缓 SteamOS 系统更新；Steam 客户端与游戏更新不受影响。",
                     "This installation holds SteamOS system updates; Steam client and game updates are unaffected.");

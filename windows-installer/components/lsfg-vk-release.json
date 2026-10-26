@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "lsfg-vk",
+  "name": "Decky LSFG-VK",
+  "version": "0.14.4",
+  "folder": "Decky LSFG-VK",
+  "release_url": "https://github.com/xXJSONDeruloXx/decky-lsfg-vk/releases/tag/v0.14.4",
+  "archive": {
+    "filename": "decky-lsfg-vk-0.14.4.zip",
+    "url": "https://github.com/xXJSONDeruloXx/decky-lsfg-vk/releases/download/v0.14.4/Decky.LSFG-VK.zip",
+    "bytes": 5322847,
+    "sha256": "a2187926dfb53e1813fa786d6e12a1d078638aa27153061389b755806e97338f"
+  },
+  "runtime": {
+    "version": "2.0.0",
+    "member": "bin/lsfg-vk-2.0.0.tar.xz",
+    "url": "https://builds.lsfg-vk.dev/lsfg-vk-2.0.0.tar.xz",
+    "sha256": "08bdbdf373a111022df87dac7aa87e3b564bb841f961552e3ca85fea12b5aa74"
+  },
+  "deployment": "plugin-only-with-bundled-runtime",
+  "lossless_scaling_appid": 993090,
+  "lossless_scaling_branch": "lsfg-vk"
+}

@@ -31,6 +31,10 @@ from serial_console import files as serial_console_files
 KERNEL='7.2.4-valve1-1-neptune-72-g5ab4af5e2eb9'
 VERSION={'ID':'steamos','VERSION_ID':'3.10','BUILD_ID':'20260924.1000'}
 PLUGIN_ROOT='var/lib/oxp3-installer/decky/runtime/plugins'
+LSFG_PLUGIN_NAME='Decky LSFG-VK'
+LSFG_PLUGIN_VERSION='0.14.4'
+LSFG_RUNTIME_VERSION='2.0.0'
+LSFG_RUNTIME_ARCHIVE='bin/lsfg-vk-'+LSFG_RUNTIME_VERSION+'.tar.xz'
 
 def prepare_css_themes(root, owner):
     """Make only CSS Loader's writable data directory user-owned."""
@@ -54,6 +58,35 @@ def managed_plugin_files(files):
             entry=dict(entry,user=False)
         result[path]=entry
     return result
+
+def validate_lsfg_files(files):
+    """Validate the pinned LSFG plugin tree before its managed file transaction."""
+    prefix=PLUGIN_ROOT+'/'+LSFG_PLUGIN_NAME+'/'
+    if not files or any(not isinstance(path,str) or not path.startswith(prefix) or
+                        path.startswith('/') or '\\' in path or '..' in PurePosixPath(path).parts
+                        for path in files):
+        raise RuntimeError('LSFG-VK manifest must stay inside its Decky plugin directory')
+    if any(not isinstance(entry,dict) or entry.get('user',False) is not False for entry in files.values()):
+        raise RuntimeError('LSFG-VK plugin files must remain root-owned')
+    for entry in files.values():
+        mode=entry.get('mode',0o644)
+        if type(mode) is not int or mode<0 or mode&0o7022 or mode&~0o777:
+            raise RuntimeError('Unsafe LSFG-VK plugin file mode')
+    try:
+        plugin=json.loads(files[prefix+'plugin.json']['data'])
+        package=json.loads(files[prefix+'package.json']['data'])
+    except (KeyError,TypeError,ValueError) as error:
+        raise RuntimeError('Missing LSFG-VK plugin metadata') from error
+    if (not isinstance(plugin,dict) or not isinstance(package,dict) or
+            plugin.get('name')!=LSFG_PLUGIN_NAME or package.get('name')!='decky-lsfg-vk' or
+            package.get('version')!=LSFG_PLUGIN_VERSION):
+        raise RuntimeError('Unexpected LSFG-VK plugin identity or version')
+    required=(prefix+'main.py',prefix+'dist/index.js',prefix+LSFG_RUNTIME_ARCHIVE)
+    if any(path not in files for path in required):
+        raise RuntimeError('Missing LSFG-VK runtime file')
+    if not isinstance(files[prefix+LSFG_RUNTIME_ARCHIVE].get('data'),bytes) or not files[prefix+LSFG_RUNTIME_ARCHIVE]['data']:
+        raise RuntimeError('Missing LSFG-VK offline runtime archive')
+    return files
 
 RETURN_TO_GAME=b'[Desktop Entry]\nType=Application\nName=Return to Gaming Mode\nName[zh_CN]=\xe8\xbf\x94\xe5\x9b\x9e\xe6\xb8\xb8\xe6\x88\x8f\xe6\xa8\xa1\xe5\xbc\x8f\nExec=/usr/bin/steamos-session-select gamescope\nIcon=steam\nTerminal=false\nCategories=Game;\n'
 
@@ -468,7 +501,7 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
         reports['deck-access']={'status':'files_installed','activation':'boot-prepared','files':list(files),
             'ssh_link_created':ssh_link_created,'ssh_link_target':ssh_link_target}
         print('OXP_COMPONENT_RESULT='+json.dumps({'slot':slot,'id':'deck-access',**reports['deck-access']}),flush=True)
-    order=['decky','windows-reboot','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','manager','fan-driver','gm7-resume','split-lock']+[x for x in options['repairs'] if x not in ('manager','fan-driver')]
+    order=['decky','lsfg-vk','windows-reboot','steamgriddb','protondb','tabmaster','css-loader','autoflatpaks','deck-settings','hltb','animation-changer','waydroid','manager','fan-driver','gm7-resume','split-lock']+[x for x in options['repairs'] if x not in ('manager','fan-driver')]
     for name in dict.fromkeys(order):
         if name not in selected: continue
         applying=False
@@ -586,6 +619,12 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
                 # desktop also needs its own executable, deck-owned launcher.
                 files['home/deck/Desktop/oxp3-waydroid-setup.desktop']={'data':desktop,'mode':0o755,'user':True}
                 files['home/deck/.local/share/applications/oxp3-waydroid-setup.desktop']={'data':desktop,'user':True}
+            elif name=='lsfg-vk':
+                if len(files)!=len(metadata.get('files',[])):
+                    raise RuntimeError('Duplicate LSFG-VK manifest targets')
+                if metadata.get('version')!=LSFG_PLUGIN_VERSION or metadata.get('runtime_version')!=LSFG_RUNTIME_VERSION:
+                    raise RuntimeError('LSFG-VK manifest pin metadata does not match the supported release')
+                files=validate_lsfg_files(files)
             elif name in options['plugins']:
                 pinned={'protondb':'protondb-1.3.4.zip','hltb':'hltb-2.0.12.zip',
                         'tabmaster':'tabmaster-2.15.1+oxp3.1.zip',
@@ -640,6 +679,13 @@ def stage(root, payload, options, slot, deck_password_hash=None, target_disk=Non
             services+=metadata.get('units',[])
             if name=='input' and 'inputplumber.service' not in services: services.append('inputplumber.service')
             reports[name]={'status':'files_installed','activation':'firstboot-pending' if name in options['repairs'] or name in ('decky','waydroid') else 'decky-session-pending','files':list(files)}
+            if name=='lsfg-vk':
+                reports[name].update(
+                    runtime_install='user-initiated-from-decky',
+                    automatic_game_configuration='unchanged',
+                    next_step_zh='先购买并安装 Lossless Scaling、切换至 lsfg-vk 分支；之后在 Decky 中点击 Install LSFG。',
+                    next_step_en='Purchase and install Lossless Scaling, select its lsfg-vk branch, then click Install LSFG in Decky.',
+                )
             if name=='split-lock': reports[name].update(activation='next-boot',restart_required=True)
             if name=='gm7-resume': reports[name]['applicable']=bool(files)
         except (OSError,ValueError,RuntimeError,KeyError,zipfile.BadZipFile,tarfile.TarError) as error:

@@ -237,6 +237,15 @@
       "en": "Waydroid r2 · Android host adaptation",
       "default": true,
       "dependencies": []
+    },
+    {
+      "id": "lsfg-vk",
+      "zh": "Decky LSFG-VK 0.14.4 · 需自行购买并安装 Lossless Scaling，再切换到 lsfg-vk 分支；部署后还需在 Decky 中点击 Install LSFG；不会自动修改游戏设置",
+      "en": "Decky LSFG-VK 0.14.4 · Requires you to purchase and install Lossless Scaling, then select its lsfg-vk branch. Install from Decky; game settings are not changed automatically.",
+      "default": false,
+      "dependencies": [
+        "decky"
+      ]
     }
   ]
 }

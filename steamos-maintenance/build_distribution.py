@@ -68,13 +68,16 @@ def _group(name, ids):
         return 'runtime-decky', 'decky'
     if 'waydroid' in ids and (name.startswith(('payload/waydroid/', 'payload/components/waydroid/')) or name == 'payload/components/waydroid_setup.py'):
         return 'runtime-waydroid', 'waydroid'
-    for component in ('opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'windows-reboot'):
+    for component in ('opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'windows-reboot', 'lsfg-vk'):
         if component not in ids:
             continue
         if name.startswith(('payload/integration/' + component + '/', 'payload/components/' + component + '/', 'payload/plugins/' + component + '/')):
             return 'plugin-' + component, component
     if 'windows-reboot' in ids and name == 'payload/components/windows_reboot.py':
         return 'plugin-windows-reboot', 'windows-reboot'
+    if 'lsfg-vk' in ids and (name == 'payload/components/lsfg-vk-release.json'
+                             or name.lower().startswith('payload/licenses/lsfg-vk')):
+        return 'plugin-lsfg-vk', 'lsfg-vk'
     return 'core', None
 
 

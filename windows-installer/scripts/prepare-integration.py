@@ -14,13 +14,16 @@ controls = root / 'components/controls'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path, default=root / 'cache/integration')
 parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
+parser.add_argument('--lsfg-source', type=Path, default=root / 'cache/lsfg-vk',
+                    help='Hash-verified official plugin cache prepared by prepare-lsfg-vk.py')
 targeted = parser.add_mutually_exclusive_group()
 targeted.add_argument('--opti-only', action='store_true', help='Regenerate only the pinned Opti2XMX component while preserving other manifest entries')
 targeted.add_argument('--gyro-only', action='store_true', help='Regenerate only gyro from current sources while preserving other manifest entries')
+targeted.add_argument('--lsfg-only', action='store_true', help='Add or regenerate only the pinned LSFG-VK plugin while preserving other manifest entries')
 arguments = parser.parse_args()
 store = arguments.output
 manifest_path = store / 'manifest.json'
-if not arguments.opti_only and not arguments.gyro_only:
+if not arguments.opti_only and not arguments.gyro_only and not arguments.lsfg_only:
     desktop_hdr_archive = store/'desktop-hdr/accepted-runtime.tar'
     if desktop_hdr_archive.is_symlink():
         raise RuntimeError('Desktop-HDR runtime must be a regular file')
@@ -29,20 +32,20 @@ if not arguments.opti_only and not arguments.gyro_only:
             validate_desktop_hdr_runtime(desktop_hdr_archive)
         except DesktopHdrPolicyError as exc:
             raise RuntimeError('Rebuild the fixed KWin and mapped-HDR frontend with the EDID-only policy before preparing integration payloads; rejected cache: '+str(exc)) from exc
-if not arguments.opti_only:
+if not arguments.opti_only and not arguments.lsfg_only:
     gyro_module_path=root/'components/gyro/oxp3_bmi260.ko'
     if not gyro_module_path.is_file():
         raise RuntimeError('Build components/gyro/oxp3_bmi260.ko against the exact supported kernel before preparing integration payloads')
     gyro_module=gyro_module_path.read_bytes()
     if b'oxp3_model_policy=hardware-interface-v2\x00' not in gyro_module:
         raise RuntimeError('Rebuild the BMI260 module from components/gyro against the exact supported kernel; the old model-locked module cannot be packaged')
-if arguments.opti_only or arguments.gyro_only:
-    label = 'Opti' if arguments.opti_only else 'gyro'
-    selected = 'opti2xmx' if arguments.opti_only else 'gyro'
+if arguments.opti_only or arguments.gyro_only or arguments.lsfg_only:
+    label = 'LSFG-VK' if arguments.lsfg_only else 'Opti' if arguments.opti_only else 'gyro'
+    selected = 'lsfg-vk' if arguments.lsfg_only else 'opti2xmx' if arguments.opti_only else 'gyro'
     if not store.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
         raise FileNotFoundError('Targeted '+label+' generation requires an existing integration manifest')
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    if not isinstance(manifest, dict) or not manifest or selected not in manifest:
+    if not isinstance(manifest, dict) or not manifest or (not arguments.lsfg_only and selected not in manifest):
         raise ValueError('Targeted '+label+' generation requires a complete existing integration manifest')
 else:
     store.mkdir(parents=True, exist_ok=True)
@@ -60,6 +63,22 @@ def component(name, files, units=(), packages=None):
                         'mode': 0o755 if target.endswith(('.sh', '/steamos-manager', '/steamosctl')) else 0o644,
                         'user': target.startswith('/home/deck/')})
     manifest[name] = {'files': targets, 'units': list(units), 'packages': packages or {}, 'missing': []}
+
+def prepare_lsfg():
+    from lsfg_payload import integration_files, read_pin
+    pin = read_pin()
+    component('lsfg-vk', integration_files(arguments.lsfg_source))
+    manifest['lsfg-vk'].update(version=pin['version'], runtime_version=pin['runtime']['version'],
+        source_url=pin['archive']['url'], archive_sha256=pin['archive']['sha256'],
+        deployment=pin['deployment'])
+
+
+if arguments.lsfg_only:
+    prepare_lsfg()
+    manifest_path.write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
+    print(json.dumps({'component':'lsfg-vk', 'files':len(manifest['lsfg-vk']['files']),
+                      'version':manifest['lsfg-vk']['version']}))
+    raise SystemExit(0)
 
 def emitted_definitions(path):
     # Maintained deployment generators define a file map before emitting shell.
@@ -261,6 +280,7 @@ if runtime.is_file():
         if not source.is_relative_to(store.resolve()): raise RuntimeError('Out-of-store payload')
         source.unlink()
 # Source and license material stays alongside executable payloads.
+prepare_lsfg()
 for directory, names in [('charging/module',['oxpec.c','oxpec.upstream.c','onexplayer3-dmi.patch','oxpec-acpi-lock-release.patch','README.md']),('input/hid-build-v1',['hid-oxp.patched.c','hid-ids.h','onexplayer3-button-format.patch','BUILD_STATUS.md']),('manager',['tdp-error-propagation.patch','tdp-live-state-cache.patch','BUILD_RESULTS.md']),('wifi/candidate',['provenance.json'])]:
     target=store/'sources'/directory; target.mkdir(parents=True,exist_ok=True)
     for name in names:

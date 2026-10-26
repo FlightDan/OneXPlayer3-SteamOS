@@ -123,6 +123,7 @@ if [ -f /mnt/payload/selection.json ]; then
     fi
 else
     python3 -B /mnt/payload/components/test_integration.py
+    python3 -B /mnt/payload/components/test_lsfg_integration.py -v
 fi
 umount /mnt/integration-test-scratch
 printf '\nOXP_TASK_RESULT=passed\n'

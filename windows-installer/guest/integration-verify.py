@@ -104,6 +104,23 @@ for slot in ('A','B'):
                     if '/plugins/' in relative and relative.endswith('/plugin.json'):
                         assert relative.startswith('var/lib/oxp3-installer/decky/runtime/plugins/')
                         assert (root/relative).stat().st_uid==0
+            if 'lsfg-vk' in installed:
+                result=results['components']['lsfg-vk']
+                prefix='var/lib/oxp3-installer/decky/runtime/plugins/Decky LSFG-VK/'
+                required={prefix+'plugin.json',prefix+'package.json',prefix+'main.py',
+                          prefix+'dist/index.js',prefix+'bin/lsfg-vk-2.0.0.tar.xz'}
+                assert result['activation']=='decky-session-pending'
+                assert result.get('runtime_install')=='user-initiated-from-decky'
+                assert result.get('automatic_game_configuration')=='unchanged'
+                assert 'Install LSFG in Decky' in result.get('next_step_en','')
+                assert 'Decky 中点击 Install LSFG' in result.get('next_step_zh','')
+                assert required.issubset(set(result.get('files',[])))
+                assert all(path.startswith(prefix) for path in result['files']), 'LSFG-VK may stage only its Decky plugin tree'
+                for relative in result['files']:
+                    info=(root/relative).stat()
+                    assert info.st_uid==0 and info.st_gid==0 and not info.st_mode&0o022, relative
+                assert json.loads((root/(prefix+'plugin.json')).read_text())['name']=='Decky LSFG-VK'
+                assert json.loads((root/(prefix+'package.json')).read_text())['version']=='0.14.4'
             # Plugin order is a user preference, not an installation success gate.
         if 'input' in installed: assert 'inputplumber.service' in results['services']
         for name,result in results['components'].items():

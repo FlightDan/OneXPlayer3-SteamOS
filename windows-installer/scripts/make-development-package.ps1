@@ -25,6 +25,7 @@ function Assert-PinnedDeckyPayload([string]$ProjectRoot) {
     }
 }
 Assert-PinnedDeckyPayload $projectRoot
+& (Join-Path $PSScriptRoot 'check-lsfg-payload.ps1') -ProjectRoot $projectRoot
 & (Join-Path $PSScriptRoot 'check-maintenance.ps1') -RequireKey:$PublicRelease
 $integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
 $desktopHdrRecord = $integrationManifest.'desktop-hdr'
@@ -182,6 +183,7 @@ if ($release.version -eq '0.1.3' -and (Test-Path -LiteralPath (Join-Path $projec
 }
 $buildInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'build-info.json') -Encoding utf8
 Copy-PackageTree (Join-Path $projectRoot 'cache/integration') 'cache/integration'
+& (Join-Path $PSScriptRoot 'check-lsfg-payload.ps1') -ProjectRoot $destination -ArchiveRoot $projectRoot
 $stagedDesktopHdrArchive = Join-Path $destination 'cache/integration/desktop-hdr/accepted-runtime.tar'
 if ($desktopHdrRecord.runtime_archive -and !(Test-Path -LiteralPath $stagedDesktopHdrArchive -PathType Leaf)) {
     throw 'The staged package is missing the manifest-referenced desktop-HDR runtime.'

@@ -13,10 +13,12 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import runpy
 import shutil
 import stat
 import sys
 import tempfile
+import zipfile
 
 from build_bundle import _metadata
 from oxp3_maintenance.bundle import BundleError
@@ -36,7 +38,7 @@ SPECIAL = {'hdr', 'keyboard', 'multifunction', 'flathub-ustc', 'decky', 'split-l
 MANIFEST_ADAPTERS = {'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'fan-driver',
                      'native-tdp', 'overlay', 'wifi', 'xe-dsb', 'gm7-resume',
                      'gamescope-env', 'input', 'gyro', 'legacy-runtime', 'manager',
-                     'desktop-hdr'}
+                     'desktop-hdr', 'lsfg-vk'}
 SOURCE_SUFFIXES = {'.py', '.json', '.lua', '.yaml', '.yml', '.sh', '.js', '.patch',
                    '.desktop', '.rules', '.policy', '.conf', '.toml', '.md', '.txt',
                    '.flatpakrepo', '.service'}
@@ -219,6 +221,15 @@ def prepare_payload(workspace, output, maintenance_options=None):
                                 _json(_source(installer, 'cache/integration/manifest.json')))
     if not isinstance(manifest, dict) or set(manifest) - set(items):
         raise PreparationError('Integration manifest IDs disagree with current options')
+    if 'lsfg-vk' in items:
+        # This is an explicit local build helper, not downloaded plugin code.
+        # Authenticate the original archive, cache manifest, every integration
+        # byte and its target/ownership before it can enter a signed release.
+        try:
+            helper = runpy.run_path(str(_source(installer, 'scripts/lsfg_payload.py')))
+            helper['check_integration'](installer / 'cache/integration', installer / 'cache/lsfg-vk')
+        except (OSError, ValueError, KeyError, TypeError, IndexError, zipfile.BadZipFile) as exc:
+            raise PreparationError('Rebuild LSFG-VK integration from the pinned official release before preparing maintenance payloads: ' + str(exc)) from exc
     release = _metadata(installer)
     for cached in ('cache/components/release.json', 'cache/integration/release.json'):
         path = installer / cached

@@ -76,6 +76,13 @@ public static class OptionsChecks
         var boxes = panel.OptionBoxes;
         Require(new[] { "steamgriddb", "protondb", "tabmaster", "css-loader", "autoflatpaks", "deck-settings", "hltb", "animation-changer" }
             .All(id => !boxes.ContainsKey(id)), "user-installed-third-party-plugins-are-not-bundled-options");
+        var lsfg = catalog.Plugins.Single(x => x.Id == "lsfg-vk");
+        Require(!lsfg.Default && lsfg.Dependencies.SequenceEqual(new[] { "decky" })
+            && boxes.ContainsKey("lsfg-vk") && boxes["lsfg-vk"].IsChecked == false,
+            "lsfg-vk-is-optional-and-requires-decky");
+        Require(lsfg.Zh.Contains("0.14.4") && lsfg.Zh.Contains("购买并安装 Lossless Scaling") && lsfg.Zh.Contains("lsfg-vk") && lsfg.Zh.Contains("不会自动修改游戏设置")
+            && lsfg.En.Contains("0.14.4") && lsfg.En.Contains("purchase and install Lossless Scaling") && lsfg.En.Contains("lsfg-vk") && lsfg.En.Contains("game settings are not changed automatically"),
+            "lsfg-vk-requirements-and-no-game-configuration-are-bilingual");
         ((RadioButton)window.FindName("ChineseLanguage")).IsChecked = true;
         Require(boxes["flathub-ustc"].IsChecked == true, "chinese-mirror-default-enabled");
         ((RadioButton)window.FindName("EnglishLanguage")).IsChecked = true;
@@ -89,13 +96,18 @@ public static class OptionsChecks
         Require(boxes["flathub-ustc"].IsChecked == false, "explicit-mirror-opt-out-survives-chinese");
         boxes["hdr"].IsChecked = false; Require(!panel.Selection.Repairs.Contains("hdr"), "disabled-repair-is-absent-from-request");
         boxes["windows-reboot"].IsChecked = false; Require(!panel.Selection.Plugins.Contains("windows-reboot"), "disabled-project-plugin-is-absent-from-request");
+        boxes["lsfg-vk"].IsChecked = true;
         boxes["decky"].IsChecked = false;
-        try { InstallerOptions.Validate(panel.Selection); throw new IOException("disabled-dependency-was-accepted"); } catch (IOException e) when (e.Message != "disabled-dependency-was-accepted") { events.Add("disabled-dependency-refused"); }
+        try { InstallerOptions.Validate(panel.Selection); throw new IOException("disabled-dependency-was-accepted"); } catch (IOException e) when (e.Message != "disabled-dependency-was-accepted") { events.Add("lsfg-vk-decky-dependency-enforced"); }
         boxes["decky"].IsChecked = true;
+        boxes["lsfg-vk"].IsChecked = false;
         ((RadioButton)window.FindName("EnglishLanguage")).IsChecked = true;
         Require(InstallerI18n.Language == "en-US" && ((Button)window.FindName("NextButton")).Content.ToString() == "Next", "english-navigation-applied");
         Require(((TextBlock)window.FindName("ModeBanner")).Text.Contains("Back up"),"backup-warning-translated");
         Require(((TextBlock)boxes["hdr"].Content).Text.Contains("Game mode HDR"), "english-repair-label-applied");
+        Require(((TextBlock)boxes["lsfg-vk"].Content).Text.Contains("0.14.4")
+            && ((TextBlock)boxes["lsfg-vk"].Content).Text.Contains("purchase and install Lossless Scaling")
+            && ((TextBlock)boxes["lsfg-vk"].Content).Text.Contains("lsfg-vk"), "lsfg-vk-english-label-applied");
         Require(boxes["hdr"].IsChecked == false && boxes["windows-reboot"].IsChecked == false, "language-switch-preserves-disabled-choices");
         Require(boot.WindowsChoice.IsChecked == true && boot.Seconds.Text == "2" && boot.InstallChoice.IsChecked == true, "language-switch-preserves-refind-settings");
         var kde = panel.KdeChoice; kde.SelectedIndex = 1;

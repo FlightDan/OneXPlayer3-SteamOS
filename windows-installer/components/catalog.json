@@ -236,6 +236,18 @@
       ],
       "state": "resources_cached",
       "default": false
+    },
+    {
+      "id": "lsfg-vk",
+      "name": "Decky LSFG-VK",
+      "version": "0.14.4",
+      "dependencies": [
+        "decky"
+      ],
+      "state": "installer_route_implemented_validation_pending",
+      "default": false,
+      "reason": "离线集成仅部署 0.14.4 上游插件树和 lsfg-vk 2.0.0 运行库安装包；用户需自行购买并安装 Lossless Scaling、切换至 lsfg-vk 分支，再在 Decky 中点击 Install LSFG。安装器不携带付费 DLL、不自动修改游戏设置。项目载荷的新装与恢复验证待完成；先前手动设备测试未验证游戏帧生成效果。",
+      "source": "windows-installer/components/lsfg-vk-release.json"
     }
   ]
 }
