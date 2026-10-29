@@ -1,6 +1,6 @@
-# 1.0.6 NTFS 挂载前检查与有限修复候选（2026-10-29）
+# 1.0.6 NTFS 挂载前检查与有限修复（2026-10-29）
 
-本候选补齐 KDE 分区自动挂载的启动前检查。项目显示版本保持 1.0.6，维护修订预留 `1.0.6+maintenance.18`；本文不是公开发布或实机启动验收声明。
+本次补齐 KDE 分区自动挂载的启动前检查。项目显示版本保持 1.0.6，维护修订为 `1.0.6+maintenance.18`。正式维护工具已公开并通过匿名下载验证；实机升级、重启和对应 Windows 完整包仍待设备恢复联网后继续。
 
 ## 实际行为
 
@@ -38,13 +38,15 @@
 | Windows 应用构建 | 完成：0 警告、0 错误；不代表 Linux 新装验收 |
 | 新装/维护资源与事务验证 | 完成针对性验证：两端实际源码/工具映射，维护单组件准备 21 文件完整、最终分发清理后仍逐字节一致；隔离 Linux 8 项维护入口/适配测试通过。完整系统新装/正式维护升级未验收 |
 | 私有 loop / systemd 实机验证 | 完成：指定 SteamOS 3.10 / 7.2.4 设备，仅用全新 64 MiB 文件和 loop，挂载依赖触发 dirty→修复→ntfs3 rw；再挂载不重复修复，内容保留，已挂载检查拒绝。生产模板通过 systemd-analyze verify；临时实例使用实际 loop device 依赖和私有配置/工具路径，测试后临时单元、挂载和 loop 已清理。未重启设备、未操作用户 NTFS 卷 |
-| 正式签名与完整维护 Release | 阻塞：status/preflight 在正常用户上下文 ready；prepare 被原有 Desktop-HDR accepted-runtime 缺少 EDID-only 标记拒绝，publisher-report.complete=false。须先重建/验收该既有载荷，再重跑完整签名准备；未绕过检查 |
-| 公开下载、旧版升级及重启验收 | 阻塞：依赖完整签名维护 Release，未执行；不得用源码/私有镜像结果替代 |
-| 完整 Windows 公开安装包 | 阻塞：依赖正式维护升级门槛。应用构建、15 项发布冒烟、最终 NTFS 载荷检查通过；随安装器维护工具已重准备并通过 39 文件公钥/来源检查。未发布完整安装包 |
-| README | 不适用：项目显示版本未变，不改 README 文案 |
+| 正式签名与完整维护 Release | 完成：恢复 maintenance.17 正式 HDR 完整载荷，强 EDID-only/呈现完成标记、源输入/CI 来源和离线 SteamOS ABI 通过；正式密钥重新 status/preflight/prepare，publisher-report.complete=true。签名目录覆盖 33 项、32 个支持组件和 15 分片；只重建 NTFS 分片，其余 14 个引用逐字节保留。maintenance.18 已公开，维护 Release 不抢占 Latest |
+| 公开下载、旧版升级及重启验收 | 公开下载完成：8 个附件、15 个分片与 1 个原始引用的签名/大小/哈希、离线完整包、API/Atom 版本发现及 .18/.17/.16 修订排序通过。实机升级/重启阻塞：指定设备 SSH 超时，未写设备、未执行正式升级或重启；设备联网后继续按正式 .17 基线验收 |
+| 完整 Windows 公开安装包 | 阻塞：依赖正式维护升级与重启门槛。独立公开源码应用构建 0 警告/0 错误；15 项发布冒烟、NTFS/HDR/LSFG/Opti/离线包/重启载荷检查通过；随包维护工具已重新准备并通过 42 文件及正式公钥检查。尚未打包或发布本次完整 Windows 安装器 |
+| README | 完成：仅将根中英文 README 与维护 README 已有维护链接 .17 改为 .18；显示版本 1.0.6 不变，未改实质文案 |
 
 只读性测试应同时核对镜像 SHA-256 和系统调用打开方式；修复成功测试应在独立私有 dirty 镜像中完成，不能与只读检查成功混为一谈。
 
 状态用例包含 clean、dirty、休眠、dirty+休眠、无休眠文件但 Windows 缓存日志 v2、未清 v1 日志、MFT/MFTMirr record 3 不一致和无效卷。独立实际修复用例确认只调用一次 ntfsfix，修复前后 `/keep.txt` 内容 SHA-256 保持 `25543f8dbdf88effc95a58365b70f255ac77159691c0f95a3eedf398bb75e520`。静态工具 SHA-256：检查器 `d2039ccf78039122f39835be370c2e91488bd2895b5df06316a84be08ac3bcbf`，ntfsfix `02ba101a6285696b6381923bf729f66a933122d50dd38637b6d2b1fd3878edbe`。
 
-本地复核材料：`windows-installer/work/ntfs-preflight-validation/remote-final-tests.json`、`remote-qa-result.json`，`windows-installer/work/ntfs-tools-functional-55bc6ed493444633b170a21c4298248d/report.json`、对应串口记录，以及 `windows-installer/logs/ntfs-preflight-delivery-20261029.json`。组件复核 ZIP 是局部候选，不能作为完整安装包或公开维护 Release 使用。README 显示版本未变化，本轮未改 README。
+本地复核材料：`windows-installer/work/ntfs-preflight-validation/remote-final-tests.json`、`remote-qa-result.json`，`windows-installer/work/ntfs-tools-functional-55bc6ed493444633b170a21c4298248d/report.json`、对应串口记录，以及 `windows-installer/logs/ntfs-preflight-delivery-20261029.json`。组件复核 ZIP 是局部候选，不能作为完整安装包或公开维护 Release 使用。README 仅同步已有维护链接版本。
+
+2026-10-29 正式交付复核：公开源码提交 `aa3fa0c03faf2e66f6ba25a30c10bfda130c98b2`。维护完整 Windows 回归首次受沙箱 DPAPI 上下文限制，860 项中 797 通过、53 跳过、10 项密钥测试出错；正常用户上下文重跑密钥模块 17 项全通过。独立审查核对 Git 字节、固定源码 JSON、签名分片完全一致。未把这些结果计作实机升级或完整新装。
