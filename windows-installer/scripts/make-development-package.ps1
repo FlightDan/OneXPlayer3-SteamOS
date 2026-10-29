@@ -25,6 +25,7 @@ function Assert-PinnedDeckyPayload([string]$ProjectRoot) {
     }
 }
 Assert-PinnedDeckyPayload $projectRoot
+& (Join-Path $PSScriptRoot 'check-ntfs-tools.ps1') -ProjectRoot $projectRoot
 & (Join-Path $PSScriptRoot 'check-lsfg-payload.ps1') -ProjectRoot $projectRoot
 & (Join-Path $PSScriptRoot 'check-maintenance.ps1') -RequireKey:$PublicRelease
 $integrationManifest = Get-Content -LiteralPath (Join-Path $projectRoot 'cache/integration/manifest.json') -Raw | ConvertFrom-Json
@@ -211,7 +212,7 @@ foreach ($item in @(@('decky','PluginLoader'), @('steamgriddb','steamgriddb-1.8.
     New-Item -ItemType Directory -Force $directory | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "cache/plugins/$($item[0])/$($item[1])") -Destination $directory
 }
-foreach ($name in 'read-disks.ps1','format-remaining.ps1','partition-delete-policy.ps1','delete-partition.ps1','read-usb-media.ps1','vhd-test-volumes.ps1','partition-vhd-lab.ps1','test-partition-deployment.ps1','test-installation-wizard.ps1','test-installation-recovery.ps1','test-image-download.ps1','test-startup-policy.ps1','test-refind-installation.ps1','capture-refind-installed-menu.py','build-refind-theme.py','render-refind-steam.cjs') {
+foreach ($name in 'check-ntfs-tools.ps1','read-disks.ps1','format-remaining.ps1','partition-delete-policy.ps1','delete-partition.ps1','read-usb-media.ps1','vhd-test-volumes.ps1','partition-vhd-lab.ps1','test-partition-deployment.ps1','test-installation-wizard.ps1','test-installation-recovery.ps1','test-image-download.ps1','test-startup-policy.ps1','test-refind-installation.ps1','capture-refind-installed-menu.py','build-refind-theme.py','render-refind-steam.cjs') {
     Copy-Item -LiteralPath (Join-Path $projectRoot "scripts/$name") -Destination (Join-Path $destination "scripts/$name")
 }
 foreach ($name in 'SteamOSInstaller.exe','Launch.cmd','README.md','IMPLEMENTATION_STATUS.md') { Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination (Join-Path $destination $name) }

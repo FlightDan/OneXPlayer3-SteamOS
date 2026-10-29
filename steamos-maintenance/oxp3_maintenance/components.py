@@ -395,10 +395,14 @@ def _slot_switch(payload, root, metadata, owned):
 
 
 def _partition_mount(payload, root, metadata, owned):
-    """Update the KDE mount helper without touching its independent fstab state."""
+    """Install the KDE mount helper and its read-only systemd preflight generator.
+
+    The generator reads the canonical managed fstab entries when systemd runs;
+    the maintenance transaction never edits fstab or enables the template unit.
+    """
     if metadata.get('files') or metadata.get('runtime_archive') or metadata.get('units'):
         raise ValueError('Partition mount requires its fixed file-only maintenance adapter')
-    for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape'):
+    for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape', 'blkid'):
         try:
             _trusted_executable(root, 'usr/bin/' + tool)
         except FileNotFoundError as error:
@@ -406,7 +410,15 @@ def _partition_mount(payload, root, metadata, owned):
     source = payload / 'components/partition-mount'
     files = {'home/.oxp3-partition-mount/' + name:
              _entry(_read(source, name), 0o755 if name == 'oxp3-partition-mount' else 0o644)
-             for name in ('mounts.py', 'desktop.py', 'oxp3-partition-mount')}
+             for name in ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'preflight.py',
+                          'ntfs_status.c', 'ntfs-tools-build.sh', 'ntfs-tools-source.json', 'MUSL-COPYRIGHT')}
+    files['etc/systemd/system-generators/oxp3-ntfs-preflight'] = _entry(
+        _read(source, 'ntfs-generator.py'), 0o755)
+    files['etc/systemd/system/oxp3-ntfs-preflight@.service'] = _entry(
+        _read(source, 'oxp3-ntfs-preflight@.service'))
+    for name in ('ntfs_status', 'ntfsfix', 'COPYING', 'source.tar.gz', 'manifest.json'):
+        files['home/.oxp3-partition-mount/tools/' + name] = _entry(
+            _read(source / 'tools', name), 0o755 if name in ('ntfs_status', 'ntfsfix') else 0o644)
     for target in ('home/deck/Desktop/oxp3-partition-mount.desktop',
                    'home/deck/.local/share/applications/oxp3-partition-mount.desktop'):
         files[target] = _entry(_read(source, 'oxp3-partition-mount.desktop'), 0o755, user=True)

@@ -55,6 +55,45 @@ class PreparePayloadTests(unittest.TestCase):
         self.put('components/options.json', {'schema': 1,
             'repairs': [{'id': name, 'dependencies': []} for name in names], 'plugins': []})
 
+    def partition_mount_fixture(self):
+        self.options(['partition-mount'])
+        self.put('cache/integration/manifest.json', {})
+        for name in (
+                'mounts.py', 'desktop.py', 'oxp3-partition-mount',
+                'oxp3-partition-mount.desktop', 'preflight.py', 'ntfs-generator.py',
+                'oxp3-ntfs-preflight@.service',
+                'ntfs_status.c', 'ntfs-tools-build.sh', 'MUSL-COPYRIGHT'):
+            self.put('components/partition-mount/' + name, ('fixture ' + name).encode())
+        self.put('components/partition-mount/ntfs-tools-source.json', {'schema': 1, 'fixture': True})
+        tool_data = {
+            'ntfs_status': b'ELF status fixture', 'ntfsfix': b'ELF fix fixture',
+            'COPYING': b'GPL source license', 'source.tar.gz': b'upstream source archive',
+        }
+        records = {}
+        for name, data in tool_data.items():
+            self.put('components/partition-mount/tools/' + name, data)
+            records[name] = {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+        manifest = {'schema': 1, 'files': records}
+        self.put('components/partition-mount/tools/manifest.json', manifest)
+        verifier = '''import hashlib, json
+from pathlib import Path
+def runtime_files(source):
+    source = Path(source)
+    manifest = json.loads((source / "manifest.json").read_text())
+    expected = {"ntfs_status", "ntfsfix", "COPYING", "source.tar.gz"}
+    if manifest.get("schema") != 1 or set(manifest.get("files", {})) != expected:
+        raise ValueError("invalid fixture pin manifest")
+    result = {}
+    for name in expected:
+        data = (source / name).read_bytes()
+        if manifest["files"][name] != {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}:
+            raise ValueError("stale fixture pin: " + name)
+        result[name] = data
+    result["manifest.json"] = (source / "manifest.json").read_bytes()
+    return result
+'''
+        self.put('components/partition_mount.py', verifier.encode())
+
     def test_decky_missing_pin_cannot_fall_back_to_old_cache(self):
         self.options(['decky'])
         self.put('cache/integration/manifest.json', {})
@@ -145,6 +184,41 @@ class PreparePayloadTests(unittest.TestCase):
         self.assertEqual(report['coverage']['slot-switch']['status'], 'adapter_supported')
         self.assertIn('shared-storage', report['separate_operations'])
         self.assertTrue(report['resource_complete'])
+
+    def test_partition_mount_payload_requires_verified_fixed_ntfs_tools(self):
+        self.partition_mount_fixture()
+        self.put('components/partition-mount/unreviewed', b'not a listed extensionless asset')
+
+        report = prepare_payload(self.workspace, self.output)
+
+        self.assertTrue(report['resource_complete'])
+        for name in ('ntfs_status', 'ntfsfix', 'COPYING', 'source.tar.gz', 'manifest.json'):
+            relative = 'components/partition-mount/tools/' + name
+            self.assertEqual((self.output / relative).read_bytes(),
+                             (self.installer / relative).read_bytes())
+            self.assertEqual(report['source_inventory'][relative]['source'], 'windows-installer/' + relative)
+        self.assertFalse((self.output / 'components/partition-mount/unreviewed').exists())
+        pin = 'components/partition-mount/ntfs-tools-source.json'
+        self.assertEqual((self.output / pin).read_bytes(), (self.installer / pin).read_bytes())
+        self.assertEqual(report['coverage']['partition-mount']['status'], 'adapter_supported')
+
+    def test_partition_mount_pinned_metadata_must_not_be_silently_rewritten(self):
+        self.partition_mount_fixture()
+        self.put('components/partition-mount/ntfs-tools-source.json',
+                 {'schema': 1, 'tabmaster': 'excluded legacy metadata'})
+        with self.assertRaisesRegex(PreparationError, 'Excluded metadata in pinned NTFS'):
+            prepare_payload(self.workspace, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_partition_mount_stale_ntfs_binary_pin_blocks_payload(self):
+        self.partition_mount_fixture()
+        binary = self.installer / 'components/partition-mount/tools/ntfsfix'
+        binary.write_bytes(b'changed after manifest creation')
+
+        with self.assertRaisesRegex(PreparationError, 'pin verification failed'):
+            prepare_payload(self.workspace, self.output)
+
+        self.assertFalse(self.output.exists())
 
     def test_overlay_runtime_uses_canonical_sources_instead_of_stale_cache(self):
         self.options(['overlay'])

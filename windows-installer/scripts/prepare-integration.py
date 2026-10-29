@@ -16,13 +16,24 @@ parser.add_argument('--output', type=Path, default=root / 'cache/integration')
 parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
 parser.add_argument('--lsfg-source', type=Path, default=root / 'cache/lsfg-vk',
                     help='Hash-verified official plugin cache prepared by prepare-lsfg-vk.py')
+parser.add_argument('--ntfs-tools-source', type=Path, default=root / 'cache/ntfs-tools/tools',
+                    help='Fresh static NTFS tools built by prepare-ntfs-tools.py')
 targeted = parser.add_mutually_exclusive_group()
 targeted.add_argument('--opti-only', action='store_true', help='Regenerate only the pinned Opti2XMX component while preserving other manifest entries')
 targeted.add_argument('--gyro-only', action='store_true', help='Regenerate only gyro from current sources while preserving other manifest entries')
 targeted.add_argument('--lsfg-only', action='store_true', help='Add or regenerate only the pinned LSFG-VK plugin while preserving other manifest entries')
+targeted.add_argument('--partition-mount-only', action='store_true',
+                      help='Regenerate only partition-mount tools/provenance from current sources')
 arguments = parser.parse_args()
 store = arguments.output
 manifest_path = store / 'manifest.json'
+if arguments.partition_mount_only:
+    from ntfs_payload import prepare as prepare_ntfs
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['partition-mount'] = prepare_ntfs(root, store, arguments.ntfs_tools_source)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps({'component': 'partition-mount', 'version': manifest['partition-mount']['version']}))
+    raise SystemExit(0)
 if not arguments.opti_only and not arguments.gyro_only and not arguments.lsfg_only:
     desktop_hdr_archive = store/'desktop-hdr/accepted-runtime.tar'
     if desktop_hdr_archive.is_symlink():
@@ -281,6 +292,8 @@ if runtime.is_file():
         source.unlink()
 # Source and license material stays alongside executable payloads.
 prepare_lsfg()
+from ntfs_payload import prepare as prepare_ntfs
+manifest['partition-mount'] = prepare_ntfs(root, store, arguments.ntfs_tools_source)
 for directory, names in [('charging/module',['oxpec.c','oxpec.upstream.c','onexplayer3-dmi.patch','oxpec-acpi-lock-release.patch','README.md']),('input/hid-build-v1',['hid-oxp.patched.c','hid-ids.h','onexplayer3-button-format.patch','BUILD_STATUS.md']),('manager',['tdp-error-propagation.patch','tdp-live-state-cache.patch','BUILD_RESULTS.md']),('wifi/candidate',['provenance.json'])]:
     target=store/'sources'/directory; target.mkdir(parents=True,exist_ok=True)
     for name in names:

@@ -45,6 +45,21 @@ class PlannerTests(unittest.TestCase):
             entries.append({'source': source, 'target': target})
         self.manifest[name] = {'files': entries, 'units': [], 'packages': {}, **metadata}
 
+    def partition_mount_sources(self, *, omit_tool=None):
+        for name in (
+                'mounts.py', 'desktop.py', 'oxp3-partition-mount',
+                'oxp3-partition-mount.desktop', 'preflight.py', 'ntfs-generator.py',
+                'oxp3-ntfs-preflight@.service', 'ntfs_status.c',
+                'ntfs-tools-build.sh', 'MUSL-COPYRIGHT'):
+            self.write(self.payload, 'components/partition-mount/' + name,
+                       ('fixture ' + name).encode())
+        self.write(self.payload, 'components/partition-mount/ntfs-tools-source.json', b'{"schema":1}')
+        for name in ('ntfs_status', 'ntfsfix', 'COPYING', 'source.tar.gz', 'manifest.json'):
+            if name == omit_tool:
+                continue
+            self.write(self.payload, 'components/partition-mount/tools/' + name,
+                       ('fixture ' + name).encode())
+
     def plan(self, selected, managed=None):
         self.write(self.payload, 'components/options.json', json.dumps(self.catalog).encode())
         self.write(self.payload, 'integration/manifest.json', json.dumps(self.manifest).encode())
@@ -149,10 +164,8 @@ class PlannerTests(unittest.TestCase):
 
     def test_partition_mount_is_portable_file_only_adapter_and_keeps_fstab_outside_transaction(self):
         self.component('partition-mount')
-        names = ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop')
-        for name in names:
-            self.write(self.payload, 'components/partition-mount/' + name, ('fixture ' + name).encode())
-        tools = ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape')
+        self.partition_mount_sources()
+        tools = ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape', 'blkid')
         for tool in tools:
             executable = self.write(self.root, 'usr/bin/' + tool, b'fixture executable')
             executable.chmod(0o755)
@@ -168,23 +181,58 @@ class PlannerTests(unittest.TestCase):
             'home/.oxp3-partition-mount/mounts.py',
             'home/.oxp3-partition-mount/desktop.py',
             'home/.oxp3-partition-mount/oxp3-partition-mount',
+            'home/.oxp3-partition-mount/preflight.py',
+            'home/.oxp3-partition-mount/ntfs_status.c',
+            'home/.oxp3-partition-mount/ntfs-tools-build.sh',
+            'home/.oxp3-partition-mount/ntfs-tools-source.json',
+            'home/.oxp3-partition-mount/MUSL-COPYRIGHT',
+            'home/.oxp3-partition-mount/tools/ntfs_status',
+            'home/.oxp3-partition-mount/tools/ntfsfix',
+            'home/.oxp3-partition-mount/tools/COPYING',
+            'home/.oxp3-partition-mount/tools/source.tar.gz',
+            'home/.oxp3-partition-mount/tools/manifest.json',
+            'etc/systemd/system-generators/oxp3-ntfs-preflight',
+            'etc/systemd/system/oxp3-ntfs-preflight@.service',
             'home/deck/Desktop/oxp3-partition-mount.desktop',
             'home/deck/.local/share/applications/oxp3-partition-mount.desktop',
         })
+        self.assertEqual(plan['components']['partition-mount']['units'], [])
+        self.assertEqual(plan['files']['etc/systemd/system-generators/oxp3-ntfs-preflight']['mode'], 0o755)
+        self.assertEqual(plan['files']['home/.oxp3-partition-mount/tools/ntfsfix']['mode'], 0o755)
+        self.assertEqual(plan['files']['home/.oxp3-partition-mount/tools/COPYING']['mode'], 0o644)
         self.assertNotIn('etc/fstab', plan['files'])
         self.assertFalse(any('polkit' in path for path in plan['files']))
         self.assertEqual(fstab.read_bytes(), b'# user entries remain independent\n')
 
     def test_partition_mount_blocks_missing_dependency_and_unmanaged_helper(self):
         self.component('partition-mount')
-        for name in ('mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop'):
-            self.write(self.payload, 'components/partition-mount/' + name, ('fixture ' + name).encode())
+        self.partition_mount_sources()
         missing = self.plan(['partition-mount'])['components']['partition-mount']
         self.assertEqual(missing['status'], 'blocked')
         self.assertIn('python3', missing['reason'])
         self.assertEqual(self.plan(['partition-mount'])['files'], {})
 
-        for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape'):
+    def test_partition_mount_blocks_missing_ntfs_tool_and_unmanaged_generator(self):
+        self.component('partition-mount')
+        self.partition_mount_sources(omit_tool='ntfsfix')
+        for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape', 'blkid'):
+            executable = self.write(self.root, 'usr/bin/' + tool, b'fixture executable')
+            executable.chmod(0o755)
+
+        missing = self.plan(['partition-mount'])['components']['partition-mount']
+        self.assertEqual(missing['status'], 'blocked')
+        self.assertIn('ntfsfix', missing['reason'])
+        self.assertEqual(self.plan(['partition-mount'])['files'], {})
+
+        self.partition_mount_sources()
+        generator = self.write(self.root, 'etc/systemd/system-generators/oxp3-ntfs-preflight', b'unknown generator')
+        blocked = self.plan(['partition-mount'])['components']['partition-mount']
+        self.assertEqual(blocked['status'], 'blocked')
+        self.assertIn('Unmanaged partition mount conflict', blocked['reason'])
+        self.assertEqual(generator.read_bytes(), b'unknown generator')
+        self.assertEqual(self.plan(['partition-mount'])['files'], {})
+
+        for tool in ('python3', 'pkexec', 'kdialog', 'lsblk', 'findmnt', 'systemctl', 'systemd-escape', 'blkid'):
             executable = self.write(self.root, 'usr/bin/' + tool, b'fixture executable')
             executable.chmod(0o755)
         target = self.write(self.root, 'home/.oxp3-partition-mount/mounts.py', b'user-owned helper')

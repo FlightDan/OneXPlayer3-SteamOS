@@ -16,3 +16,7 @@ steamos-maintenance/trusted-public-key.pem text eol=lf
 *.exe binary
 *.dll binary
 windows-installer/components/opti2xmx/** -text
+
+windows-installer/components/partition-mount/ntfs-tools-source.json -text whitespace=cr-at-eol
+
+windows-installer/components/partition-mount/tools/manifest.json -text whitespace=cr-at-eol

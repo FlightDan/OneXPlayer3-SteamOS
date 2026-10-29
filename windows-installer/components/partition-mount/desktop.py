@@ -65,6 +65,11 @@ def helper(*args):
             raise RuntimeError('Invalid partition status')
     elif data.get('saved') is not True or type(data.get('mounted')) is not bool or not isinstance(data.get('warning'), str):
         raise RuntimeError('Invalid save result')
+    issue = data.get('issue')
+    if issue is not None and (not isinstance(issue, dict) or
+                              not isinstance(issue.get('code'), str) or
+                              not isinstance(issue.get('details'), str)):
+        raise RuntimeError('Invalid mount diagnostic')
     return data
 
 
@@ -91,6 +96,39 @@ def excluded_listing(state):
                        ('当前不可用', 'Currently unavailable'))) for item in state.get('excluded', []))
 
 
+def issue_message(issue):
+    code = issue.get('code')
+    reasons = {
+        'ntfs_inconsistent': ('NTFS 元数据不一致（例如 $MFT 与 $MFTMirr 不一致）。', 'NTFS metadata is inconsistent (for example, $MFT/$MFTMirr).'),
+        'ntfs_hibernated': ('Windows 仍处于休眠状态，分区尚未完全关闭。', 'Windows left this volume hibernated.'),
+        'ntfs_unclean': ('NTFS 未正常卸载或带有脏卷标记（dirty）。', 'NTFS was not cleanly unmounted or is marked dirty.'),
+        'ntfs_invalid': ('分区未通过 NTFS 格式检查，请核对分区用途。', 'The volume did not pass the NTFS format check; confirm its identity.'),
+        'ntfs_busy': ('其他程序正在独占使用此分区。', 'Another application has this volume open exclusively.'),
+        'ntfs_check_failed': ('NTFS 检查未能完成，请查看详细信息。', 'The NTFS check could not complete; review the details.'),
+        'ntfs_mount_failed': ('NTFS 挂载失败，尚不能确定具体原因。', 'The NTFS mount failed; the exact cause could not be confirmed.'),
+    }
+    message = tr(*reasons.get(code, ('挂载失败，请查看详细信息。', 'Mount failed; review the details.')))
+    if code in ('ntfs_inconsistent', 'ntfs_unclean', 'ntfs_invalid'):
+        message += tr(
+            '\n\n处理方法：\n1. 进入 Windows，按卷标和容量找到同一分区，先备份重要文件。\n'
+            '2. 以管理员身份打开终端，运行 chkdsk X: /f（把 X: 换成该分区实际盘符，不要直接照抄）。\n'
+            '3. 等待检查完成；如提示下次启动检查，先在 Windows 重启完成检查，再完整关机。\n'
+            '4. 回到 SteamOS，在此工具重新选择该分区并点击“挂载/重试”。仅重启 SteamOS 不能修复 NTFS。',
+            '\n\nRecovery:\n1. In Windows, identify the same volume by label and size and back up important files.\n'
+            '2. Run chkdsk X: /f as Administrator; replace X: with its actual drive letter.\n'
+            '3. Let the check finish. Complete any scheduled check by restarting Windows, then fully shut it down.\n'
+            '4. Return to SteamOS, select this partition and choose Mount / Retry. Restarting SteamOS alone does not repair NTFS.')
+    elif code == 'ntfs_hibernated':
+        message += tr('\n恢复 Windows 会话后完整关机，并关闭“快速启动”，再回到此工具重试挂载。',
+                      '\nResume Windows, fully shut it down and disable Fast Startup, then retry the mount here.')
+    elif code == 'ntfs_busy':
+        message += tr('\n关闭占用程序；如 Dolphin 已挂载，先安全卸载，再重试。',
+                      '\nClose the application using it; safely unmount in Dolphin if needed, then retry.')
+    if issue.get('details'):
+        message += '\n\n' + tr('检查详情：\n', 'Diagnostic details:\n') + str(issue['details'])
+    return message
+
+
 def main():
     try:
         while True:
@@ -102,7 +140,7 @@ def main():
                 'A mount from KDE may last only for the current session. Save a persistent mount here.\n'
                 'Select unmounted Windows NTFS or exFAT, FAT32 and ext4 SD card partitions. Linux does not use C/D drive letters; identify volumes by label and size.\n'
                 'System, recovery and encrypted partitions are protected. View unavailable partitions for details.'),
-                'enable', tr('挂载分区并启用自动挂载', 'Mount a partition and enable persistent mount'),
+                'enable', tr('挂载/重试并启用自动挂载', 'Mount / Retry and enable persistent mount'),
                 'disable', tr('取消自动挂载', 'Disable persistent mount'),
                 'view', tr('查看已保存的挂载', 'View saved mounts'),
                 'unavailable', tr('查看不可选分区及原因', 'View unavailable partitions and reasons'))
@@ -137,11 +175,13 @@ def main():
                     '启用此分区的自动挂载？\n{label}\n挂载目录：{path}\n\n'
                     '保存到当前系统槽的 /etc/fstab，使用 UUID 识别；后续开机会按需挂载，缺盘不会阻塞启动。\n'
                     '本次也会尝试挂载；若已由 KDE 挂载，将保留现状并在下次重启使用新目录。\n'
-                    'NTFS 休眠/脏卷不会被强制挂载；ext4 保留盘内文件权限。请勿同时在 Windows 休眠状态使用共享盘。',
+                    'NTFS 挂载前只读检查状态；确认未休眠的 dirty 卷会自动执行有限修复并复查，休眠或状态不明时停止。'
+                    '有限修复可能修改元数据和日志，不能替代 Windows chkdsk。ext4 保留盘内文件权限。',
                     'Enable a persistent mount?\n{label}\nMount path: {path}\n\n'
                     'Saves UUID-based configuration to /etc/fstab in the current OS slot. Future boots mount on access; a missing disk will not block startup.\n'
                     'Mounting is also attempted now. An existing KDE mount stays in place until restart.\n'
-                    'Hibernated/dirty NTFS is never forced. ext4 keeps on-disk permissions. Fully shut down Windows before sharing a disk.'
+                    'NTFS is checked read-only before mounting. Confirmed non-hibernated dirty volumes receive limited repair and rechecking; hibernated or unknown states stop. '
+                    'Limited repair can change metadata and the journal and does not replace Windows chkdsk. ext4 keeps on-disk permissions.'
                 ).format(label=partition_label(choices[uuid]), path=path)
             else:
                 prompt = tr('取消 {uuid} 的自动挂载？\n不会删除分区或文件；当前挂载保留到重启。',
@@ -153,10 +193,15 @@ def main():
                              'Persistent mount disabled. Restart to release the current mount; safely unmount in Dolphin before disconnecting now.')
             elif result['mounted']:
                 message = tr('配置已保存，分区已挂载到：\n', 'Configuration saved. Partition mounted at:\n') + result['path']
+            elif result.get('issue'):
+                message = tr('配置已保存，分区尚未挂载。处理以下问题后可重新选择分区重试：\n',
+                             'Configuration saved; the partition is not mounted. Resolve the issue below and retry:\n') + result['path']
             else:
                 message = tr('配置已保存，本次尚未挂载到新目录。重启后访问以下目录会尝试挂载：\n',
                              'Configuration saved; the new path is not mounted yet. After restart, accessing this path attempts the mount:\n') + result['path']
-            if result['warning']:
+            if result.get('issue'):
+                message += '\n\n' + issue_message(result['issue'])
+            elif result['warning']:
                 message += '\n\n' + tr('本次激活提示：\n', 'Activation details:\n') + result['warning']
             dialog('--msgbox', message)
     except Exception as error:

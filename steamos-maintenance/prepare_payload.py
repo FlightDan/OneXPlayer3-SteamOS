@@ -24,7 +24,7 @@ from build_bundle import _metadata
 from oxp3_maintenance.bundle import BundleError
 from desktop_hdr_policy import DesktopHdrPolicyError, validate_desktop_hdr_runtime
 from oxp3_maintenance.payload_policy import (
-    distributable_path, json_bytes, sanitize_metadata,
+    distributable_path, json_bytes, sanitize_metadata, payload_json_bytes,
     sanitize_options,
 )
 
@@ -47,6 +47,13 @@ FORBIDDEN_NAMES = {'credentials', 'credentials.json', 'secrets', 'token', 'token
 FORBIDDEN_SUFFIXES = {'.pem', '.key', '.pfx', '.p12', '.exe', '.dll', '.img', '.iso',
                       '.vhd', '.vhdx', '.pyc', '.pyo'}
 OLD_GUARD = b'ExecCondition=/usr/bin/python3 -I -B /usr/local/lib/oxp3-integration/integration_runtime.py guard'
+PARTITION_MOUNT_RUNTIME_FILES = ('ntfs_status', 'ntfsfix', 'COPYING', 'source.tar.gz', 'manifest.json')
+PARTITION_MOUNT_BUILD_INPUTS = ('ntfs_status.c', 'ntfs-tools-build.sh')
+PARTITION_MOUNT_ASSETS = (
+    'mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop',
+    'preflight.py', 'ntfs-generator.py', 'oxp3-ntfs-preflight@.service',
+    'ntfs-tools-source.json', 'MUSL-COPYRIGHT',
+)
 
 
 class PreparationError(ValueError):
@@ -166,6 +173,34 @@ def _maintenance_options(options, additions):
     return result
 
 
+def _partition_mount_runtime_files(installer):
+    """Verify the explicitly pinned NTFS tool set through its component adapter."""
+    adapter = _source(installer, 'components/partition_mount.py')
+    try:
+        namespace = runpy.run_path(str(adapter))
+        runtime_files = namespace.get('runtime_files')
+        if not callable(runtime_files):
+            raise PreparationError('Partition mount adapter has no runtime_files verifier')
+        source = _source(installer, 'components/partition-mount/tools/manifest.json').parent
+        result = runtime_files(source)
+    except PreparationError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        raise PreparationError('Partition mount NTFS tool pin verification failed: ' + str(exc)) from exc
+    if not isinstance(result, dict) or set(result) != set(PARTITION_MOUNT_RUNTIME_FILES):
+        raise PreparationError('Partition mount runtime_files returned an unexpected resource set')
+    verified = {}
+    for name in PARTITION_MOUNT_RUNTIME_FILES:
+        data = result[name]
+        if not isinstance(data, bytes):
+            raise PreparationError('Partition mount runtime_files returned non-byte data: ' + name)
+        actual = _source(installer, 'components/partition-mount/tools/' + name).read_bytes()
+        if data != actual:
+            raise PreparationError('Partition mount runtime_files changed the pinned resource: ' + name)
+        verified[name] = data
+    return verified
+
+
 def prepare_payload(workspace, output, maintenance_options=None):
     workspace, output = Path(workspace).resolve(), Path(output).absolute()
     installer = workspace / 'windows-installer'
@@ -278,7 +313,10 @@ def prepare_payload(workspace, output, maintenance_options=None):
         if destination in ('components/options.json', 'components/fulloptions.json'):
             value = json_bytes(_maintenance_options(sanitize_options(json.loads(value.decode('utf-8-sig'))), additions))
         if destination.endswith('.json'):
-            value = json_bytes(sanitize_metadata(destination, json.loads(value.decode('utf-8-sig'))))
+            try:
+                value = payload_json_bytes(destination, value)
+            except ValueError as error:
+                raise PreparationError(str(error)) from error
         if destination in copied:
             if (stage / destination).read_bytes() != value:
                 raise PreparationError('Conflicting staged resource: ' + destination)
@@ -409,13 +447,23 @@ def prepare_payload(workspace, output, maintenance_options=None):
         target.write_bytes(raw)
         report['source_inventory']['licenses/PROJECT-LICENSE'] = {'source': 'LICENSE',
             'source_sha256': hashlib.sha256(raw).hexdigest(), 'sha256': hashlib.sha256(raw).hexdigest(), 'size': len(raw)}
+        if 'partition-mount' in items:
+            runtime_files = _partition_mount_runtime_files(installer)
+            for name in PARTITION_MOUNT_ASSETS:
+                relative = 'components/partition-mount/' + name
+                copy(relative)
+            for name in PARTITION_MOUNT_BUILD_INPUTS:
+                copy('components/partition-mount/' + name)
+            for name in PARTITION_MOUNT_RUNTIME_FILES:
+                relative = 'components/partition-mount/tools/' + name
+                copy(relative, data=runtime_files[name])
         requirements = {
             'slot-switch': ['components/slot-switch/' + name for name in (
                 'boot.py', 'desktop.py', 'oxp3-switch-slot',
                 '49-oxp3-slot-switch.rules', 'oxp3-slot-switch.desktop')],
             'partition-mount': ['components/partition_mount.py'] + [
-                'components/partition-mount/' + name for name in (
-                    'mounts.py', 'desktop.py', 'oxp3-partition-mount', 'oxp3-partition-mount.desktop')],
+                'components/partition-mount/' + name for name in PARTITION_MOUNT_ASSETS + PARTITION_MOUNT_BUILD_INPUTS] + [
+                'components/partition-mount/tools/' + name for name in PARTITION_MOUNT_RUNTIME_FILES],
             'serial-console-policy': ['components/serial_console.py'],
             'split-lock': ['components/split-lock/UPSTREAM_LICENSE'],
             'oxp3-light': ['components/light/' + name for name in (

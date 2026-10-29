@@ -4,7 +4,9 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -185,6 +187,89 @@ class RenderTests(unittest.TestCase):
                 backend.check_units(UUID)
 
 
+class NtfsDiagnosticsTests(unittest.TestCase):
+    def ntfs(self, **changes):
+        return device(fstype='ntfs', **changes)
+
+    def probe(self, result):
+        identity = SimpleNamespace(st_mode=stat.S_IFBLK | 0o600, st_rdev=1)
+        with patch.object(backend.os, 'stat', return_value=identity), \
+                patch.object(backend.os, 'major', return_value=253, create=True), \
+                patch.object(backend.os, 'minor', return_value=3, create=True), \
+                patch.object(backend.subprocess, 'run', side_effect=result if isinstance(result, Exception) else None,
+                             return_value=result) as run:
+            reply = backend.ntfs_probe(self.ntfs())
+        return reply, run
+
+    def test_inconsistent_metadata_is_identified_with_windows_repair_steps(self):
+        issue, run = self.probe(SimpleNamespace(returncode=13, stdout='',
+            stderr='$MFTMirr does not match $MFT (record 3).'))
+        self.assertEqual(issue['code'], 'ntfs_inconsistent')
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/ntfs-3g.probe', '--readonly', '/dev/vda3'])
+        self.assertIn('$MFTMirr', issue['details'])
+        self.assertIn('chkdsk X: /f', backend.ntfs_guidance(issue['code']))
+        for language, text in ((True, '仅重启 SteamOS 不能修复'), (False, 'Restarting SteamOS alone')):
+            with patch.object(desktop, 'ZH', language):
+                self.assertIn(text, desktop.issue_message(issue))
+
+    def test_probe_results_remain_distinct_and_optional_tool_can_be_missing(self):
+        for status, expected in ((12, 'ntfs_invalid'), (14, 'ntfs_hibernated'),
+                                 (15, 'ntfs_unclean'), (16, 'ntfs_busy'),
+                                 (13, 'ntfs_check_failed'), (19, 'ntfs_check_failed')):
+            with self.subTest(status=status):
+                issue, _ = self.probe(SimpleNamespace(returncode=status, stdout='', stderr='probe detail'))
+                self.assertEqual(issue['code'], expected)
+        self.assertIsNone(self.probe(SimpleNamespace(returncode=0))[0])
+        self.assertIsNone(self.probe(FileNotFoundError())[0])
+        issue, _ = self.probe(subprocess.TimeoutExpired('probe', 15))
+        self.assertEqual(issue['code'], 'ntfs_check_failed')
+
+    def test_already_mounted_or_non_ntfs_devices_are_not_probed(self):
+        with patch.object(backend.subprocess, 'run') as run:
+            self.assertIsNone(backend.ntfs_probe(device()))
+            self.assertIsNone(backend.ntfs_probe(self.ntfs(mountpoints=['/run/media/deck/Games'])))
+        run.assert_not_called()
+
+    def test_changed_block_identity_is_refused(self):
+        with patch.object(backend.os, 'stat', return_value=SimpleNamespace(st_mode=stat.S_IFREG, st_rdev=1)), \
+                patch.object(backend.subprocess, 'run') as run, \
+                self.assertRaisesRegex(RuntimeError, 'identity changed'):
+            backend.ntfs_probe(self.ntfs())
+        run.assert_not_called()
+
+    def test_dirty_kernel_messages_are_scoped_to_device_and_attempt(self):
+        output = ('ntfs3(vda30): volume is dirty\nntfs3(vdb3): corrupt metadata\n'
+                  'ntfs3(vda3): volume is dirty and "force" flag is not set!\n')
+        with patch.object(backend, 'command', return_value=output) as command:
+            issue = backend.ntfs_mount_issue(self.ntfs(), 1792870000, RuntimeError('mount failed'))
+        self.assertEqual(issue['code'], 'ntfs_unclean')
+        self.assertNotIn('vda30', issue['details'])
+        self.assertNotIn('vdb3', issue['details'])
+        self.assertIn('--since=@1792870000', command.call_args.args)
+        with patch.object(backend, 'command', side_effect=FileNotFoundError()):
+            issue = backend.ntfs_mount_issue(self.ntfs(), 1, RuntimeError('original error'))
+        self.assertEqual(issue['code'], 'ntfs_mount_failed')
+        self.assertIn('original error', issue['details'])
+
+    def test_journal_boundary_keeps_subsecond_precision(self):
+        with patch.object(backend, 'command', return_value='') as command:
+            backend.ntfs_mount_issue(self.ntfs(), '1792870000.123456', RuntimeError('failure'))
+        self.assertIn('--since=@1792870000.123456', command.call_args.args)
+
+    def test_known_issue_does_not_suggest_restarting_steamos_as_repair(self):
+        state = {'partitions': [self.ntfs()], 'managed': {}, 'token': 'a' * 64}
+        result = {'saved': True, 'mounted': False, 'path': backend.destination(UUID),
+                  'warning': 'raw English error', 'issue': {'code': 'ntfs_inconsistent', 'details': 'record 3'}}
+        with patch.object(desktop, 'ZH', True), \
+                patch.object(desktop, 'helper', side_effect=[state, result, state]), \
+                patch.object(desktop, 'dialog', side_effect=['enable', UUID, '', '', None]) as dialog:
+            self.assertEqual(desktop.main(), 0)
+        message = dialog.call_args_list[3].args[1]
+        self.assertIn('chkdsk X: /f', message)
+        self.assertIn('record 3', message)
+        self.assertNotIn('重启后访问以下目录会尝试挂载', message)
+
+
 @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'geteuid') and os.geteuid() == 0,
                      'Requires an isolated root Linux fixture')
 class LinuxLifecycleTests(unittest.TestCase):
@@ -203,11 +288,12 @@ class LinuxLifecycleTests(unittest.TestCase):
         self.command_calls = []
         self.mount_failure = False
         self.unit = 'fixture.mount'
-        def commands(*args):
+        def commands(*args, **kwargs):
             self.command_calls.append(args)
             if args[0].endswith('lsblk'): return json.dumps({'blockdevices': [self.current_device]})
             if args[0].endswith('systemd-escape'): return self.unit
             if 'FragmentPath' in ' '.join(args): return '/run/systemd/generator/' + self.unit
+            if '--property=ActiveState' in args: return 'failed'
             if args[0].endswith('findmnt'):
                 return json.dumps({'filesystems': [{'uuid': UUID, 'fstype': 'ext4', 'target': backend.destination(UUID), 'maj:min': '253:3'}]})
             if 'start' in args and self.mount_failure: raise RuntimeError('fixture mount failure')
@@ -240,10 +326,40 @@ class LinuxLifecycleTests(unittest.TestCase):
         self.assertIn('fixture mount failure', result['warning'])
         self.assertIn(UUID.encode(), self.fstab.read_bytes())
 
+    def test_missing_ntfs_preflight_hook_blocks_activation_without_losing_saved_configuration(self):
+        self.current_device['fstype'] = 'ntfs'
+        with patch.object(backend, 'verify_generated_hook', side_effect=RuntimeError('NTFS preflight hook missing')):
+            result = self.enable()
+        self.assertTrue(result['saved'])
+        self.assertFalse(result['mounted'])
+        self.assertIn('preflight hook missing', result['warning'])
+        self.assertFalse(any('start' in args for args in self.command_calls))
+        self.assertIn(UUID.encode(), self.fstab.read_bytes())
+
+    def test_retry_resets_only_selected_mount_failure_before_start(self):
+        self.assertTrue(self.enable()['mounted'])
+        reset = self.command_calls.index(('/usr/bin/systemctl', 'reset-failed', self.unit))
+        start = self.command_calls.index(('/usr/bin/systemctl', 'start', self.unit))
+        self.assertLess(reset, start)
+        self.assertFalse(any(args == ('/usr/bin/systemctl', 'reset-failed') for args in self.command_calls))
+
+    def test_ntfs_mount_waits_for_the_preflight_service(self):
+        self.current_device['fstype'] = 'ntfs'
+        original = backend.command
+        waits = []
+        def commands(*args, **kwargs):
+            if 'start' in args:
+                waits.append(kwargs.get('timeout'))
+            result = original(*args, **kwargs)
+            return result.replace('"fstype": "ext4"', '"fstype": "ntfs3"')
+        with patch.object(backend, 'verify_generated_hook'), patch.object(backend, 'command', side_effect=commands):
+            self.assertTrue(self.enable()['mounted'])
+        self.assertEqual(waits, [230])
+
     def test_wrong_device_cannot_be_reported_as_mounted(self):
         original = backend.command
-        def wrong(*args):
-            result = original(*args)
+        def wrong(*args, **kwargs):
+            result = original(*args, **kwargs)
             if args[0].endswith('findmnt'):
                 return result.replace('253:3', '253:19')
             return result

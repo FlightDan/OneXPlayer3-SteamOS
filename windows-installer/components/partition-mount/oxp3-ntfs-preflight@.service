@@ -1,0 +1,11 @@
+[Unit]
+Description=Check and repair selected NTFS volume %I before mounting
+BindsTo=dev-disk-by\x2duuid-%i.device
+After=dev-disk-by\x2duuid-%i.device
+RequiresMountsFor=/home/.oxp3-partition-mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I -B /home/.oxp3-partition-mount/preflight.py %I
+TimeoutStartSec=200s
+UMask=0077

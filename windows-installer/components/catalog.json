@@ -12,11 +12,11 @@
     },
     {
       "id": "partition-mount",
-      "name": "KDE 图形分区持久挂载",
+      "name": "KDE 图形分区持久挂载 · NTFS 挂载前检查与有限修复",
       "default": true,
       "dependencies": [],
-      "state": "device_loop_ext4_exfat_reboot_passed_release_pending",
-      "reason": "新装和维护仅安装工具；维护概览可直接打开，显示未挂载状态及不可选原因。支持 NTFS、exFAT、FAT32/vfat、ext4 普通分区。旧候选已在 OXP3 SteamOS 3.10 验证私有 loop ext4/exFAT 挂载及重启；本次 FAT32、入口与诊断改动仍需掌机验收，NTFS、新装及签名维护升级未验收，未发布。",
+      "state": "ntfs_preflight_limited_repair_verified_release_pending",
+      "reason": "安装器和维护器交付相同的只读 NTFS 检查器及固定静态 ntfsfix，额外要求 blkid；generator 覆盖新旧规范受管挂载而不改写 fstab。仅明确 dirty、未休眠且未挂载时执行一次有限修复并复查；未知状态拒绝。组件 ID、默认选择和组件依赖不变。最终 Linux 67 项、维护测试 74 项（2 跳过）、8 类镜像只读性、实际有限修复及 SteamOS 私有 loop/systemd 验证通过；Windows 构建和发布冒烟通过。HDR 缓存已恢复正式 maintenance.17 的完整 EDID-only/实际呈现完成版本，并完成源码来源与离线 ABI 核验；全量资源已完整准备。正式签名、公开下载及升级重启验收结果见对应 Release 记录。",
       "source": "windows-installer/docs/PARTITION_MOUNT.md"
     },
     {

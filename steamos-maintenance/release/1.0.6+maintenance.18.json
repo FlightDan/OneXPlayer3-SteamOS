@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.18",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "分区自动挂载新增 systemd 挂载前只读状态检查与有限修复；只对明确 dirty、未休眠且未挂载的已选 NTFS 卷执行一次修复并复查，未知元数据状态拒绝。已有规范配置通过 generator 自动获得预检，新装和维护交付固定静态工具及完整对应源。HDR 载荷沿用 maintenance.17 已发布的 EDID-only、实际呈现完成版本，保留公开 CPU、风扇、充电、Opti 和其他组件内容；不含未公开动态功耗研究。显示版本仍为 1.0.6。"
+}

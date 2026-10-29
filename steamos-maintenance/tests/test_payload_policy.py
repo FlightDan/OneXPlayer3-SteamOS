@@ -24,6 +24,22 @@ class PayloadPolicyTests(unittest.TestCase):
         path.write_bytes(json.dumps(value).encode() if isinstance(value, (dict, list)) else value)
         return path
 
+    def test_ntfs_build_pins_keep_exact_bytes_through_final_sanitization(self):
+        names = ('components/partition-mount/ntfs-tools-source.json',
+                 'components/partition-mount/tools/manifest.json')
+        raw = b'{"schema": 1, "source": {"url":"https://example.org/public.tgz"}}\n'
+        for name in names:
+            self.put(name, raw)
+        sanitize_payload(self.source, self.output)
+        for name in names:
+            self.assertEqual((self.output / name).read_bytes(), raw)
+
+    def test_ntfs_build_pins_with_excluded_metadata_fail_instead_of_rewriting(self):
+        self.put('components/partition-mount/tools/manifest.json', {'schema': 1, 'tabmaster': 'retired'})
+        with self.assertRaisesRegex(ValueError, 'Excluded metadata in pinned NTFS'):
+            sanitize_payload(self.source, self.output)
+        self.assertFalse(self.output.exists())
+
     def test_legacy_payload_is_filtered_without_mutating_original(self):
         own = {'decky', 'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'windows-reboot'}
         options = {'schema': 1, 'repairs': [

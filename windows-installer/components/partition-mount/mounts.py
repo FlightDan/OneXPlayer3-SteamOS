@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import posixpath
 import re
+import shlex
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 BEGIN = '# BEGIN OXP3 PARTITION MOUNTS v1\n'
 END = '# END OXP3 PARTITION MOUNTS v1\n'
@@ -27,9 +29,9 @@ DATA_TYPES = {'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7',
 FAT_TYPES = {'0x6', '0x06', '0xb', '0x0b', '0xc', '0x0c', '0xe', '0x0e'}
 
 
-def command(*args):
+def command(*args, timeout=35):
     result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, timeout=35,
+                            stderr=subprocess.PIPE, text=True, timeout=timeout,
                             env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
     if result.returncode:
         # Commands contain fixed verbs and validated identifiers, never a shell.
@@ -298,6 +300,135 @@ def check_units(uuid):
     return unit
 
 
+def ntfs_guidance(code):
+    messages = {
+        'ntfs_inconsistent': 'NTFS metadata is inconsistent (for example, $MFT/$MFTMirr).',
+        'ntfs_hibernated': 'Windows left this NTFS volume hibernated.',
+        'ntfs_unclean': 'NTFS was not cleanly unmounted or is marked dirty.',
+        'ntfs_invalid': 'The selected volume does not contain a valid NTFS filesystem.',
+        'ntfs_busy': 'Another process has the NTFS volume open exclusively.',
+        'ntfs_check_failed': 'The NTFS check could not complete.',
+        'ntfs_mount_failed': 'The NTFS mount failed; the exact cause could not be confirmed.',
+    }
+    message = messages[code]
+    if code in ('ntfs_inconsistent', 'ntfs_unclean', 'ntfs_invalid'):
+        message += (' In Windows, identify this volume by label and size, back up important files, '
+                    'then run chkdsk X: /f as Administrator (replace X: with its actual drive letter). '
+                    'Finish any scheduled check, fully shut down Windows, then retry Mount in this tool.')
+    elif code == 'ntfs_hibernated':
+        message += (' Resume Windows and fully shut it down; disable Fast Startup before sharing the disk. '
+                    'Then retry Mount in this tool.')
+    elif code == 'ntfs_busy':
+        message += ' Close the application using it, safely unmount in Dolphin if needed, then retry.'
+    else:
+        message += ' Review the diagnostic details and filesystem support before retrying.'
+    return message
+
+
+def ntfs_probe(device):
+    """Optional read-only metadata check; never use the probe's read-write mode."""
+    if device['fstype'] != 'ntfs' or any(device.get('mountpoints') or []):
+        return None
+    source = device['path']
+    if not source.startswith('/dev/'):
+        raise RuntimeError('Invalid NTFS device path')
+    info = os.stat(source)
+    if (not stat.S_ISBLK(info.st_mode) or
+            f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}' != device['maj:min']):
+        raise RuntimeError('NTFS device identity changed. Refresh before retrying.')
+    try:
+        result = subprocess.run(['/usr/bin/ntfs-3g.probe', '--readonly', source],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, timeout=15,
+                                env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
+    except FileNotFoundError:
+        return None  # Optional on other supported images; the kernel still validates mounts.
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {'code': 'ntfs_check_failed', 'details': str(error)[:1500]}
+    if result.returncode == 0:
+        return None  # Read-only success does not certify that a read-write mount is safe.
+    details = (result.stderr.strip() or result.stdout.strip() or
+               'NTFS probe exit status ' + str(result.returncode))[:1500]
+    code = {12: 'ntfs_invalid', 14: 'ntfs_hibernated',
+            15: 'ntfs_unclean', 16: 'ntfs_busy'}.get(result.returncode, 'ntfs_check_failed')
+    # Exit 13 also covers hardware/driver/RAID failures; do not diagnose all as corruption.
+    if result.returncode == 13 and any(text in details.lower() for text in
+                                      ('$mftmirr', 'corrupt', 'inconsistent')):
+        code = 'ntfs_inconsistent'
+    return {'code': code, 'details': details}
+
+
+def ntfs_mount_issue(device, started, error):
+    """Read only fresh kernel messages naming the selected partition."""
+    details = str(error)[:1500]
+    code = 'ntfs_mount_failed'
+    try:
+        logs = command('/usr/bin/journalctl', '--kernel', '--boot', '--no-pager',
+                       '--output=cat', '--since=@' + str(started), '--lines=120')
+        name = re.escape(Path(device['path']).name)
+        lines = [line for line in logs.splitlines()
+                 if re.search(r'\bntfs3?\(' + name + r'\)', line)]
+        relevant = '\n'.join(lines)
+        if relevant:
+            details += '\n' + relevant[-1500:]
+        lowered = relevant.lower()
+        if 'hibernat' in lowered:
+            code = 'ntfs_hibernated'
+        elif 'volume is dirty' in lowered:
+            code = 'ntfs_unclean'
+        elif any(text in lowered for text in ('$mftmirr', 'corrupt', 'inconsistent')):
+            code = 'ntfs_inconsistent'
+    except Exception:
+        pass  # Missing/unreadable logs must not hide the original mount failure.
+    return {'code': code, 'details': details}
+
+
+def preflight_unit(uuid):
+    destination(uuid)
+    return 'oxp3-ntfs-preflight@' + uuid.replace('-', r'\x2d') + '.service'
+
+
+def reset_failed_unit(unit):
+    # ResetFailedUnit only looks at loaded units. An inactive first-use instance
+    # may be garbage-collected between calls; failed units remain loaded.
+    state = command('/usr/bin/systemctl', 'show', '--property=ActiveState', '--value', unit).strip()
+    if state == 'failed':
+        command('/usr/bin/systemctl', 'reset-failed', unit)
+
+
+def verify_generated_hook(uuid, unit, dropins):
+    path = '/run/systemd/generator/' + unit + '.d/50-oxp3-ntfs-preflight.conf'
+    service = preflight_unit(uuid)
+    expected = f'[Unit]\nRequires={service}\nAfter={service}\n'.encode()
+    # systemctl prints path arrays as quoted/escaped words (in particular the
+    # literal backslashes in systemd's escaped mount names).
+    try:
+        paths = shlex.split(dropins)
+    except ValueError as error:
+        raise RuntimeError('Invalid NTFS preflight dependency paths') from error
+    if paths != [path] or read_trusted(Path(path)) != expected:
+        raise RuntimeError('NTFS preflight dependency is missing or changed. Reinstall Partition Mounts before retrying.')
+
+
+def preflight_issue(uuid, started, issue):
+    """Read this attempt's service refusal; preserve the kernel fallback."""
+    try:
+        output = command('/usr/bin/journalctl', '--unit=' + preflight_unit(uuid),
+                         '--since=@' + str(started), '--no-pager', '--output=cat', '--lines=30')
+        for line in reversed(output.splitlines()):
+            try:
+                value = json.loads(line)
+            except ValueError:
+                continue
+            if value.get('schema') == 1 and value.get('status') == 'blocked':
+                details = str(value.get('error', 'NTFS preflight failed'))[:1500]
+                code = 'ntfs_hibernated' if 'hibernated' in details.lower() else 'ntfs_check_failed'
+                return {'code': code, 'details': details}
+    except Exception:
+        pass
+    return issue
+
+
 def change(action, uuid, token):
     import fcntl
     if os.geteuid() != 0: raise RuntimeError('Administrator authorization required')
@@ -338,6 +469,7 @@ def change(action, uuid, token):
             mode = stat.S_IMODE(FSTAB.stat().st_mode)
             atomic(FSTAB, new, mode)
         warning = ''
+        issue = None
         try:
             command('/usr/bin/systemctl', 'daemon-reload')
         except Exception as error:
@@ -353,9 +485,25 @@ def change(action, uuid, token):
                     # Do not let an existing custom systemd unit override fstab.
                     fragment = command('/usr/bin/systemctl', 'show', '--property=FragmentPath', '--value', unit).strip()
                     dropins = command('/usr/bin/systemctl', 'show', '--property=DropInPaths', '--value', unit).strip()
-                    if fragment != '/run/systemd/generator/' + unit or dropins:
+                    if fragment != '/run/systemd/generator/' + unit:
                         raise RuntimeError('The mount has a custom or missing systemd unit. Saved; activation requires review.')
-                    command('/usr/bin/systemctl', 'start', unit)
+                    if selected['fstype'] == 'ntfs':
+                        verify_generated_hook(uuid, unit, dropins)
+                        reset_failed_unit(preflight_unit(uuid))
+                    elif dropins:
+                        raise RuntimeError('The mount has custom systemd drop-ins. Saved; activation requires review.')
+                    # A repaired partition must be retryable after systemd's start limit.
+                    reset_failed_unit(unit)
+                    started = f'{time.time():.6f}'
+                    try:
+                        command('/usr/bin/systemctl', 'start', unit,
+                                timeout=230 if selected['fstype'] == 'ntfs' else 35)
+                    except Exception as error:
+                        if selected['fstype'] != 'ntfs':
+                            raise
+                        issue = ntfs_mount_issue(selected, started, error)
+                        issue = preflight_issue(uuid, started, issue)
+                        raise RuntimeError(ntfs_guidance(issue['code']) + '\n' + issue['details']) from error
                     actual = json.loads(command('/usr/bin/findmnt', '--json', '--real', '--list', '--mountpoint', destination(uuid),
                                                 '--output', 'UUID,FSTYPE,TARGET,MAJ:MIN'))['filesystems']
                     if (len(actual) != 1 or actual[0].get('uuid') != uuid
@@ -367,7 +515,7 @@ def change(action, uuid, token):
                 except Exception as error:
                     warning = str(error)
         return {'saved': True, 'mounted': mounted, 'path': destination(uuid), 'warning': warning,
-                'action': action, 'restart_required': action == 'disable' or not mounted}
+                'action': action, 'issue': issue, 'restart_required': action == 'disable' or not mounted}
     finally:
         os.close(fd)
 

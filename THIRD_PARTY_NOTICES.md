@@ -85,11 +85,15 @@ AutoFlatpaks `1.6.8+oxp3.1` retains its upstream BSD-3-Clause license and defers
 | QEMU | [qemu.org](https://www.qemu.org/), [Windows builds](https://qemu.weilnetz.de/w64/) | 独立虚拟系统准备与启动验证 / Isolated system preparation and boot validation |
 | EDK II | [tianocore/edk2](https://github.com/tianocore/edk2) | 虚拟 UEFI 固件 / Virtual UEFI firmware |
 | Alpine Linux | [alpinelinux.org](https://alpinelinux.org/) | 安装准备环境 / Installation preparation environment |
+| ntfs-3g / ntfsprogs 2026.2.25 | [Tuxera ntfs-3g](https://github.com/tuxera/ntfs-3g) | NTFS 只读状态检查与有限修复 / Read-only NTFS inspection and limited repair |
+| musl 1.2.5 | [musl libc](https://musl.libc.org/) | NTFS 工具的静态 C 运行库 / Static C runtime for NTFS tools |
 | 7-Zip | [7-zip.org](https://www.7-zip.org/) | 归档解压 / Archive extraction |
 | aria2 | [aria2/aria2](https://github.com/aria2/aria2) | 下载与续传 / Downloads and resuming |
 | desync | [folbricht/desync](https://github.com/folbricht/desync) | 还原官方 casync 根系统 / Reconstructing official casync root images |
 | kmscon | [Aetf/kmscon](https://github.com/Aetf/kmscon) | 控制台支持 / Console support |
 | libtsm | [Aetf/libtsm](https://github.com/Aetf/libtsm) | 终端状态机 / Terminal state machine |
+
+NTFS 工具随附上游 GPL-2.0 许可、完整固定版本源码归档和本项目检查器/构建脚本，位于 `windows-installer/components/partition-mount/`。静态链接的 musl 完整版权声明保存在同目录 `MUSL-COPYRIGHT`，并随安装器和维护载荷部署。NTFS tools include the upstream GPL-2.0 license, complete pinned source archive, checker source and build script under `windows-installer/components/partition-mount/`. The complete musl notice is included as `MUSL-COPYRIGHT` in that directory and in both deployed payloads.
 
 这些项目及二进制依赖按各自许可证分发。正式发行包应包含其需要的许可声明、对应源码或许可允许的源码提供方式；本清单不代表所有二进制分发材料已经核对完成。
 

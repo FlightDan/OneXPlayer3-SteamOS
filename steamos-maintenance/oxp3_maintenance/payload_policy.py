@@ -22,6 +22,10 @@ REMOVED_PLUGIN_IDS = frozenset({
 })
 PAYLOAD_TREES = frozenset({'components', 'integration', 'plugins', 'waydroid',
                            'hdr', 'controls', 'licenses'})
+PINNED_NTFS_METADATA = frozenset({
+    'components/partition-mount/ntfs-tools-source.json',
+    'components/partition-mount/tools/manifest.json',
+})
 
 
 def distributable_path(relative):
@@ -96,6 +100,17 @@ def sanitize_metadata(relative, value):
 
 def json_bytes(value):
     return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode('utf-8')
+
+
+def payload_json_bytes(relative, raw):
+    """Preserve fixed build pins; fail if policy would change their contents."""
+    parsed = json.loads(raw.decode('utf-8-sig'))
+    sanitized = sanitize_metadata(relative, parsed)
+    if relative in PINNED_NTFS_METADATA:
+        if sanitized != parsed:
+            raise ValueError('Excluded metadata in pinned NTFS provenance')
+        return raw
+    return json_bytes(sanitized)
 
 
 def _load_json(path):
@@ -175,7 +190,8 @@ def sanitize_payload(source, destination):
                     target = stage / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     if path.suffix.lower() == '.json':
-                        target.write_bytes(json_bytes(sanitize_metadata(relative, _load_json(path))))
+                        _load_json(path)  # Retain duplicate-key rejection.
+                        target.write_bytes(payload_json_bytes(relative, path.read_bytes()))
                     else:
                         shutil.copyfile(path, target)
                     report['copied'].append(relative)

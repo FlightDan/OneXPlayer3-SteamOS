@@ -21,8 +21,14 @@ const { readdir } = await import('node:fs/promises');
 for (const filename of (await readdir(path.join(root, 'guest'))).filter(name => name.endsWith('.sh'))) await copyFile(path.join(root, 'guest', filename), path.join(payload, 'tasks', filename));
 if (task === 'partition-mount-tests') {
   const { cp } = await import('node:fs/promises');
+  if (process.argv[3] && process.argv[3] !== '--export-ntfs-fixture') {
+    const installer = await realpath(process.argv[3]);
+    if (!installer.endsWith('.sh') || !(await stat(installer)).isFile()) throw Error('Expected a local test installer .sh');
+    await copyFile(installer, path.join(payload, 'partition-mount-test.sh'));
+  }
+  if (process.argv.includes('--export-ntfs-fixture')) await writeFile(path.join(payload, 'export-ntfs-fixture'), 'private blank image only\n');
   await mkdir(path.join(payload, 'components'), { recursive: true });
-  for (const filename of ['test_partition_mount.py', 'test_partition_mount_integration.py', 'partition_mount.py', 'slot_switch.py']) {
+  for (const filename of ['test_partition_mount.py', 'test_partition_mount_integration.py', 'test_ntfs_preflight.py', 'partition_mount.py', 'slot_switch.py']) {
     await copyFile(path.join(root, 'components', filename), path.join(payload, 'components', filename));
   }
   await cp(path.join(root, 'components/partition-mount'), path.join(payload, 'components/partition-mount'), { recursive: true });

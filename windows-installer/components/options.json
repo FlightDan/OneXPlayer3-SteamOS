@@ -26,8 +26,8 @@
     },
     {
       "id": "partition-mount",
-      "zh": "KDE 图形分区持久挂载",
-      "en": "KDE graphical persistent partition mounts",
+      "zh": "KDE 图形分区持久挂载 · NTFS 挂载前检查与有限修复",
+      "en": "KDE persistent partition mounts · NTFS preflight and limited repair",
       "default": true,
       "dependencies": []
     },

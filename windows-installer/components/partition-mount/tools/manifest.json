@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "version": "2026.2.25+oxp3.1",
+  "architecture": "x86_64",
+  "static": true,
+  "source": {
+    "url": "https://download.tuxera.com/opensource/ntfs-3g_ntfsprogs-2026.2.25.tgz",
+    "sha256": "7754f3b32e8baf9c472459b4e9c981e3ae0f5039107cdd8d8201aed0a949008a"
+  },
+  "build_inputs": {
+    "ntfs_status.c": "7f4e9567ab821edd764f5d9c788b035d3bc02eca9a21af6ea611419bb555633c",
+    "ntfs-tools-build.sh": "193c481a614cc72cdb08339253e912873e647d8a48a9862fbd82157cb5094d84"
+  },
+  "inputs": {
+    "ntfs_status.c": "7f4e9567ab821edd764f5d9c788b035d3bc02eca9a21af6ea611419bb555633c",
+    "ntfs-tools-build.sh": "193c481a614cc72cdb08339253e912873e647d8a48a9862fbd82157cb5094d84",
+    "prepare-ntfs-tools.py": "b0e8a5edec72e0967ce39faa18b6a1d9abe1741ac23562fc1c510fe2e2a3e613",
+    "ntfs-tools-source.json": "732d5c4b8e64bad0b4d11a75a35a36f8eca35e4892b0bae278338fef1a38dcd9"
+  },
+  "files": {
+    "ntfs_status": {
+      "sha256": "d2039ccf78039122f39835be370c2e91488bd2895b5df06316a84be08ac3bcbf",
+      "size": 301320
+    },
+    "ntfsfix": {
+      "sha256": "02ba101a6285696b6381923bf729f66a933122d50dd38637b6d2b1fd3878edbe",
+      "size": 326088
+    },
+    "COPYING": {
+      "sha256": "231f7edcc7352d7734a96eef0b8030f77982678c516876fcb81e25b32d68564c",
+      "size": 18002
+    },
+    "source.tar.gz": {
+      "sha256": "7754f3b32e8baf9c472459b4e9c981e3ae0f5039107cdd8d8201aed0a949008a",
+      "size": 1337883
+    }
+  },
+  "validation": {
+    "network": "disabled",
+    "fixtures": [
+      "clean:clean:unchanged:readonly-open",
+      "dirty:dirty:unchanged:readonly-open",
+      "hibernated:hibernated:unchanged:readonly-open",
+      "hibernated-dirty:hibernated:unchanged:readonly-open",
+      "cached-metadata:hibernated:unchanged:readonly-open",
+      "unclean-journal:unknown:unchanged:readonly-open",
+      "mismatch:unknown:unchanged:readonly-open",
+      "invalid:unknown:unchanged:readonly-open"
+    ]
+  },
+  "build": {
+    "alpine": "3.23.6",
+    "network": "disabled",
+    "compiler": "Alpine gcc 15.2.0-r2; musl 1.2.5-r24"
+  }
+}

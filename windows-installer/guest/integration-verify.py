@@ -94,6 +94,21 @@ for slot in ('A','B'):
         checked=verify_runtime_access(root,runtime_components)
         print('OXP_DECK_RUNTIME_ACCESS='+json.dumps({'slot':slot,'paths':checked,'passed':True}),flush=True)
         installed={name for name,result in results['components'].items() if result['status']=='files_installed'}
+        if 'partition-mount' in installed:
+            from partition_mount import runtime_files
+            source=Path('/mnt/payload/components/partition-mount')
+            required={
+                'etc/systemd/system-generators/oxp3-ntfs-preflight': (source/'ntfs-generator.py',0o755),
+                'etc/systemd/system/oxp3-ntfs-preflight@.service': (source/'oxp3-ntfs-preflight@.service',0o644),
+                'home/.oxp3-partition-mount/preflight.py': (source/'preflight.py',0o644),
+            }
+            for relative,(original,mode) in required.items():
+                path=root/relative
+                assert path.read_bytes()==original.read_bytes() and path.stat().st_uid==0
+                assert path.stat().st_mode&0o777==mode,relative
+            staged=runtime_files(source/'tools')
+            deployed=runtime_files(root/'home/.oxp3-partition-mount/tools')
+            assert staged==deployed
         if 'decky' in installed:
             assert (root/'home/deck/.local/share/Steam/.cef-enable-remote-debugging').is_file()
             unit=(root/'etc/systemd/system/plugin_loader.service').read_text()

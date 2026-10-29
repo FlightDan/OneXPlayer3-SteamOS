@@ -2,6 +2,9 @@
 import os
 from pathlib import Path
 import tempfile
+import shutil
+import hashlib
+import json
 import unittest
 
 import partition_mount
@@ -23,6 +26,7 @@ class PartitionMountIntegrationChecks(unittest.TestCase):
         source.mkdir(parents=True)
         for name in partition_mount.ASSETS:
             (source / name).write_bytes((SOURCE / name).read_bytes())
+        shutil.copytree(SOURCE / 'tools', source / 'tools')
         bindir = self.root / 'usr' / 'bin'
         bindir.mkdir(parents=True)
         for tool in partition_mount.TOOLS:
@@ -36,9 +40,18 @@ class PartitionMountIntegrationChecks(unittest.TestCase):
             'home/.oxp3-partition-mount/mounts.py',
             'home/.oxp3-partition-mount/desktop.py',
             'home/.oxp3-partition-mount/oxp3-partition-mount',
+            'home/.oxp3-partition-mount/preflight.py',
+            'home/.oxp3-partition-mount/ntfs_status.c',
+            'home/.oxp3-partition-mount/ntfs-tools-build.sh',
+            'home/.oxp3-partition-mount/ntfs-tools-source.json',
+            'home/.oxp3-partition-mount/MUSL-COPYRIGHT',
+            'etc/systemd/system-generators/oxp3-ntfs-preflight',
+            'etc/systemd/system/oxp3-ntfs-preflight@.service',
             'home/deck/Desktop/oxp3-partition-mount.desktop',
             'home/deck/.local/share/applications/oxp3-partition-mount.desktop',
         }
+        expected.update('home/.oxp3-partition-mount/tools/' + name
+                        for name in partition_mount.RUNTIME_NAMES | {'manifest.json'})
         self.assertEqual(set(result), expected)
         self.assertEqual(result['home/.oxp3-partition-mount/oxp3-partition-mount']['mode'], 0o755)
         self.assertEqual(result['home/.oxp3-partition-mount/mounts.py']['mode'], 0o644)
@@ -51,6 +64,8 @@ class PartitionMountIntegrationChecks(unittest.TestCase):
         self.assertEqual(result['home/deck/Desktop/oxp3-partition-mount.desktop']['data'],
                          (SOURCE / 'oxp3-partition-mount.desktop').read_bytes())
         self.assertFalse(any('fstab' in path or 'polkit' in path for path in result))
+        self.assertEqual(result['etc/systemd/system-generators/oxp3-ntfs-preflight']['mode'], 0o755)
+        self.assertEqual(result['home/.oxp3-partition-mount/tools/ntfsfix']['mode'], 0o755)
 
     def test_missing_image_dependency_refuses_install(self):
         (self.root / 'usr/bin/systemd-escape').unlink()
@@ -104,6 +119,61 @@ class PartitionMountIntegrationChecks(unittest.TestCase):
         target.chmod(0o600)
         with self.assertRaisesRegex(RuntimeError, 'Unexpected partition mount file permissions'):
             partition_mount.files(self.root, self.components)
+
+
+class RuntimePayloadChecks(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.source = Path(self.temp.name) / 'source'
+        self.source.mkdir()
+        for name in ('ntfs_status.c', 'ntfs-tools-build.sh', 'ntfs-tools-source.json'):
+            shutil.copyfile(SOURCE / name, self.source / name)
+        shutil.copytree(SOURCE / 'tools', self.source / 'tools')
+        self.tools = self.source / 'tools'
+
+    def test_final_runtime_is_static_and_all_corresponding_source_is_included(self):
+        result = partition_mount.runtime_files(self.tools)
+        self.assertEqual(set(result), {'ntfs_status', 'ntfsfix', 'COPYING', 'source.tar.gz', 'manifest.json'})
+        self.assertTrue(result['ntfs_status'].startswith(b'\x7fELF'))
+
+    def test_changed_binary_and_changed_build_source_are_rejected(self):
+        binary = self.tools / 'ntfsfix'
+        original = binary.read_bytes()
+        binary.write_bytes(original + b'changed')
+        with self.assertRaisesRegex(RuntimeError, 'hash/size mismatch'):
+            partition_mount.runtime_files(self.tools)
+        binary.write_bytes(original)
+        (self.source / 'ntfs_status.c').write_bytes(b'changed source')
+        with self.assertRaisesRegex(RuntimeError, 'Rebuild NTFS tools'):
+            partition_mount.runtime_files(self.tools)
+
+    def test_dynamic_binary_is_rejected_even_with_matching_local_hash(self):
+        binary = self.tools / 'ntfsfix'
+        data = bytearray(binary.read_bytes())
+        import struct
+        offset = struct.unpack_from('<Q', data, 32)[0]
+        struct.pack_into('<I', data, offset, 3)  # PT_INTERP must never be packaged.
+        binary.write_bytes(data)
+        path = self.tools / 'manifest.json'
+        manifest = json.loads(path.read_bytes())
+        manifest['files']['ntfsfix']['sha256'] = hashlib.sha256(data).hexdigest()
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'dynamic loader'):
+            partition_mount.runtime_files(self.tools)
+
+    def test_extra_payload_and_mismatched_pinned_source_are_rejected(self):
+        extra = self.tools / 'unexpected'
+        extra.write_text('not in fixed whitelist', encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'unexpected NTFS tools'):
+            partition_mount.runtime_files(self.tools)
+        extra.unlink()
+        pin = self.source / 'ntfs-tools-source.json'
+        value = json.loads(pin.read_bytes())
+        value['source']['sha256'] = '0' * 64
+        pin.write_text(json.dumps(value), encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'provenance'):
+            partition_mount.runtime_files(self.tools)
 
 
 if __name__ == '__main__':
