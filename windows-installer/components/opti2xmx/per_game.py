@@ -605,6 +605,13 @@ def launch(args):
             # Shell config is intentionally editable by this user. Arguments remain positional.
             os.execvpe("bash", ["bash", "-c", 'set -e; . "$1"; shift; exec "$@"',
                                "xess-game", manifest["config"], *command], os.environ.copy())
+        if manifest.get('fsr_guard_ini'):
+            import configparser
+            config = configparser.ConfigParser(interpolation=None, strict=False)
+            config.read(manifest['fsr_guard_ini'], encoding='utf-8-sig')
+            if (config.get('Upscalers', 'Dx12Upscaler', fallback='').lower() == 'ffx'
+                    and config.get('FSR', 'UpscalerIndex', fallback='') == '9'):
+                raise RuntimeError('FSR XMX requires the patched driver and compiler; restore XeSS or repair the XMX runtime before launch. See ' + str(state / 'launch.log'))
         print("XMX toolchain/driver unavailable; using stock Vulkan + generic XeSS. See " + str(state / "launch.log"), file=sys.stderr)
         env = os.environ.copy()
         drivers = stock_icds()

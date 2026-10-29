@@ -11,6 +11,18 @@ import opti_payload as payload
 
 
 class OptiPayloadTests(unittest.TestCase):
+    def public_fsr_records(self):
+        records = {name: b'public source fixture' for name in payload.PUBLIC_FILES}
+        records.update({name: self.records[name] for name in payload.BASE_FILES})
+        manifest = {'schema': 1, 'adapter': 'fsrxdec', 'architecture': 'x86_64'}
+        for key, names in (('files', payload.COMPAT_BINARIES),
+                           ('distribution_files', payload.COMPAT_DISTRIBUTION)):
+            manifest[key] = [{'path': name, 'size': len(records['fsr_compat/' + name]),
+                              'sha256': hashlib.sha256(records['fsr_compat/' + name]).hexdigest()}
+                             for name in names]
+        records['fsr_compat/manifest.json'] = json.dumps(manifest).encode()
+        return records
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -23,6 +35,8 @@ class OptiPayloadTests(unittest.TestCase):
         self.records.update({'plugin.json': b'{"name":"Opti2XMX"}',
                              'package.json': json.dumps({'version': payload.VERSION}).encode(),
                              'runtime-source.json': json.dumps(self.descriptor).encode()})
+        if 'fsr.py' in self.records:
+            self.records = self.public_fsr_records()
         self.plugin = self.root / 'plugin.zip'
         self.archive(self.plugin, self.records)
         for name, value in [('RUNTIME_SIZE', self.descriptor['size_bytes']),
@@ -49,6 +63,34 @@ class OptiPayloadTests(unittest.TestCase):
         self.assertEqual(report['runtime'], self.descriptor)
         with self.assertRaisesRegex(ValueError, 'fresh'):
             payload.prepare(self.plugin, self.runtime, output)
+
+    def test_public_fsr_layout_requires_exact_compatibility_members_and_checksums(self):
+        records = self.public_fsr_records()
+        payload.validate_public_members(records)
+        for name in ('fsr_compat/bin/amd_fidelityfx_loader_xmx.dll',
+                     'fsr_compat/sources/private-model.tar.gz'):
+            with self.assertRaisesRegex(ValueError, 'membership'):
+                payload.validate_public_members(dict(records, **{name: b'private'}))
+        tampered = dict(records)
+        tampered['fsr_compat/bin/fsrxdec.dll'] = b'changed'
+        with self.assertRaisesRegex(ValueError, 'checksum'):
+            payload.validate_public_members(tampered)
+        manifest = json.loads(records['fsr_compat/manifest.json'])
+        manifest['distribution_files'].append(dict(manifest['distribution_files'][0]))
+        records['fsr_compat/manifest.json'] = json.dumps(manifest).encode()
+        with self.assertRaisesRegex(ValueError, 'membership'):
+            payload.validate_public_members(records)
+
+    def test_full_public_fsr_archive_stages_all_members_without_execution(self):
+        records = self.public_fsr_records()
+        self.archive(self.plugin, records)
+        digest = hashlib.sha256(self.plugin.read_bytes()).hexdigest()
+        with mock.patch.object(payload, 'FILES', tuple(records)), mock.patch.object(payload, 'PLUGIN_SHA256', digest):
+            output = self.root / 'public-fsr'
+            report = payload.prepare(self.plugin, self.runtime, output)
+        self.assertEqual(set(report['files']), set(payload.PUBLIC_FILES))
+        for name, content in records.items():
+            self.assertEqual((output / 'plugin' / name).read_bytes(), content)
 
     def test_stale_plugin_or_runtime_refuses_output(self):
         self.runtime.write_bytes(b'stale')

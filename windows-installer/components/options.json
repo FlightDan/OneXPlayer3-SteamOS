@@ -43,8 +43,8 @@
     },
     {
       "id": "opti2xmx",
-      "zh": "Opti2XMX · 每游戏 XMX / Opti 注入与版本管理",
-      "en": "Opti2XMX · per-game XMX / Opti injection and version management",
+      "zh": "Opti2XMX · 每游戏 XeSS / FSR 4.1.2 Lite XMX（默认 XeSS；FSR 需导入本地包，实验支持）",
+      "en": "Opti2XMX · per-game XeSS / FSR 4.1.2 Lite XMX (XeSS by default; local FSR package required, experimental support)",
       "default": true,
       "dependencies": [
         "decky"

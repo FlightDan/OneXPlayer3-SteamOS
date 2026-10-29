@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "archives": [
+    {
+      "version": "0.9.4",
+      "tag": "v0.9.4",
+      "filename": "Optiscaler_0.9.4-final.20260718._MM.7z",
+      "size_bytes": 55016448,
+      "sha256": "575cb4df866116093df75af607e37fd70e10f5163e0f23fd5c804142e80ef0ad",
+      "url": "https://github.com/optiscaler/OptiScaler/releases/download/v0.9.4/Optiscaler_0.9.4-final.20260718._MM.7z",
+      "source_url": "https://github.com/optiscaler/OptiScaler/tree/v0.9.4"
+    },
+    {
+      "version": "0.7.9",
+      "tag": "v0.7.9",
+      "filename": "OptiScaler_0.7.9.7z",
+      "size_bytes": 32581791,
+      "sha256": "70103bf3746140d368179773edeafb02ec9718efa130276b8da833c3156fbfe3",
+      "url": "https://github.com/optiscaler/OptiScaler/releases/download/v0.7.9/OptiScaler_0.7.9.7z",
+      "source_url": "https://github.com/optiscaler/OptiScaler/tree/v0.7.9"
+    },
+    {
+      "version": "10.0.0-pre1_20261025",
+      "tag": "nightly-20261025",
+      "filename": "OptiScaler_v10.0.0-pre1_20261025.7z",
+      "size_bytes": 57146678,
+      "sha256": "6bb2e9cd6ac0204c76c974df1c202afb1fc7a765844a9ccf608103557aa595fe",
+      "url": "https://github.com/optiscaler/OptiScaler-nightly/releases/download/nightly-20261025/OptiScaler_v10.0.0-pre1_20261025.7z",
+      "source_url": "https://github.com/optiscaler/OptiScaler-nightly/tree/nightly-20261025"
+    }
+  ]
+}

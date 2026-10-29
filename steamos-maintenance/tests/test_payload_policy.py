@@ -6,6 +6,7 @@ import unittest
 
 from oxp3_maintenance.payload_policy import (
     REMOVED_PLUGIN_IDS, distributable_path, sanitize_options, sanitize_payload,
+    PINNED_OPTI_METADATA,
 )
 
 
@@ -39,6 +40,27 @@ class PayloadPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Excluded metadata in pinned NTFS'):
             sanitize_payload(self.source, self.output)
         self.assertFalse(self.output.exists())
+
+    def test_known_opti_json_members_keep_final_zip_bytes_and_unknown_json_is_normalized(self):
+        raw = b'{ "schema":1, "source": "public plugin fixture" }\n'
+        for name in PINNED_OPTI_METADATA:
+            self.put(name, raw)
+        unknown = 'components/opti2xmx/unknown-metadata.json'
+        self.put(unknown, raw)
+        sanitize_payload(self.source, self.output)
+        for name in PINNED_OPTI_METADATA:
+            self.assertEqual((self.output / name).read_bytes(), raw)
+        self.assertNotEqual((self.output / unknown).read_bytes(), raw)
+
+    def test_known_opti_json_members_reject_policy_changes_and_duplicate_keys(self):
+        name = 'components/opti2xmx/fsr_compat/manifest.json'
+        for index, raw in enumerate((b'{"schema":1,"tabmaster":"retired"}',
+                                     b'{"schema":1,"schema":2}')):
+            self.put(name, raw)
+            output = self.root / ('rejected-%d' % index)
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                sanitize_payload(self.source, output)
+            self.assertFalse(output.exists())
 
     def test_legacy_payload_is_filtered_without_mutating_original(self):
         own = {'decky', 'opti2xmx', 'oxp3-fan', 'oxp3-cpu', 'charging', 'oxp3-light', 'windows-reboot'}

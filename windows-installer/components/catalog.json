@@ -187,9 +187,18 @@
     },
     {
       "id": "opti2xmx",
-      "name": "Opti2XMX 0.2.8 每游戏 XMX / Opti 注入与版本管理",
-      "version": "0.2.8",
-      "state": "live_device_repair_confirmed",
+      "name": "Opti2XMX 0.3.0 每游戏 XeSS / FSR 4.1.2 Lite XMX 与 Opti 版本管理",
+      "version": "0.3.0",
+      "state": "fsr412_arc_b390_managed_game_validated",
+      "offline_optiscaler_versions": [
+        "0.9.4",
+        "0.7.9",
+        "10.0.0-pre1_20261025"
+      ],
+      "offline_payload_state": "three_original_archives_verified",
+      "default_xmx_backend": "xess",
+      "fsr412_package_source": "user_imported_private_cache_not_redistributed",
+      "reason": "默认 XeSS；FSR 4.1.2 Lite XMX 需自行导入精确本地 ZIP，模型与私人缓存不随公开包分发。保存 FSR 时准备固定 OptiScaler 10 nightly；关闭 XMX 恢复 XeSS。0.3.0 在 Arc B390 / SteamOS 3.10 / Cyberpunk 2077 2.31 完成 FSR 与 XeSS 整轮基准和 98 个原文件恢复验证。三个固定 Opti 原档断网提取通过；其他 GPU、游戏、光追和帧生成组合未验收。新增公开内容仅含插件、开源解压组件、对应源码与许可。",
       "default": true,
       "available": true,
       "dependencies": [

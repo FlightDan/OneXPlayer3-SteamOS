@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "version": "4.1.2-lite-xmx-0.6",
+  "filename": "FSR-4.1.2-Lite-XMX-OptiClick-0.6.zip",
+  "size_bytes": 118331275,
+  "sha256": "3a896c66a6f2cdee1fdd113914dfd5c30372ab8ff1ef08a375b5faa7b29d4cba",
+  "distribution": "user-provided-local-import",
+  "upscaler_index": "9",
+  "model_name": "4.1.2X Lite",
+  "opti_version": "10.0.0-pre1_20261025",
+  "opti_archive": {
+    "repository": "optiscaler/OptiScaler-nightly",
+    "tag": "nightly-20261025",
+    "filename": "OptiScaler_v10.0.0-pre1_20261025.7z",
+    "asset_id": 674569124,
+    "size_bytes": 57146678,
+    "sha256": "6bb2e9cd6ac0204c76c974df1c202afb1fc7a765844a9ccf608103557aa595fe"
+  },
+  "files": {
+    "amd_fidelityfx_upscaler_dx12.dll": {
+      "size_bytes": 38713344,
+      "sha256": "fdcae2df13f196b7d64058d8b581ffd1dbaaed0a00b451c27196da3dd73cb8bb"
+    },
+    "fsr-original.dll": {
+      "size_bytes": 85684104,
+      "sha256": "c33a287f3048bf02311cae430b6a977500b94ca7b315cd7bff751e6b03e483e3"
+    },
+    "nvngx_dlss.dll": {
+      "size_bytes": 58956912,
+      "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e"
+    }
+  },
+  "pre_kernel_hash": "46fe6c9997eb76ed",
+  "pre_heap_set": 1,
+  "pre_heap_binding": 2,
+  "pre_table_pc_base": 4,
+  "patched_upscaler_sha256": "87554ef61b27a318b23b2a2d508cee7a19e7138b0429a41a3d0cf6a9ea0d4eac",
+  "known_opti_cores": {
+    "fbfb6676b829dad7e020fb830586a16aa0ec6add78016db48ef12e2ae1803231": {
+      "version": "0.9.4",
+      "size_bytes": 25379632,
+      "source_archive_sha256": "575cb4df866116093df75af607e37fd70e10f5163e0f23fd5c804142e80ef0ad"
+    }
+  }
+}

@@ -158,7 +158,7 @@ Open a terminal in SteamOS KDE Desktop Mode and run the following as the regular
 ```bash
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --output install-oxp3-maintenance.sh \
-  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.18/install-oxp3-maintenance.sh \
+  https://github.com/FlightDan/OneXPlayer3-SteamOS/releases/download/maintenance-v1.0.6%2Bmaintenance.19/install-oxp3-maintenance.sh \
   && bash install-oxp3-maintenance.sh
 ```
 
@@ -172,7 +172,7 @@ This updates the OXP3 project only; it does not upgrade SteamOS or change the of
 
 **[Opti2XMX](https://github.com/FlightDan/Opti2XMX)** is a Decky plugin developed for this adaptation. It provides native **XeSS XMX acceleration and XeSS frame generation** directly for compatible games, and **OptiScaler with XeSS frame-generation support** for other compatible games.
 
-OXP3 SteamOS 1.0.6 integrates Opti2XMX **0.2.8**. Its XeSS FG 2x / 3x / 4x controls remain experimental; see the [frame-generation notes](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md) for compatibility and test coverage.
+OXP3 SteamOS 1.0.6 integrates Opti2XMX **0.3.0**. Its XeSS FG 2x / 3x / 4x controls remain experimental; see the [frame-generation notes](windows-installer/components/opti2xmx/docs/FRAME_GENERATION.md) for compatibility and test coverage.
 
 - Configure XMX directly for native XeSS games, or use OptiScaler in other compatible games.
 - Control XMX acceleration and Opti injection independently, with installation, version switching, rollback and uninstall support.

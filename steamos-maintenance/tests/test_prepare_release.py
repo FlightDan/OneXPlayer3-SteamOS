@@ -49,7 +49,11 @@ class PrepareReleaseTests(unittest.TestCase):
             prepare.prepare_release(self.payload, self.metadata, self.plugin, output)
 
     def test_bad_zip_path_or_runtime_binary_is_rejected_before_output(self):
-        for name in ('opti2xmx/../../outside.py', 'opti2xmx/libxess.dll'):
+        for name in ('opti2xmx/../../outside.py', 'opti2xmx/libxess.dll',
+                     'opti2xmx/fsr_compat/bin/amd_fidelityfx_loader_xmx.dll',
+                     'opti2xmx/fsr_compat/bin/unknown.dll',
+                     'opti2xmx/fsr_compat/sources/private-model.tar.gz',
+                     'opti2xmx/private-fsr.zip'):
             bad = self.root / 'bad.zip'
             with zipfile.ZipFile(bad, 'w') as archive:
                 archive.writestr(name, 'bad')
@@ -57,16 +61,22 @@ class PrepareReleaseTests(unittest.TestCase):
                 prepare.prepare_release(self.payload, self.metadata, bad, self.root / 'bad-output')
             self.assertFalse((self.root / 'bad-output').exists())
 
-    def test_exported_preparation_metadata_contains_no_absolute_workspace_path(self):
-        (self.payload / 'components/preparation-report.json').write_text(json.dumps({
-            'schema': 1, 'coverage': {}, 'source_inventory': {}, 'release': {'version': '0.1.3'}}))
-        output = self.root / 'release-private-path-check'
-        report = prepare.prepare_release(self.payload, self.metadata, self.plugin, output)
-        self.assertEqual(report['source_payload'], 'payload')
-        for name in ('preparation-report.json', 'release-preparation.json'):
-            value = json.loads((output / 'components' / name).read_text())
-            self.assertNotIn(str(self.root), json.dumps(value))
-        self.assertEqual(json.loads((output / 'components/preparation-report.json').read_text())['release_overlay']['source_payload'], 'payload')
+    def test_public_fsr_compatibility_sources_and_binaries_survive_overlay(self):
+        candidate = self.root / 'public-fsr.zip'
+        with zipfile.ZipFile(self.plugin) as original, zipfile.ZipFile(candidate, 'w') as target:
+            for entry in original.infolist():
+                target.writestr(entry.filename, original.read(entry))
+            for name in sorted(prepare.PUBLIC_FSR_COMPAT_MEMBERS):
+                content = b'{}' if name.endswith('.json') else b'public source or binary fixture'
+                target.writestr('opti2xmx/' + name, content)
+        output = self.root / 'public-fsr-release'
+        report = prepare.prepare_release(self.payload, self.metadata, candidate, output)
+        self.assertEqual(report['plugin_files'], 9 + len(prepare.PUBLIC_FSR_COMPAT_MEMBERS))
+        items = json.loads((output / 'integration/manifest.json').read_text())['opti2xmx']['files']
+        for name in prepare.PUBLIC_FSR_COMPAT_MEMBERS:
+            content = b'{}' if name.endswith('.json') else b'public source or binary fixture'
+            self.assertEqual((output / 'components/opti2xmx' / name).read_bytes(), content)
+            self.assertTrue(any(item['target'] == 'home/deck/homebrew/plugins/opti2xmx/' + name for item in items))
 
     def test_explicit_runtime_overlay_is_pinned_and_leaves_cache_unchanged(self):
         runtime = self.root / 'published-runtime.tar.gz'

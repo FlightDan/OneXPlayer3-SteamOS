@@ -1,0 +1,5 @@
+LIBRARY fsrxdec
+EXPORTS
+    CreateDecompressor @40
+    Decompress @43
+    CloseDecompressor @45

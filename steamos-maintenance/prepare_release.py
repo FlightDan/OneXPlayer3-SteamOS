@@ -19,6 +19,30 @@ from build_bundle import _metadata
 from oxp3_maintenance.bundle import BundleError
 from oxp3_maintenance.payload_policy import sanitize_payload, json_bytes
 
+PUBLIC_FSR_COMPAT_MEMBERS = frozenset({
+    'fsr_compat/manifest.json',
+    'fsr_compat/bin/fsrxdec.dll', 'fsr_compat/bin/libwim-15.dll',
+    'fsr_compat/licenses/fsrxdec-LICENSE.txt',
+    'fsr_compat/licenses/wimlib/COPYING.GPLv3.txt',
+    'fsr_compat/licenses/wimlib/COPYING.LGPL.txt',
+    'fsr_compat/licenses/wimlib/COPYING.libdivsufsort-lite.txt',
+    'fsr_compat/licenses/wimlib/COPYING.txt',
+    'fsr_compat/sources/fsr_compat/build.ps1',
+    'fsr_compat/sources/fsr_compat/dependency-source.json',
+    'fsr_compat/sources/fsr_compat/fsrxdec.c',
+    'fsr_compat/sources/fsr_compat/fsrxdec.def',
+    'fsr_compat/sources/fsr_compat/LICENSE',
+    'fsr_compat/sources/fsr_compat/README.md',
+    'fsr_compat/sources/fsr_compat/test_fsrxdec.py',
+    'fsr_compat/sources/wimlib-1.14.5.tar.gz',
+})
+
+
+def _public_plugin_member(relative):
+    if relative.startswith('fsr_compat/'):
+        return relative in PUBLIC_FSR_COMPAT_MEMBERS
+    return PurePosixPath(relative).suffix.lower() in {'.py', '.json', '.js', '.md', '.png', '.txt'} or relative == 'LICENSE'
+
 
 def plugin_files(archive):
     records, total = {}, 0
@@ -38,8 +62,7 @@ def plugin_files(archive):
                 raise ValueError('Plugin ZIP links and special files are forbidden')
             relative = name[len('opti2xmx/'):]
             if (relative in records or item.file_size > 16 * 1024 * 1024
-                    or PurePosixPath(relative).suffix.lower() not in {'.py', '.json', '.js', '.md', '.png', '.txt'}
-                    and relative != 'LICENSE'):
+                    or not _public_plugin_member(relative)):
                 raise ValueError('Unexpected, duplicate or oversized plugin resource')
             total += item.file_size
             if total > 32 * 1024 * 1024:

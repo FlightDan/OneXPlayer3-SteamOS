@@ -1,6 +1,7 @@
 """Opti lifecycle with per-game journals; no upstream setup scripts are executed."""
 import configparser
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ from runtime_setup import download_ssl_context
 RELEASES = {
     '0.9.4': ('v0.9.4', 'Optiscaler_0.9.4-final.20260718._MM.7z', 481819753),
     '0.7.9': ('v0.7.9', 'OptiScaler_0.7.9.7z', 286094187),
+    '10.0.0-pre1_20261025': ('nightly-20261025', 'OptiScaler_v10.0.0-pre1_20261025.7z', 674569124),
 }
 ASSETS = ['OptiScaler.dll', 'OptiScaler.ini', 'libxess.dll', 'libxess_dx11.dll',
           'libxess_fg.dll', 'libxell.dll', 'amd_fidelityfx_dx12.dll',
@@ -25,6 +27,12 @@ ASSETS = ['OptiScaler.dll', 'OptiScaler.ini', 'libxess.dll', 'libxess_dx11.dll',
           'Licenses/DirectX_LICENSE.txt', 'Licenses/FidelityFX_v1_LICENSE.md',
           'Licenses/FidelityFX_v2_LICENSE.md', 'Licenses/XeSS_LICENSE.txt']
 MIGRATE_NAMES = set(ASSETS) - {'OptiScaler.dll', 'fakenvapi.dll'} | {'dxgi.dll', 'nvapi64.dll', 'nvngx.dll'}
+V10_ASSETS = ['OptiScaler.dll', 'OptiScaler.ini',
+              'OptiScaler/libxess.dll', 'OptiScaler/libxess_dx11.dll', 'OptiScaler/libxess_fg.dll', 'OptiScaler/libxell.dll',
+              'OptiScaler/amd_fidelityfx_loader_dx12.dll', 'OptiScaler/amd_fidelityfx_upscaler_dx12.dll',
+              'OptiScaler/amd_fidelityfx_framegeneration_dx12.dll', 'OptiScaler/amd_fidelityfx_vk.dll',
+              'OptiScaler/dlssg_to_fsr3_amd_is_better.dll', 'OptiScaler/D3D12_OptiScaler/D3D12Core.dll',
+              'Licenses/DirectX_LICENSE.txt', 'Licenses/FidelityFX_v2_LICENSE.md', 'Licenses/XeSS_LICENSE.txt']
 
 
 def ini_values(path):
@@ -110,6 +118,9 @@ class OptiMixin:
         interpolation=get('XeFG','InterpolationCount','auto').strip()
         multiplier='native' if fg=='native' else {'1':'2','2':'3','3':'4'}.get(interpolation,'2')
         settings_undo=(r or {}).get('settings_undo') or {}
+        sr = get('Upscalers', 'Dx12Upscaler', 'xess')
+        if sr == 'ffx' and get('FSR', 'UpscalerIndex', 'auto') == '9' and (r or {}).get('fsr_source_sha256'):
+            sr = 'fsr_xmx'
         return dict(managed=bool(active), installed=bool(ini), incomplete=incomplete,
                     version=r.get('version', '') if active else '',
                     injection_enabled=r.get('injection_enabled', True) if active else bool(ini and not incomplete),
@@ -117,7 +128,7 @@ class OptiMixin:
                     pending=r.get('pending') if r else None,
                     settings_rollback=bool(active and settings_undo.get('status') in ('saved','applying','restoring')),
                     settings_recovery=settings_undo.get('status') in ('applying','restoring'),
-                    settings=dict(sr=get('Upscalers', 'Dx12Upscaler', 'xess'), fg=fg,
+                    settings=dict(sr=sr, fg=fg,
                                   fg_input=fg_input, fg_multiplier=multiplier,
                                   spoof='real' if spoof.lower() == 'false' else
                                   {'0x8086':'intel','0x1002':'amd'}.get(vendor, 'nvidia')))
@@ -137,13 +148,18 @@ class OptiMixin:
         if version not in RELEASES or source not in ('github', 'github-api', 'ghfast', 'ghproxy'):
             raise ValueError('请选择支持的版本和下载源')
         tag, filename, asset = RELEASES[version]
+        nightly = version.startswith('10.')
+        if nightly:
+            from fsr import descriptor
+            pin = descriptor()['opti_archive']
+        repository = 'optiscaler/OptiScaler-nightly' if nightly else 'optiscaler/OptiScaler'
         cache = self.root / 'downloads' / tag
         self.runtime().no_symlink_parents(cache / filename)
         cache.mkdir(parents=True, exist_ok=True)
         archive = cache / filename
         if not archive.exists():
-            url = f'https://github.com/optiscaler/OptiScaler/releases/download/{tag}/{filename}'
-            if source == 'github-api':url=f'https://api.github.com/repos/optiscaler/OptiScaler/releases/assets/{asset}?download=1'
+            url = f'https://github.com/{repository}/releases/download/{tag}/{filename}'
+            if source == 'github-api':url=f'https://api.github.com/repos/{repository}/releases/assets/{asset}?download=1'
             elif source == 'ghfast':url='https://ghfast.top/'+url
             elif source == 'ghproxy':url='https://gh-proxy.com/'+url
             req = urllib.request.Request(url, headers={'User-Agent':'Opti2XMX', 'Accept':'application/octet-stream'})
@@ -168,20 +184,25 @@ class OptiMixin:
                 if part.exists(): part.unlink()
         else:
             self.progress.update(operation_id, 'cache-hit', archive.stat().st_size, archive.stat().st_size)
+        if nightly:
+            from fsr import digest
+            if archive.stat().st_size != pin['size_bytes'] or digest(archive) != pin['sha256']:
+                raise RuntimeError('Opti 10 安装包与已验证版本的 SHA-256 不匹配。')
         # Extract only fixed names via stdout: archive paths/symlinks cannot escape.
         payload = cache / 'payload'
         payload.mkdir(exist_ok=True)
+        required = ('OptiScaler.dll', 'OptiScaler.ini', 'OptiScaler/libxess.dll' if nightly else 'libxess.dll')
         if (payload/'ready.json').exists() and all((payload/n).is_file() and not (payload/n).is_symlink()
-                                                   for n in ('OptiScaler.dll','OptiScaler.ini','libxess.dll')):
+                                                   for n in required):
             return payload
-        for name in ASSETS:
+        for name in (V10_ASSETS if nightly else ASSETS):
             self.progress.update(operation_id, 'extracting')
             p = payload / name
             self.runtime().no_symlink_parents(p)
             if p.is_symlink():raise RuntimeError('缓存文件不能是符号链接')
             result = subprocess.run(['7z','e','-so',str(archive),name], env=system_env(), capture_output=True, timeout=90)
             if result.returncode or not result.stdout:
-                if name in ('OptiScaler.dll','OptiScaler.ini','libxess.dll'):
+                if name in required:
                     raise RuntimeError('安装包缺少必需文件：' + name)
                 continue
             if len(result.stdout) > 100 * 1024 * 1024: raise RuntimeError('安装包文件过大')
@@ -252,9 +273,12 @@ class OptiMixin:
                  launch=launch, old_launch=previous['old_launch'] if previous else actual,
                  files=base, undo=dict(folder=str(folder),files=files,previous=previous,launch=rollback_launch),
                  pending=dict(expected=actual,target=launch,kind=kind))
+        if kind == 'toggle' and previous and previous.get('fsr_source_sha256'):
+            r['fsr_source_sha256'] = previous['fsr_source_sha256']
         self.opti_save(appid,r)
         try:
-            rt.atomic_text(parent/'launch.sh', '#!/bin/bash\nset -eu\nexport WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}dxgi=n,b;nvapi64=n,b"\nexec "$@"\n',mode=0o700)
+            overrides = 'dxgi=n,b;fsrxdec=n,b;libwim-15=n,b' if version.startswith('10.') else 'dxgi=n,b;nvapi64=n,b'
+            rt.atomic_text(parent/'launch.sh', '#!/bin/bash\nset -eu\nexport WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}' + overrides + '"\nexec "$@"\n',mode=0o700)
             for f in files:
                 p=Path(f['path'])
                 p.parent.mkdir(parents=True,exist_ok=True)
@@ -276,7 +300,7 @@ class OptiMixin:
             self.progress.finish(identity, error=error)
             raise
 
-    def _opti_install(self, appid, executable, actual, version, source, operation_id):
+    def _opti_install(self, appid, executable, actual, version, source, operation_id, fsr=False):
         info, folder, prefix, r = self.opti_context(appid,executable,actual)
         if r and r['status']=='active' and not r.get('injection_enabled', True):
             raise RuntimeError('请先开启 Opti 注入，再更换版本')
@@ -306,7 +330,7 @@ class OptiMixin:
             for p in payload.rglob('*'):
                 if not p.is_file():continue
                 relative=p.relative_to(payload).as_posix()
-                if relative not in ASSETS:continue
+                if relative not in (V10_ASSETS if version.startswith('10.') else ASSETS):continue
                 name={'OptiScaler.dll':'dxgi.dll','fakenvapi.dll':'nvapi64.dll'}.get(relative,relative)
                 target=folder/name
                 data=p.read_bytes()
@@ -316,6 +340,9 @@ class OptiMixin:
                     old=ini_values(target) if target.exists() else configparser.ConfigParser()
                     for section,key,default in [('Upscalers','Dx12Upscaler','xess'),('Menu','Scale','auto'),('Menu','ShortcutKey','auto')]:
                         text=ini_set(text,section,key,old.get(section,key,fallback=default))
+                    if fsr:
+                        from fsr import neutral_fsr
+                        text = neutral_fsr(text)
                     for section,key,value in [('Spoofing','Dxgi','false'),('Spoofing','StreamlineSpoofing','false'),
                                                ('FrameGen','Enabled','false'),('FrameGen','FGInput','nofg'),
                                                 ('FrameGen','FGOutput','nofg'),('FrameGen','FGType','nofg'),('OptiFG','Enabled','false'),
@@ -323,8 +350,29 @@ class OptiMixin:
                         text=ini_set(text,section,key,value)
                     data=text.encode()
                 changes[str(target)]=data
+            if version.startswith('10.'):
+                # Games/native input hooks and the existing XMX manager also
+                # need the entry SDK next to the executable, not only v10's
+                # private OptiScaler directory.
+                changes[str(folder/'libxess.dll')] = (payload/'OptiScaler/libxess.dll').read_bytes()
+            if fsr:
+                # New v10 subfolder layout; the source model is a private import.
+                changes.update(self.fsr_changes(folder))
+            if version.startswith('10.') and any(f['path'] == str(folder/'nvapi64.dll') for f in base):
+                changes[str(folder/'nvapi64.dll')] = None
             base=self.opti_baseline(appid,base,changes)
+            for f in base:
+                if f['path'] not in changes:continue
+                if version.startswith('10.') and f['path'] == str(folder/'nvapi64.dll'):
+                    f.update(suspended=True, suspended_source=None, v10_excluded=True)
+                elif changes[f['path']] is not None:
+                    for key in ('suspended', 'suspended_source', 'v10_excluded'):f.pop(key, None)
             pending=self.opti_transaction(appid,executable,actual,changes,base,version,r,'install')
+            if fsr:
+                from fsr import descriptor
+                record = self.opti_record(appid)
+                record['fsr_source_sha256'] = descriptor()['sha256']
+                self.opti_save(appid, record)
             self.opti_refresh_applied(appid)
             return pending
 
@@ -373,6 +421,9 @@ class OptiMixin:
             base=copy.deepcopy(r['files']);changes={}
             for f in base:
                 if Path(f['path']).name.lower() not in ('dxgi.dll','nvapi64.dll','nvngx.dll'):continue
+                if f.get('v10_excluded'):
+                    changes[f['path']] = None
+                    continue
                 source=f['applied'] if enabled else f['original']
                 if not enabled and source:
                     data=Path(source).read_bytes().lower()
@@ -394,7 +445,11 @@ class OptiMixin:
                     for key in ('original','applied'):
                         saved=Path(new['undo']['folder'])/('xmx-ini-'+key)
                         rt.atomic_copy(Path(f[key]),saved)
-                        rt.atomic_copy(Path(f['path']),Path(f[key]))
+                        if key == 'original' and new.get('fsr_source_sha256'):
+                            from fsr import neutral_fsr
+                            rt.atomic_text(Path(f[key]),neutral_fsr(Path(f['path']).read_text(encoding='utf-8-sig')))
+                        else:
+                            rt.atomic_copy(Path(f['path']),Path(f[key]))
             self.opti_save(appid,new)
             return new['pending']
 
@@ -404,6 +459,9 @@ class OptiMixin:
         dxgi=folder/'dxgi.dll'
         self.runtime().no_symlink_parents(dxgi)
         if not dxgi.exists() or b'OptiScaler' not in dxgi.read_bytes():raise RuntimeError('只支持已识别的 dxgi 版 Opti 安装')
+        from fsr import descriptor, digest
+        core = descriptor().get('known_opti_cores', {}).get(digest(dxgi))
+        preserve_existing = bool(core and dxgi.stat().st_size == core['size_bytes'])
         fgmod=self.home/'fgmod';changes={};originals={}
         for name in sorted(MIGRATE_NAMES):
             p=folder/name
@@ -413,17 +471,24 @@ class OptiMixin:
             src=fgmod/('OptiScaler.dll' if name=='dxgi.dll' else name)
             matched=src.is_file() and p.read_bytes()==src.read_bytes()
             xmx_file=next((f for f in (info['state'] or {}).get('files',[]) if f['path']==str(p)),None)
-            if name!='OptiScaler.ini' and not matched and not xmx_file:
+            if name!='OptiScaler.ini' and not matched and not xmx_file and not preserve_existing:
                 raise RuntimeError('无法确认现有文件归属，保留原文件：'+name)
             changes[str(p)]=p.read_bytes()
             backup=p.with_name(p.name+'.b')
             self.runtime().no_symlink_parents(backup)
-            originals[str(p)]=backup if backup.is_file() else None
+            # A verified public Opti core may have user-selected companion
+            # libraries. Preserve those bytes as originals; do not claim their
+            # origin or delete them as if they belonged to an upstream archive.
+            originals[str(p)]=p if preserve_existing else backup if backup.is_file() else None
         with self.runtime().prefix_lock(prefix):
             self.runtime().game_idle(prefix,Path(executable).name)
             base=self.opti_baseline(appid,[],changes,originals)
             # Metadata adoption leaves loaded game libraries untouched.
-            pending=self.opti_transaction(appid,executable,actual,{},base,'0.7.9',None,'migrate')
+            pending=self.opti_transaction(appid,executable,actual,{},base,core['version'] if preserve_existing else '0.7.9',None,'migrate')
+            if preserve_existing:
+                r=self.opti_record(appid)
+                r['preserves_preexisting_installation']=True
+                self.opti_save(appid,r)
             self.opti_refresh_applied(appid)
             x=info['state']
             if x and x['status']=='active':
@@ -451,7 +516,11 @@ class OptiMixin:
                         for key in ('original','applied'):
                             saved=Path(r['undo']['folder'])/('xmx-ini-'+key)
                             rt.atomic_copy(Path(f[key]),saved)
-                            rt.atomic_copy(Path(f['path']),Path(f[key]))
+                            if key == 'original' and r.get('fsr_source_sha256'):
+                                from fsr import neutral_fsr
+                                rt.atomic_text(Path(f[key]),neutral_fsr(Path(f['path']).read_text(encoding='utf-8-sig')))
+                            else:
+                                rt.atomic_copy(Path(f['path']),Path(f[key]))
             x['old_launch']=r['launch'];self.save(x)
         if pending['kind']=='rollback':
             previous=r['undo']['previous']
@@ -546,7 +615,7 @@ class OptiMixin:
         for path in targets:self._settings_regular(path)
         return r,info,ini,targets
 
-    def _settings_journal(self, appid, r, ini, targets, after):
+    def _settings_journal(self, appid, r, ini, targets, after, inactive_original=None):
         rt=self.runtime()
         folder=self.opti_path(appid).parent/('settings-'+uuid.uuid4().hex)
         rt.no_symlink_parents(folder/'placeholder');folder.mkdir(mode=0o700)
@@ -555,9 +624,14 @@ class OptiMixin:
         files=[]
         for n,path in enumerate(targets):
             saved=folder/('observed-'+str(n)+'.ini');saved.write_bytes(path.read_bytes())
-            files.append(dict(path=str(path),observed=str(saved)))
+            record=dict(path=str(path),observed=str(saved))
+            if inactive_original and str(path) == inactive_original[0]:
+                projected=folder/('desired-'+str(n)+'.ini')
+                projected.write_bytes(inactive_original[1])
+                record['desired']=str(projected)
+            files.append(record)
         return dict(status='applying',folder=str(folder),ini=str(ini),before=str(before),after=str(desired),
-                    version=r['version'],executable=r['executable'],files=files)
+                    version=r['version'],executable=r['executable'],files=files,xmx_only=inactive_original is not None)
 
     def _settings_validate_journal(self, appid, r, ini, journal):
         folder=Path(journal['folder'])
@@ -573,6 +647,11 @@ class OptiMixin:
             path=Path(f['observed'])
             if path.parent!=folder:raise RuntimeError('无效设置备份路径')
             self._settings_regular(path)
+            if f.get('desired'):
+                desired=Path(f['desired'])
+                if desired.parent!=folder or not re.fullmatch(r'desired-[0-9]+\.ini',desired.name):
+                    raise RuntimeError('无效设置投影路径')
+                self._settings_regular(desired)
         if journal.get('live_format_capture'):
             path=Path(journal['live_format_capture'])
             if path!=folder/'live-formatted.ini':raise RuntimeError('无效设置备份路径')
@@ -594,13 +673,14 @@ class OptiMixin:
             self._settings_validate_journal(appid,r,ini,journal)
             new=Path(journal['after']).read_bytes()
             captured={f['path']:Path(f['observed']).read_bytes() for f in journal['files']}
+            desired={f['path']:Path(f.get('desired',journal['after'])).read_bytes() for f in journal['files']}
             current=set(map(str,targets))
             if ((journal['status']=='saved' and not current.issubset(captured)) or
                     (journal['status'] in ('applying','restoring') and set(captured)!=current)):
                 raise RuntimeError('设置恢复目标已变化，保留现场')
             formatted=None
             for path in targets:
-                allowed=(new,) if journal['status']=='saved' else (new,captured[str(path)])
+                allowed=(desired[str(path)],) if journal['status']=='saved' else (desired[str(path)],captured[str(path)])
                 observed=path.read_bytes()
                 if observed not in allowed:
                     # SimpleIni rewrites the live INI on game exit. Only that
@@ -641,7 +721,7 @@ class OptiMixin:
         from manager import ini_set
         r,info,ini,targets=self._settings_context(appid)
         prefix=Path(info['prefix']);rt=self.runtime()
-        allowed={'sr':{'xess','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
+        allowed={'sr':{'xess','fsr_xmx','fsr31','fsr22','dlss'},'fg':{'native','fsrfg','xefg'},
                  'fg_input':{'fsrfg30','fsrfg','dlssg','upscaler'},'spoof':{'real','nvidia','amd','intel'},
                  'fg_multiplier':{'native','2','3','4'}}
         settings=dict(settings)
@@ -655,10 +735,12 @@ class OptiMixin:
             rt.game_idle(prefix,Path(r['executable']).name)
             r,info,ini,targets=self._settings_context(appid)
             if Path(info['prefix'])!=prefix:raise RuntimeError('游戏 Proton 环境已变化，请刷新')
-            if not r['version'].startswith('0.9'):raise RuntimeError('请先升级 Opti 0.9 再使用简化设置')
+            if not r['version'].startswith(('0.9','10.')):raise RuntimeError('请先升级 Opti 0.9 或 10 再使用简化设置')
             x=info['state'];active=x and x['status']=='active'
-            if active and (settings['sr']!='xess' or settings['spoof']!='real'):
-                raise RuntimeError('XMX 开启时保留 XeSS 和真实显卡；请先关闭 XMX 再改这两项')
+            if active and (settings['sr'] not in ('xess','fsr_xmx') or settings['spoof']!='real'):
+                raise RuntimeError('XMX 开启时保留 XeSS / FSR XMX 和真实显卡；请先关闭 XMX 再改显卡身份')
+            if settings['sr']=='fsr_xmx':
+                self.fsr_validate_selected(info)
             before=ini.read_bytes()
             text=(self.opti_package(r['version'],'github')/'OptiScaler.ini').read_text(encoding='utf-8-sig') if reset else before.decode('utf-8-sig')
             fg=settings['fg'];spoof=settings['spoof']
@@ -666,16 +748,31 @@ class OptiMixin:
                                 'amd':('0x1002','0x7550','AMD Radeon RX 9070 XT'),
                                 'intel':('0x8086','0x56a0','Intel(R) Arc(TM) A770 Graphics'),
                                 'real':('auto','auto','auto')}[spoof]
-            updates=[('Upscalers','Dx12Upscaler',settings['sr']),('FrameGen','Enabled','false' if fg=='native' else 'true'),
+            updates=[('Upscalers','Dx12Upscaler','ffx' if settings['sr']=='fsr_xmx' else settings['sr']),('FrameGen','Enabled','false' if fg=='native' else 'true'),
                      ('FrameGen','FGInput','nofg' if fg=='native' else settings['fg_input']),('FrameGen','FGOutput','nofg' if fg=='native' else fg),
                      ('XeFG','InterpolationCount','auto' if settings['fg_multiplier']=='native' else str(int(settings['fg_multiplier'])-1)),
                      ('Spoofing','Dxgi','false' if spoof=='real' else 'true'),('Spoofing','StreamlineSpoofing','false'),
                      ('Spoofing','SpoofedVendorId',vendor),('Spoofing','SpoofedDeviceId',device),('Spoofing','SpoofedGPUName',name)]
             for section,key,value in updates:text=ini_set(text,section,key,value)
-            journal=self._settings_journal(appid,r,ini,targets,text.encode('utf-8'))
+            inactive_original=None
+            was_fsr=ini_values(ini).get('Upscalers','Dx12Upscaler',fallback='')=='ffx' and bool(r.get('fsr_source_sha256'))
+            if settings['sr']=='fsr_xmx':
+                for section,key,value in [('FSR','UpscalerIndex','9'),('FSR','Fsr4GpuSupport','auto'),
+                                          ('FSR','Fsr4Model','auto'),('Libraries','OptiDllPath','.\\OptiScaler')]:
+                    text=ini_set(text,section,key,value)
+            elif r.get('fsr_source_sha256'):
+                text=ini_set(text,'FSR','UpscalerIndex','auto')
+            if active and (was_fsr or settings['sr']=='fsr_xmx'):
+                from fsr import neutral_fsr
+                original=next((f['original'] for f in x['files'] if f['path']==str(ini)),None)
+                if not original:raise RuntimeError('FSR 缺少 XMX 恢复快照，请重新开启 XMX。')
+                inactive_original=(original,neutral_fsr(text).encode('utf-8'))
+            journal=(self._settings_journal(appid,r,ini,targets,text.encode('utf-8'),inactive_original)
+                     if inactive_original else self._settings_journal(appid,r,ini,targets,text.encode('utf-8')))
             r['settings_undo']=journal;self.opti_save(appid,r)
             try:
-                for path in targets:rt.atomic_copy(Path(journal['after']),path)
+                desired={f['path']:Path(f.get('desired',journal['after'])) for f in journal.get('files',[])}
+                for path in targets:rt.atomic_copy(desired.get(str(path),Path(journal['after'])),path)
                 journal['status']='saved';self.opti_save(appid,r)
             except Exception as error:
                 raise RuntimeError('设置保存未完成，已保留恢复记录；请先恢复上次设置：'+str(error)) from error

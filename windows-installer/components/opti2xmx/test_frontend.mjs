@@ -9,12 +9,18 @@ let savedSelection=null, timeoutId=0, inspectCount=0;
 let timerId=0, uiEpoch=0;
 let operation={schema:1,instance_id:'backend-1',operation_id:null,appid:null,kind:'',version:'',phase:'completed',running:false,downloaded_bytes:0,total_bytes:null,error:null,revision:0};
 let runtime={ready:false,available:true,version:'fixture',size_bytes:195433378,host_issue:'',error:'',availability_message:''};
+let fsrStatusValue={ready:false,version:'',reason:'尚未导入 FSR 模型包。'};
+let pickedFile={path:'/home/deck/Downloads/fsr-model.zip',realpath:'/home/deck/Downloads/fsr-model.zip'}, filePickerArgs=null;
 const info = {appid:42,name:'Demo',executables:['game.exe','Launcher.exe'],libraries:[{path:'libxess.dll'}],optis:[],
   runtime_ready:true,prefix_ready:true,external_managed:false,state:null,
+  fsr:{ready:false,prepared:false,bridge_ready:false,version:'',opti_version:'',reason:'尚未导入 FSR 模型包。'},
   automatic:{executable:'game.exe',route:'native',reason:'',candidates:['game.exe']}};
 const copy = value => JSON.parse(JSON.stringify(value));
 const methods = {
   runtime_status: async () => ({ok:true,data:copy(runtime)}),
+  fsr_status: async () => ({ok:true,data:copy(fsrStatusValue)}),
+  fsr_import: async path => ({ok:false,error:`unexpected FSR import: ${path}`}),
+  fsr_prepare: async () => ({ok:false,error:'unexpected FSR preparation'}),
   operation_progress: async () => ({ok:true,data:copy(operation)}),
   inventory: async () => ({ok:true,data:[{appid:42,name:'Demo'}]}),
   inspect_game: async id => {inspectCount++;return {ok:true,data:{...copy(info),appid:id}};},
@@ -26,6 +32,7 @@ const methods = {
   },
   confirm_launch: async () => {
     info.state.status=info.state.status==='pending_restore_launch'?'restored':'active';
+    if(info.state.status==='active'&&info.fsr?.prepared)info.fsr.bridge_ready=true;
     return {ok:true,data:copy(info.state)};
   },
   restore: async () => {info.state.status='pending_restore_launch';return {ok:true,data:copy(info.state)};},
@@ -44,6 +51,7 @@ const context = vm.createContext({
   localStorage:{getItem:()=>savedSelection,setItem:(_key,value)=>{savedSelection=value;}},
   window:{__DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit:{connect:()=>({
     _version:2,callable:name=>(...args)=>methods[name](...args),toaster:{toast:value=>notifications.push(value)},
+    openFilePicker:async(...args)=>{filePickerArgs=args;return copy(pickedFile);},
   })}},
   SP_JSX:{jsx,jsxs:jsx,Fragment:'Fragment'},
   SP_REACT:{useState:hook,useRef:init=>hook({current:init})[0],useEffect:fn=>{
@@ -414,3 +422,91 @@ for(const managedSource of [false,true]) {
 }
 clearUI();
 console.log('PASS: all three download sources, both install entries, native-menu remount/late callbacks, invalid choices, refresh, failed-download retry and RPC source.');
+
+// FSR-XMX remains visible without a model, preserves native-menu drafts, and only saves after XMX is prepared.
+const srChoice=()=>nodes(render()).find(n=>n.type==='select'&&n.props.label==='超分输出')?.props;
+const srSettings={sr:'xess',fg:'xefg',fg_input:'fsrfg30',spoof:'real',fg_multiplier:'3'};
+savedSelection='42';current='';info.state=null;info.executables=['game.exe'];
+info.automatic={executable:'game.exe',route:'native',reason:'',candidates:['game.exe']};
+info.opti={managed:true,installed:true,incomplete:false,injection_enabled:true,version:'0.9.4',status:'active',rollback:false,pending:null,
+  settings:copy(srSettings),settings_recovery:false};
+info.fsr={ready:false,prepared:false,bridge_ready:false,version:'',opti_version:'',reason:'尚未导入 FSR 模型包。'};
+fsrStatusValue={ready:false,version:'',reason:'尚未导入 FSR 模型包。'};
+clearUI();await mountUI();button('高级设置').onClick();
+let menu=srChoice();assert.ok(menu);assert.ok(menu.rgOptions.some(item=>item.data==='fsr_xmx'),'FSR-XMX remains selectable before model import');
+assert.equal(menu.rgOptions.map(item=>item.data).join(','),'xess,fsr_xmx,fsr31,fsr22,dlss','inactive XMX keeps legacy upscalers');
+clearUI();menu.onChange({data:'fsr_xmx'});await mountUI();button('高级设置').onClick();
+assert.equal(srChoice().selectedOption,'fsr_xmx','SR draft survives the native menu unmount/remount');
+assert.match(textOf(render()),/尚未导入 FSR 模型包/);assert.equal(button('保存设置').disabled,true);
+assert.equal(button('导入 FSR 模型包').disabled,false);
+assert.match(textOf(render()),/FSR 需要 XMX/,'the UI explains that saving FSR will enable XMX');
+context.document.documentElement.lang='en';
+assert.ok(nodes(render()).find(n=>n.type==='select'&&n.props.label==='Upscaling output').props.rgOptions.some(item=>item.label==='FSR 4.1.2 Lite XMX'));
+assert.ok(button('Import FSR model package'));
+context.document.documentElement.lang='zh-cn';
+let importedPath='',importCalls=0;
+methods.fsr_import=async path=>{
+  importedPath=path;importCalls++;fsrStatusValue={ready:true,version:'4.1.2',reason:''};
+  info.fsr={...info.fsr,ready:true,version:'4.1.2',reason:''};return {ok:true,data:copy(fsrStatusValue)};
+};
+pickedFile={path:'/home/deck/Downloads/not-a-model.txt',realpath:'/home/deck/Downloads/not-a-model.txt'};
+button('导入 FSR 模型包').onClick();await settle();
+assert.equal(importCalls,0,'a non-ZIP selection never reaches the import RPC');
+assert.match(textOf(render()),/请选择 ZIP 格式的 FSR 模型包/);
+pickedFile={path:'/home/deck/Downloads/fsr-model.zip',realpath:'/home/deck/Downloads/fsr-model.zip'};
+button('导入 FSR 模型包').onClick();await settle();
+assert.equal(importCalls,1);assert.equal(importedPath,'/home/deck/Downloads/fsr-model.zip');
+assert.equal(filePickerArgs[0],0,'native picker uses FILE selection');assert.equal(filePickerArgs[1],'/home/deck/Downloads');
+assert.equal(filePickerArgs[5].join(','),'zip','picker filters to ZIP files');
+assert.equal(button('导入 FSR 模型包'),undefined);assert.equal(button('保存设置').disabled,false);
+
+// An active old XMX setup is restored and confirmed before Opti 10 prep, then re-enabled with the FSR bridge.
+const fsrCalls=[];let savedFsrSettings=null;
+let expectedSr='fsr_xmx';
+current='/old-xmx/launch %command%';info.state={status:'active',launch:current,old_launch:''};
+info.fsr={ready:true,prepared:false,bridge_ready:false,version:'4.1.2',opti_version:'',reason:''};
+info.opti={...info.opti,version:'0.9.4',settings:copy(srSettings)};
+button('刷新').onClick();await settle();
+assert.equal(srChoice().rgOptions.map(item=>item.data).join(','),'xess,fsr_xmx','active XMX exposes only XeSS and FSR-XMX');
+methods.restore=async(id,actual)=>{assert.equal(id,42);assert.equal(actual,current);fsrCalls.push('restore');info.state.status='pending_restore_launch';return {ok:true,data:copy(info.state)};};
+methods.confirm_launch=async(id,actual)=>{
+  assert.equal(id,42);assert.equal(actual,current);fsrCalls.push('confirm_launch');
+  info.state.status=info.state.status==='pending_restore_launch'?'restored':'active';
+  if(info.state.status==='active'&&info.fsr?.prepared)info.fsr.bridge_ready=true;
+  return {ok:true,data:copy(info.state)};
+};
+methods.fsr_prepare=async(id,exe,actual,downloadSource)=>{
+  assert.equal(id,42);assert.equal(exe,'game.exe');assert.equal(actual,'');assert.ok(['github','ghfast','ghproxy'].includes(downloadSource));
+  assert.equal(info.state.status,'restored','prepare runs only after XMX restore confirmation');fsrCalls.push('fsr_prepare');
+  info.fsr={...info.fsr,prepared:true,opti_version:'10.0.1',bridge_ready:false};
+  info.opti={...info.opti,version:'10.0.1',pending:{expected:actual,target:'/opti10/launch %command%',kind:'fsr_prepare'}};
+  return {ok:true,data:copy(info.opti.pending)};
+};
+methods.opti_confirm=async(_id,actual)=>{
+  assert.equal(actual,'/opti10/launch %command%');fsrCalls.push('opti_confirm');info.opti.pending=null;return {ok:true,data:true};
+};
+methods.enable=async(_id,exe,route,before)=>{
+  assert.equal(exe,'game.exe');assert.equal(route,'native');assert.equal(before,'/opti10/launch %command%');fsrCalls.push('enable');
+  info.state={status:'pending_launch',launch:'/xmx-fsr/launch %command%',old_launch:before};return {ok:true,data:copy(info.state)};
+};
+methods.opti_settings=async(id,value,reset)=>{
+  assert.equal(id,42);assert.equal(reset,false);assert.equal(value.sr,expectedSr);assert.equal(value.spoof,'real');
+  assert.equal(value.fg,'xefg');assert.equal(value.fg_input,'fsrfg30');assert.equal(value.fg_multiplier,'3');
+  fsrCalls.push('opti_settings');savedFsrSettings=copy(value);info.opti.settings=copy(value);return {ok:true,data:true};
+};
+button('保存设置').onClick();await settle();
+assert.deepEqual(fsrCalls,['restore','confirm_launch','fsr_prepare','opti_confirm','enable','confirm_launch','opti_settings']);
+assert.equal(savedFsrSettings.sr,'fsr_xmx');assert.equal(current,'/xmx-fsr/launch %command%');
+assert.equal(info.fsr.bridge_ready,true);assert.equal(info.opti.version,'10.0.1');
+
+// Once prepared, changing between XeSS and FSR edits settings only; an inactive setup auto-enables XMX.
+fsrCalls.length=0;expectedSr='xess';srChoice().onChange({data:'xess'});button('保存设置').onClick();await settle();
+assert.deepEqual(fsrCalls,['opti_settings'],'XeSS switch does not rebuild the wrapper');assert.equal(savedFsrSettings.sr,'xess');
+fsrCalls.length=0;expectedSr='fsr_xmx';srChoice().onChange({data:'fsr_xmx'});button('保存设置').onClick();await settle();
+assert.deepEqual(fsrCalls,['opti_settings'],'prepared bridge switches back to FSR without reinstall');
+info.state.status='restored';current=info.state.old_launch;info.fsr.bridge_ready=false;
+fsrCalls.length=0;expectedSr='fsr_xmx';srChoice().onChange({data:'xess'});srChoice().onChange({data:'fsr_xmx'});button('保存设置').onClick();await settle();
+assert.deepEqual(fsrCalls,['enable','confirm_launch','opti_settings'],'prepared FSR automatically enables XMX when it was off');
+assert.equal(info.state.status,'active');assert.equal(info.fsr.bridge_ready,true);
+clearUI();
+console.log('PASS: FSR-XMX option visibility, local ZIP import, selection remount, transactional prepare/restore/enable, XeSS/FSR switches, FG preservation and automatic XMX enable.');

@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "wimlib": {
+    "version": "1.14.5",
+    "binary_url": "https://wimlib.net/downloads/wimlib-1.14.5-windows-x86_64-bin.zip",
+    "binary_size": 778747,
+    "binary_sha256": "2f446d6fa3866582175f1a22a7be198eeee0aec7aba5b4e04ad25c99eae2d265",
+    "library_member": "libwim-15.dll",
+    "library_size": 497678,
+    "library_sha256": "ba853ee1e3fc5f5798581f02e8e066ba07a0a2375f0bf444fe981431fd508495",
+    "source_url": "https://wimlib.net/downloads/wimlib-1.14.5.tar.gz",
+    "source_sha256": "84221a3abd5b91228f15f8e6065c335a336237b5738197b75bf419eea561a194",
+    "license": "LGPL-2.1-or-later",
+    "license_members": ["COPYING.txt", "COPYING.LGPL.txt", "COPYING.GPLv3.txt", "COPYING.libdivsufsort-lite.txt"],
+    "release_evidence": "https://wimlib.net/forums/viewtopic.php?t=1133"
+  },
+  "compiler": {
+    "name": "Zig",
+    "version": "0.15.2",
+    "target": "x86_64-windows-gnu",
+    "url": "https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip",
+    "size": 92614574,
+    "sha256": "3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c"
+  }
+}

@@ -26,10 +26,10 @@ class Plugin:
     async def _call(self, name, *args):
         if not hasattr(self, 'manager'):
             await self._main()
-        if (name in ('opti_install', 'runtime_install') and self.lock.locked()) or (name not in ('inventory', 'inspect_game', 'runtime_status') and (self.install_active or self.manager.progress.snapshot()['running'])):
+        if (name in ('opti_install', 'runtime_install', 'fsr_prepare', 'fsr_import') and self.lock.locked()) or (name not in ('inventory', 'inspect_game', 'runtime_status', 'fsr_status') and (self.install_active or self.manager.progress.snapshot()['running'])):
             return {'ok': False, 'error': 'Opti 操作仍在进行，请等待完成。'}
         async with self.lock:
-            installing = name in ('opti_install', 'runtime_install')
+            installing = name in ('opti_install', 'runtime_install', 'fsr_prepare', 'fsr_import')
             if installing: self.install_active = True
             try:
                 return {'ok': True, 'data': await asyncio.to_thread(getattr(self.manager, name), *args)}
@@ -55,6 +55,15 @@ class Plugin:
 
     async def runtime_install(self):
         return await self._call('runtime_install')
+
+    async def fsr_status(self):
+        return await self._call('fsr_status')
+
+    async def fsr_import(self, path):
+        return await self._call('fsr_import', path)
+
+    async def fsr_prepare(self, appid, executable, actual, source):
+        return await self._call('fsr_prepare', appid, executable, actual, source)
 
     async def inspect_game(self, appid):
         return await self._call('inspect_game', appid)

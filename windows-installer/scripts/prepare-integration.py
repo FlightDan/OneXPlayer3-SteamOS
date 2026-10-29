@@ -14,6 +14,8 @@ controls = root / 'components/controls'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path, default=root / 'cache/integration')
 parser.add_argument('--opti-source', type=Path, default=root / 'components/opti2xmx')
+parser.add_argument('--optiscaler-source', type=Path, default=root / 'cache/opti2xmx/optiscaler',
+                    help='Hash-verified official OptiScaler cache prepared by prepare-optiscaler.py')
 parser.add_argument('--lsfg-source', type=Path, default=root / 'cache/lsfg-vk',
                     help='Hash-verified official plugin cache prepared by prepare-lsfg-vk.py')
 parser.add_argument('--ntfs-tools-source', type=Path, default=root / 'cache/ntfs-tools/tools',
@@ -75,6 +77,7 @@ def component(name, files, units=(), packages=None):
                         'user': target.startswith('/home/deck/')})
     manifest[name] = {'files': targets, 'units': list(units), 'packages': packages or {}, 'missing': []}
 
+
 def prepare_lsfg():
     from lsfg_payload import integration_files, read_pin
     pin = read_pin()
@@ -130,6 +133,8 @@ if arguments.gyro_only:
     print(json.dumps({'components':list(manifest),'gyro':manifest['gyro']},indent=2))
     raise SystemExit(0)
 
+from optiscaler_payload import read_cache as read_optiscaler_cache
+
 opti=arguments.opti_source
 runtime_archive=store/'opti2xmx/runtime.tar.gz'
 if arguments.opti_only:
@@ -137,9 +142,11 @@ if arguments.opti_only:
         raise FileNotFoundError('Opti runtime must be prepared before targeted integration generation')
     validate_runtime(runtime_archive)
 opti_records=read_plugin_tree(opti)
+optiscaler_records=read_optiscaler_cache(arguments.optiscaler_source)
 component('opti2xmx', {
     **{'/home/deck/homebrew/plugins/opti2xmx/'+name:data for name,data in opti_records.items()},
-    '/home/deck/.local/share/opti2xmx/runtime.json':(json.dumps({'package':'/opt/oxp3-opti2xmx/20261005/runtime','sr':'/opt/oxp3-opti2xmx/20261005/sdk/libxess.dll'})+'\n').encode()})
+    '/home/deck/.local/share/opti2xmx/runtime.json':(json.dumps({'package':'/opt/oxp3-opti2xmx/20261005/runtime','sr':'/opt/oxp3-opti2xmx/20261005/sdk/libxess.dll'})+'\n').encode(),
+    **optiscaler_records})
 for item in manifest['opti2xmx']['files']:
     if '/homebrew/plugins/' in item['target']:item['user']=False
 manifest['opti2xmx']['runtime_archive']='opti2xmx/runtime.tar.gz'

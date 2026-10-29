@@ -65,7 +65,24 @@ const english = {
     '完成 Opti 启动设置': 'Finish Opti launch setup', '确认游戏程序': 'Confirm game executable',
     '检测到多个版本，只需确认一次。': 'Multiple executables found. Select the one you use.',
     '请选择要运行的版本': 'Select the version to launch', '继续开启': 'Continue setup', '恢复原配置': 'Restore original setup',
-    '超分输出': 'Upscaling output', 'XMX 开启时使用 XeSS。': 'XeSS is used while XMX is enabled.',
+    '超分输出': 'Upscaling output',
+    'FSR 4.1.2 Lite XMX': 'FSR 4.1.2 Lite XMX',
+    'XMX 开启时可选择 XeSS 或 FSR 4.1.2 Lite；先退出游戏，保存后下次启动生效。': 'With XMX enabled, choose XeSS or FSR 4.1.2 Lite. Exit the game first; changes apply on the next launch.',
+    'FSR 4.1.2 Lite 通过 XMX 兼容组件运行；保存时会准备此游戏。': 'FSR 4.1.2 Lite uses the XMX compatibility component. Saving prepares this game.',
+    'FSR 模型包已就绪；保存时会为此游戏准备 Opti 10 和模型。': 'The FSR model package is ready. Saving prepares Opti 10 and the model for this game.',
+    '此游戏的 FSR 文件已准备；保存时会刷新 XMX 兼容组件。': 'FSR files are prepared for this game. Saving refreshes the XMX compatibility component.',
+    'FSR 4.1.2 Lite XMX 已就绪；退出游戏后保存设置并从 Steam 重新启动。': 'FSR 4.1.2 Lite XMX is ready. Exit the game, save settings, then relaunch it from Steam.',
+    'FSR 需要 XMX；保存后会自动开启 XMX，退出游戏后从 Steam 启动。': 'FSR requires XMX. Saving turns XMX on; exit the game and launch it from Steam.',
+    'FSR 需要 XMX；保存时会为此游戏准备 FSR 并自动开启 XMX。': 'FSR requires XMX. Saving prepares FSR for this game and turns XMX on.',
+    '导入 FSR 模型包': 'Import FSR model package',
+    '当前插件后台不支持 FSR 模型导入，请更新插件。': 'This plugin backend does not support FSR model import. Update the plugin.',
+    '请导入本地 FSR 模型包。': 'Import a local FSR model package.',
+    '正在选择 FSR 模型包…': 'Choosing an FSR model package…',
+    '请选择 ZIP 格式的 FSR 模型包。': 'Choose an FSR model package in ZIP format.',
+    'FSR 模型包已导入并验证。': 'The FSR model package was imported and verified.',
+    'FSR 模型包尚未就绪。': 'The FSR model package is not ready.',
+    '启动项已变化，请刷新后恢复 XMX，再保存 FSR。': 'Launch options changed. Refresh and restore XMX before saving FSR.',
+    'FSR XMX 兼容组件尚未就绪，请刷新后重试。': 'The FSR XMX compatibility component is not ready. Refresh and try again.',
     'DLSS（需要支持的显卡）': 'DLSS (supported GPU required)', '帧生成输出': 'Frame generation output',
     '这是 Opti 的输出；XeFG 输入尚未实现。原生 XeSS FG 可关闭 Opti 注入测试。': 'This is the Opti output. XeFG input is not implemented. Turn off Opti injection to test native XeSS FG.',
     'Opti 注入已关闭；这里的设置将在重新开启后生效。': 'Opti injection is off. These settings apply when it is turned back on.',
@@ -161,13 +178,14 @@ if (api._version != API_VERSION) {
 }
 const callable = api.callable;
 const toaster = api.toaster;
+const openFilePicker = api.openFilePicker;
 const definePlugin = (fn) => {
     return (...args) => {
         return fn(...args);
     };
 };
 
-let selection = { appid: 0, executables: {}, source: 'github' };
+let selection = { appid: 0, executables: {}, source: 'github', srDrafts: {}, srDirty: {} };
 const selectionListeners = new Set();
 const selectionSnapshot = () => selection;
 function subscribeSelection(listener) {
@@ -182,6 +200,16 @@ function updateSelection(next) {
 function setSource(value) {
     if (value === 'github' || value === 'ghfast' || value === 'ghproxy')
         updateSelection({ ...selection, source: value });
+}
+function setSRDraft(appid, value) {
+    if (selection.appid !== appid || !['xess', 'fsr_xmx', 'fsr31', 'fsr22', 'dlss'].includes(value))
+        return;
+    updateSelection({ ...selection, srDrafts: { ...selection.srDrafts, [appid]: value },
+        srDirty: { ...selection.srDirty, [appid]: true } });
+}
+function commitSRDraft(appid, value) {
+    updateSelection({ ...selection, srDrafts: { ...selection.srDrafts, [appid]: value },
+        srDirty: { ...selection.srDirty, [appid]: false } });
 }
 const inventory = callable('inventory');
 const inspect = callable('inspect_game');
@@ -200,6 +228,9 @@ const optiPanel = callable('opti_panel');
 const operationProgress = callable('operation_progress');
 const runtimeStatus = callable('runtime_status');
 const runtimeInstall = callable('runtime_install');
+const fsrStatus = callable('fsr_status');
+const fsrImport = callable('fsr_import');
+const fsrPrepare = callable('fsr_prepare');
 function unwrap(r) {
     if (!r.ok || r.data === undefined)
         throw new Error(t(r.error || '操作失败'));
@@ -257,6 +288,7 @@ function Content() {
     const acceptedRequest = SP_REACT.useRef(0);
     const refreshNeeded = SP_REACT.useRef(null);
     const [runtime, setRuntime] = SP_REACT.useState(null);
+    const [fsr, setFsr] = SP_REACT.useState(null);
     const session = SP_REACT.useSyncExternalStore(subscribeSelection, selectionSnapshot);
     const source = session.source;
     const busy = localBusy || operation?.running === true;
@@ -308,8 +340,16 @@ function Content() {
         setInfo(data);
         setActualLaunch(launch);
         setManualExe(valid ? remembered : '');
-        if (data.opti)
-            setSettings(data.opti.settings);
+        if (data.fsr)
+            setFsr({ ready: data.fsr.ready, version: data.fsr.version, reason: data.fsr.reason });
+        if (data.opti) {
+            const dirty = selection.srDirty[id] === true;
+            const sr = dirty ? selection.srDrafts[id] || data.opti.settings.sr : data.opti.settings.sr;
+            if (!dirty)
+                updateSelection({ ...selection, srDrafts: { ...selection.srDrafts, [id]: sr },
+                    srDirty: { ...selection.srDirty, [id]: false } });
+            setSettings({ ...data.opti.settings, sr });
+        }
         setRemoveConfirm(false);
         return data;
     }
@@ -399,6 +439,12 @@ function Content() {
             }
             catch { /* Inventory remains usable while snapshot polling reconnects. */ }
             setRuntime(unwrap(await runtimeStatus()));
+            try {
+                setFsr(unwrap(await fsrStatus()));
+            }
+            catch {
+                setFsr({ ready: false, version: '', reason: t('当前插件后台不支持 FSR 模型导入，请更新插件。') });
+            }
             const list = unwrap(await inventory());
             if (!mounted.current)
                 return;
@@ -462,6 +508,10 @@ function Content() {
         });
     }
     const opti = info?.opti;
+    const gameFsr = info?.fsr;
+    const fsrReady = gameFsr?.ready ?? fsr?.ready ?? false;
+    const fsrReason = gameFsr?.reason || fsr?.reason || '请导入本地 FSR 模型包。';
+    const selectedSR = session.srDrafts[appid] || settings.sr;
     const migrateOpti = !!opti?.installed && !opti.incomplete;
     const installReason = !info?.prefix_ready ? '请先从 Steam 用 Proton 启动游戏一次，退出后点击刷新。'
         : !executable ? '请先选择要运行的游戏程序。'
@@ -509,10 +559,85 @@ function Content() {
     }
     async function saveSettings(reset = false) {
         await task(reset ? t('正在恢复推荐默认设置…') : t('正在保存设置…'), async () => {
-            const desired = reset ? { sr: 'xess', fg: 'native', fg_input: 'upscaler', spoof: 'real', fg_multiplier: 'native' } : settings;
-            unwrap(await optiSettings(appid, desired, reset));
-            await load(appid);
+            const id = appid;
+            const desired = reset ? { sr: 'xess', fg: 'native', fg_input: 'upscaler', spoof: 'real', fg_multiplier: 'native' }
+                : { ...settings, sr: session.srDrafts[id] || settings.sr };
+            if (desired.sr === 'fsr_xmx') {
+                desired.spoof = 'real';
+                await saveFSRSettings(id, desired);
+            }
+            else
+                unwrap(await optiSettings(id, desired, reset));
+            commitSRDraft(id, desired.sr);
+            await load(id);
             setMessage(t('设置已保存，下次启动游戏生效。'));
+        });
+    }
+    async function applyPendingLaunch(id, before, next) {
+        if (before !== next.expected && before !== next.target)
+            throw new Error(t('启动项已变化，请检查后重试'));
+        const actual = before === next.target ? before : await writeLaunch(id, next.target, before);
+        unwrap(await optiConfirm(id, actual));
+    }
+    async function saveFSRSettings(id, desired) {
+        let currentInfo = await load(id);
+        let launch = await readLaunch(id);
+        let xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+        if (currentInfo.state?.status === 'active' && !xmxActive)
+            throw new Error(t('启动项已变化，请刷新后恢复 XMX，再保存 FSR。'));
+        if (!currentInfo.fsr?.prepared && xmxActive) {
+            await finish(id, unwrap(await restore(id, launch)), true);
+            currentInfo = await load(id);
+            launch = await readLaunch(id);
+            xmxActive = false;
+        }
+        if (!currentInfo.fsr?.prepared) {
+            const exe = currentInfo.automatic.executable || executable;
+            if (!exe)
+                throw new Error(t('请先选择要运行的游戏程序。'));
+            const next = unwrap(await fsrPrepare(id, exe, launch, source));
+            await applyPendingLaunch(id, launch, next);
+            currentInfo = await load(id);
+            launch = await readLaunch(id);
+            xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+        }
+        if (xmxActive && !currentInfo.fsr?.bridge_ready) {
+            await finish(id, unwrap(await restore(id, launch)), true);
+            currentInfo = await load(id);
+            launch = await readLaunch(id);
+            xmxActive = false;
+        }
+        if (!xmxActive) {
+            const exe = currentInfo.automatic.executable || executable;
+            if (!exe)
+                throw new Error(t('请先选择要运行的游戏程序。'));
+            const setup = unwrap(await enable(id, exe, currentInfo.automatic.route, launch));
+            if (!['active', 'pending_launch'].includes(setup.status))
+                throw new Error(t('上次设置未完成，请先点击恢复。'));
+            await finish(id, setup);
+            currentInfo = await load(id);
+            launch = await readLaunch(id);
+            xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+        }
+        if (!xmxActive || !currentInfo.fsr?.bridge_ready)
+            throw new Error(t(currentInfo.fsr?.reason || 'FSR XMX 兼容组件尚未就绪，请刷新后重试。'));
+        unwrap(await optiSettings(id, desired, false));
+    }
+    async function importFSRModel() {
+        await task(t('正在选择 FSR 模型包…'), async () => {
+            const picked = await openFilePicker(0 /* FileSelectionType.FILE */, '/home/deck/Downloads', true, false, undefined, ['zip']);
+            const path = picked?.realpath || picked?.path;
+            if (!path) {
+                setMessage('');
+                return;
+            }
+            if (!path.toLowerCase().endsWith('.zip'))
+                throw new Error(t('请选择 ZIP 格式的 FSR 模型包。'));
+            const status = unwrap(await fsrImport(path));
+            setFsr(status);
+            if (appid)
+                await load(appid);
+            setMessage(status.ready ? t('FSR 模型包已导入并验证。') : t(status.reason || 'FSR 模型包尚未就绪。'));
         });
     }
     const options = (items) => items.map(([data, label]) => ({ data, label }));
@@ -542,7 +667,14 @@ function Content() {
                             DFL.Navigation.CloseSideMenus();
                             unwrap(await optiPanel(appid));
                             setMessage(t('已发送面板快捷键。'));
-                        }), children: t('打开 / 关闭 Opti 面板') }), runtimeControl, opti && !opti.managed && !optiPending && SP_JSX.jsxs(SP_JSX.Fragment, { children: [!migrateOpti && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), selectedOption: source, disabled: busy, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !!installReason, description: installReason ? t(installReason) : opti.incomplete ? t('缺少注入文件；备份现有文件后重新安装，可回退。') : migrateOpti ? t('保留文件并建立回退备份。') : undefined, onClick: () => optiAction(migrateOpti ? 'migrate' : 'install'), children: opti.incomplete ? t('修复安装 Opti 0.9.4') : migrateOpti ? t('迁移现有 Opti') : t('安装 Opti 0.9.4') })] }), optiPending && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || opti?.status === 'recovery_required', onClick: () => optiAction('finish'), children: t('完成 Opti 启动设置') }), pending && state?.status === 'pending_launch' && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(true), children: t('继续开启') }), managed && (!active || pending) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(false), children: t('恢复原配置') }), (opti?.managed || opti?.rollback) && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, description: [opti.version ? 'Opti ' + opti.version : '', runtimeReady].filter(Boolean).join(' · '), onClick: () => setAdvanced(!advanced), children: advanced ? t('收起高级设置') : t('高级设置') }), advanced && SP_JSX.jsxs(SP_JSX.Fragment, { children: [opti.managed && opti.version.startsWith('0.9') && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('超分输出'), disabled: busy || active || configBlocked, selectedOption: settings.sr, description: active ? t('XMX 开启时使用 XeSS。') : undefined, rgOptions: options([['xess', 'XeSS'], ['fsr31', 'FSR 3.1'], ['fsr22', 'FSR 2.2'], ['dlss', t('DLSS（需要支持的显卡）')]]), onChange: v => setSettings({ ...settings, sr: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('帧生成输出'), disabled: busy || configBlocked, selectedOption: settings.fg, description: opti.injection_enabled ? undefined : t('开启 Opti 注入后生效。'), rgOptions: options([['native', t('游戏原生（不接管）')], ['fsrfg', t('FSR 帧生成')], ['xefg', t('XeSS 帧生成（实验）')]]), onChange: v => setSettings({ ...settings, fg: String(v.data), fg_multiplier: v.data === 'native' ? 'native' : settings.fg_multiplier === 'native' ? '2' : settings.fg_multiplier || '2' }) }), settings.fg !== 'fsrfg' && SP_JSX.jsx(DFL.SliderField, { label: t('插帧倍率') + (settings.fg === 'native' ? ' · ' + t('游戏原生控制') : ''), disabled: busy || configBlocked, value: settings.fg === 'native' ? 0 : Math.max(1, multipliers.indexOf(settings.fg_multiplier || '2')), min: 0, max: 3, step: 1, validValues: "steps", notchCount: 4, notchTicksVisible: true, showValue: false, notchLabels: [t('原生'), '2×', '3×', '4×'].map((label, notchIndex) => ({ label, notchIndex })), onChange: value => setSettings({ ...settings, fg: value === 0 ? 'native' : 'xefg', fg_multiplier: multipliers[value] }) }), settings.fg !== 'native' && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('游戏 FG 类型'), disabled: busy || configBlocked, selectedOption: settings.fg_input, description: t('选择游戏支持的帧生成类型。'), rgOptions: options([['fsrfg30', 'FSR 3.0 FG'], ['fsrfg', 'FSR 3.1 FG'], ['dlssg', 'DLSS FG'], ['upscaler', t('无原生 FG：使用超分输入')]]), onChange: v => setSettings({ ...settings, fg_input: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('显卡伪装'), disabled: busy || active || configBlocked, selectedOption: settings.spoof, description: active ? t('XMX 开启时保留真实 Intel 身份。') : t('实验兼容选项；改身份不保证解锁功能。'), rgOptions: options([['real', t('真实显卡（推荐）')], ['nvidia', 'NVIDIA'], ['amd', 'AMD'], ['intel', 'Intel Arc']]), onChange: v => setSettings({ ...settings, spoof: String(v.data) }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, onClick: () => saveSettings(), children: t('保存设置') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, description: t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。'), onClick: () => saveSettings(true), children: t('恢复默认') }), (opti.settings_rollback || opti.settings_recovery) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending, description: t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。'), onClick: () => task(t('正在撤销上次设置…'), async () => { unwrap(await optiRestoreSettings(appid)); await load(appid); setMessage(t('已恢复上次保存前的设置，下次启动生效。')); }), children: opti.settings_recovery ? t('恢复中断的设置') : t('撤销上次设置') })] }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('Opti 版本'), disabled: busy || configBlocked, selectedOption: version, rgOptions: options([['0.9.4', t('0.9.4（当前稳定版）')], ['0.7.9', t('0.7.9（兼容旧版）')]]), onChange: v => setVersion(String(v.data)) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), disabled: busy || configBlocked, selectedOption: source, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.injection_enabled, description: managed ? t('先关闭 XMX，再更换 Opti 版本。') : t('开启 Opti 注入后可更换版本；保留回退备份。'), onClick: () => optiAction('install'), children: t('安装所选版本') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.rollback, description: t('撤销上次安装、迁移或卸载；需先关闭 XMX。'), onClick: () => optiAction('rollback'), children: t('回退上次操作') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.managed, description: t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。'), onClick: () => removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true), children: removeConfirm ? t('确认卸载 Opti') : t('卸载 Opti') })] })] }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: error ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }) : SP_JSX.jsxs(SP_JSX.Fragment, { children: [runtimeControl, SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }), operation?.operation_id && (operation.appid === appid || operation.running || operation.kind === 'runtime_install') && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { role: operation.phase === 'failed' ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: [t((operation.kind === 'runtime_install' ? { started: '正在准备 XMX 运行环境…', downloading: '正在下载 XMX 运行环境…', extracting: '正在解压 XMX 运行环境…', installing: '正在验证并配置 XMX 运行环境…', completed: 'XMX 运行环境配置完成。', failed: 'XMX 运行环境配置未完成。' } : { started: '正在准备 Opti…', downloading: '正在下载 Opti…', 'cache-hit': '正在复用 Opti 缓存…', extracting: '正在解压 Opti…', installing: '正在安装 Opti…', 'awaiting-launch': 'Opti 已准备，等待确认启动设置。', completed: 'Opti 操作已完成。', failed: 'Opti 操作未完成。' })[operation.phase] || '正在处理 Opti 配置…'), operation.downloaded_bytes > 0 && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", (operation.downloaded_bytes / 1048576).toFixed(1), " MiB", operation.total_bytes !== null && operation.total_bytes > 0 && operation.downloaded_bytes <= operation.total_bytes
+                        }), children: t('打开 / 关闭 Opti 面板') }), runtimeControl, opti && !opti.managed && !optiPending && SP_JSX.jsxs(SP_JSX.Fragment, { children: [!migrateOpti && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), selectedOption: source, disabled: busy, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || !!installReason, description: installReason ? t(installReason) : opti.incomplete ? t('缺少注入文件；备份现有文件后重新安装，可回退。') : migrateOpti ? t('保留文件并建立回退备份。') : undefined, onClick: () => optiAction(migrateOpti ? 'migrate' : 'install'), children: opti.incomplete ? t('修复安装 Opti 0.9.4') : migrateOpti ? t('迁移现有 Opti') : t('安装 Opti 0.9.4') })] }), optiPending && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || opti?.status === 'recovery_required', onClick: () => optiAction('finish'), children: t('完成 Opti 启动设置') }), pending && state?.status === 'pending_launch' && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(true), children: t('继续开启') }), managed && (!active || pending) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => toggle(false), children: t('恢复原配置') }), (opti?.managed || opti?.rollback) && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, description: [opti.version ? 'Opti ' + opti.version : '', runtimeReady].filter(Boolean).join(' · '), onClick: () => setAdvanced(!advanced), children: advanced ? t('收起高级设置') : t('高级设置') }), advanced && SP_JSX.jsxs(SP_JSX.Fragment, { children: [opti.managed && (opti.version.startsWith('0.9') || opti.version.startsWith('10.')) && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('超分输出'), disabled: busy || configBlocked, selectedOption: selectedSR, description: active ? t('XMX 开启时可选择 XeSS 或 FSR 4.1.2 Lite；先退出游戏，保存后下次启动生效。') :
+                                                    selectedSR === 'fsr_xmx' ? t('FSR 4.1.2 Lite 通过 XMX 兼容组件运行；保存时会准备此游戏。') : undefined, rgOptions: options(active ? [['xess', 'XeSS'], ['fsr_xmx', t('FSR 4.1.2 Lite XMX')]]
+                                                    : [['xess', 'XeSS'], ['fsr_xmx', t('FSR 4.1.2 Lite XMX')], ['fsr31', 'FSR 3.1'], ['fsr22', 'FSR 2.2'], ['dlss', t('DLSS（需要支持的显卡）')]]), onChange: v => { const value = String(v.data); setSRDraft(appid, value); setSettings({ ...settings, sr: value }); } }), selectedSR === 'fsr_xmx' && SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { fontSize: 13, lineHeight: 1.5 }, children: [SP_JSX.jsx("div", { role: "status", children: t(!fsrReady ? fsrReason
+                                                                        : gameFsr?.bridge_ready ? 'FSR 4.1.2 Lite XMX 已就绪；退出游戏后保存设置并从 Steam 重新启动。'
+                                                                            : gameFsr?.prepared ? '此游戏的 FSR 文件已准备；保存时会刷新 XMX 兼容组件。'
+                                                                                : 'FSR 模型包已就绪；保存时会为此游戏准备 Opti 10 和模型。') }), !active && SP_JSX.jsx("div", { role: "note", children: t(gameFsr?.prepared
+                                                                        ? 'FSR 需要 XMX；保存后会自动开启 XMX，退出游戏后从 Steam 启动。'
+                                                                        : 'FSR 需要 XMX；保存时会为此游戏准备 FSR 并自动开启 XMX。') })] }) }), !fsrReady && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || configBlocked, description: t(fsrReason), onClick: () => void importFSRModel(), children: t('导入 FSR 模型包') })] }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('帧生成输出'), disabled: busy || configBlocked, selectedOption: settings.fg, description: opti.injection_enabled ? undefined : t('开启 Opti 注入后生效。'), rgOptions: options([['native', t('游戏原生（不接管）')], ['fsrfg', t('FSR 帧生成')], ['xefg', t('XeSS 帧生成（实验）')]]), onChange: v => setSettings({ ...settings, fg: String(v.data), fg_multiplier: v.data === 'native' ? 'native' : settings.fg_multiplier === 'native' ? '2' : settings.fg_multiplier || '2' }) }), settings.fg !== 'fsrfg' && SP_JSX.jsx(DFL.SliderField, { label: t('插帧倍率') + (settings.fg === 'native' ? ' · ' + t('游戏原生控制') : ''), disabled: busy || configBlocked, value: settings.fg === 'native' ? 0 : Math.max(1, multipliers.indexOf(settings.fg_multiplier || '2')), min: 0, max: 3, step: 1, validValues: "steps", notchCount: 4, notchTicksVisible: true, showValue: false, notchLabels: [t('原生'), '2×', '3×', '4×'].map((label, notchIndex) => ({ label, notchIndex })), onChange: value => setSettings({ ...settings, fg: value === 0 ? 'native' : 'xefg', fg_multiplier: multipliers[value] }) }), settings.fg !== 'native' && SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('游戏 FG 类型'), disabled: busy || configBlocked, selectedOption: settings.fg_input, description: t('选择游戏支持的帧生成类型。'), rgOptions: options([['fsrfg30', 'FSR 3.0 FG'], ['fsrfg', 'FSR 3.1 FG'], ['dlssg', 'DLSS FG'], ['upscaler', t('无原生 FG：使用超分输入')]]), onChange: v => setSettings({ ...settings, fg_input: String(v.data) }) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('显卡伪装'), disabled: busy || active || configBlocked || selectedSR === 'fsr_xmx', selectedOption: selectedSR === 'fsr_xmx' ? 'real' : settings.spoof, description: active || selectedSR === 'fsr_xmx' ? t('XMX 开启时保留真实 Intel 身份。') : t('实验兼容选项；改身份不保证解锁功能。'), rgOptions: options([['real', t('真实显卡（推荐）')], ['nvidia', 'NVIDIA'], ['amd', 'AMD'], ['intel', 'Intel Arc']]), onChange: v => setSettings({ ...settings, spoof: String(v.data) }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery || (selectedSR === 'fsr_xmx' && (!fsrReady || pending || blocked)), onClick: () => saveSettings(), children: t('保存设置') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending || !!opti.settings_recovery, description: t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。'), onClick: () => saveSettings(true), children: t('恢复默认') }), (opti.settings_rollback || opti.settings_recovery) && SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || optiPending, description: t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。'), onClick: () => task(t('正在撤销上次设置…'), async () => { unwrap(await optiRestoreSettings(appid)); await load(appid); setMessage(t('已恢复上次保存前的设置，下次启动生效。')); }), children: opti.settings_recovery ? t('恢复中断的设置') : t('撤销上次设置') })] }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('Opti 版本'), disabled: busy || configBlocked, selectedOption: version, rgOptions: options([['0.9.4', t('0.9.4（当前稳定版）')], ['0.7.9', t('0.7.9（兼容旧版）')]]), onChange: v => setVersion(String(v.data)) }), SP_JSX.jsx(DFL.DropdownItem, { layout: "below", label: t('下载源'), disabled: busy || configBlocked, selectedOption: source, description: t('默认官方源；镜像由第三方提供。'), rgOptions: options([['github', t('GitHub 官方')], ['ghfast', t('ghfast.top（第三方备用）')], ['ghproxy', t('gh-proxy.com（第三方备用）')]]), onChange: v => setSource(String(v.data)) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.injection_enabled, description: managed ? t('先关闭 XMX，再更换 Opti 版本。') : t('开启 Opti 注入后可更换版本；保留回退备份。'), onClick: () => optiAction('install'), children: t('安装所选版本') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.rollback, description: t('撤销上次安装、迁移或卸载；需先关闭 XMX。'), onClick: () => optiAction('rollback'), children: t('回退上次操作') }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy || managed || configBlocked || !opti.managed, description: t('卸载本插件管理的 Opti 文件并恢复原文件；需先关闭 XMX。'), onClick: () => removeConfirm ? optiAction('uninstall') : setRemoveConfirm(true), children: removeConfirm ? t('确认卸载 Opti') : t('卸载 Opti') })] })] }), message && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: error ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }) : SP_JSX.jsxs(SP_JSX.Fragment, { children: [runtimeControl, SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", style: { fontSize: 13, lineHeight: 1.5 }, children: t(message) }) })] }), operation?.operation_id && (operation.appid === appid || operation.running || operation.kind === 'runtime_install') && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { role: operation.phase === 'failed' ? 'alert' : 'status', style: { fontSize: 13, lineHeight: 1.5 }, children: [t((operation.kind === 'runtime_install' ? { started: '正在准备 XMX 运行环境…', downloading: '正在下载 XMX 运行环境…', extracting: '正在解压 XMX 运行环境…', installing: '正在验证并配置 XMX 运行环境…', completed: 'XMX 运行环境配置完成。', failed: 'XMX 运行环境配置未完成。' } : { started: '正在准备 Opti…', downloading: '正在下载 Opti…', 'cache-hit': '正在复用 Opti 缓存…', extracting: '正在解压 Opti…', installing: '正在安装 Opti…', 'awaiting-launch': 'Opti 已准备，等待确认启动设置。', completed: 'Opti 操作已完成。', failed: 'Opti 操作未完成。' })[operation.phase] || '正在处理 Opti 配置…'), operation.downloaded_bytes > 0 && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", (operation.downloaded_bytes / 1048576).toFixed(1), " MiB", operation.total_bytes !== null && operation.total_bytes > 0 && operation.downloaded_bytes <= operation.total_bytes
                                     && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" / ", (operation.total_bytes / 1048576).toFixed(1), " MiB \u00B7 ", (operation.downloaded_bytes * 100 / operation.total_bytes).toFixed(0), "%"] })] }), operation.error && SP_JSX.jsxs(SP_JSX.Fragment, { children: [" \u00B7 ", t(operation.error)] })] }) }), runtimeReady && !(opti?.managed || opti?.rollback) && SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { role: "status", children: runtimeReady }) }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: busy, onClick: () => task(t('正在刷新…'), async () => {
                     setRuntime(unwrap(await runtimeStatus()));
                     setGames(unwrap(await inventory()));

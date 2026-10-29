@@ -1,16 +1,19 @@
 import { t } from './i18n';
 import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, SliderField, ToggleField, staticClasses, Navigation } from '@decky/ui';
-import { callable, definePlugin, toaster } from '@decky/api';
+import { callable, definePlugin, FileSelectionType, openFilePicker, toaster } from '@decky/api';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 type Reply<T> = { ok: boolean; data?: T; error?: string };
 type Setup = { status: string; launch?: string; old_launch: string; imported?: boolean };
 type Game = { appid: number; name: string };
 type Settings = { sr: string; fg: string; fg_input: string; spoof: string; fg_multiplier?: string };
+type FsrStatus = { ready: boolean; version: string; reason: string };
+type GameFsrStatus = FsrStatus & { prepared: boolean; bridge_ready: boolean; opti_version: string };
 type Pending = { expected: string; target: string; kind: string };
 type Info = Game & { executables: string[]; libraries: { path: string; version: number[] | null }[];
   optis: string[]; runtime_ready: boolean; prefix_ready: boolean; external_managed: boolean;
   automatic: { executable: string; route: string; reason: string; candidates: string[] }; state: Setup | null;
+  fsr?: GameFsrStatus;
   opti?: { managed: boolean; installed: boolean; incomplete?: boolean; injection_enabled: boolean; version: string; status: string; rollback: boolean; pending?: Pending; settings_rollback?: boolean; settings_recovery?: boolean; settings: Settings } };
 type Registration = { unregister(): void };
 type RuntimeStatus = {ready:boolean;available:boolean;version:string;size_bytes:number;host_issue:string;error:string;availability_message:string};
@@ -18,8 +21,9 @@ type Operation = {schema:number;instance_id:string;operation_id:string|null;appi
 // Steam moves dropdown menus out of Quick Access and unmounts Content. Menu
 // callbacks must update the session, not only a component that no longer exists.
 type DownloadSource = 'github' | 'ghfast' | 'ghproxy';
-type Selection = { appid: number; executables: Record<number, string>; source: DownloadSource };
-let selection: Selection = { appid: 0, executables: {}, source: 'github' };
+type Selection = { appid: number; executables: Record<number, string>; source: DownloadSource;
+  srDrafts: Record<number, string>; srDirty: Record<number, boolean> };
+let selection: Selection = { appid: 0, executables: {}, source: 'github', srDrafts: {}, srDirty: {} };
 const selectionListeners = new Set<() => void>();
 const selectionSnapshot = () => selection;
 function subscribeSelection(listener: () => void) {
@@ -33,6 +37,15 @@ function updateSelection(next: Selection) {
 function setSource(value: string) {
   if (value === 'github' || value === 'ghfast' || value === 'ghproxy')
     updateSelection({...selection, source:value});
+}
+function setSRDraft(appid: number, value: string) {
+  if (selection.appid !== appid || !['xess','fsr_xmx','fsr31','fsr22','dlss'].includes(value)) return;
+  updateSelection({...selection, srDrafts:{...selection.srDrafts,[appid]:value},
+    srDirty:{...selection.srDirty,[appid]:true}});
+}
+function commitSRDraft(appid: number, value: string) {
+  updateSelection({...selection, srDrafts:{...selection.srDrafts,[appid]:value},
+    srDirty:{...selection.srDirty,[appid]:false}});
 }
 declare const SteamClient: { Apps: {
   RegisterForAppDetails(id: number, callback: (...args: unknown[]) => void): Registration;
@@ -55,6 +68,9 @@ const optiPanel = callable<[number], Reply<boolean>>('opti_panel');
 const operationProgress = callable<[], Reply<Operation>>('operation_progress');
 const runtimeStatus = callable<[], Reply<RuntimeStatus>>('runtime_status');
 const runtimeInstall = callable<[], Reply<RuntimeStatus>>('runtime_install');
+const fsrStatus = callable<[], Reply<FsrStatus>>('fsr_status');
+const fsrImport = callable<[string], Reply<FsrStatus>>('fsr_import');
+const fsrPrepare = callable<[number, string, string, string], Reply<Pending>>('fsr_prepare');
 function unwrap<T>(r: Reply<T>): T {
   if (!r.ok || r.data === undefined) throw new Error(t(r.error || '操作失败'));
   return r.data;
@@ -107,6 +123,7 @@ function Content() {
   const acceptedRequest = useRef(0);
   const refreshNeeded = useRef<{appid:number;instance:string;operation:string|null} | null>(null);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+  const [fsr, setFsr] = useState<FsrStatus | null>(null);
   const session = useSyncExternalStore(subscribeSelection, selectionSnapshot);
   const source = session.source;
   const busy = localBusy || operation?.running === true;
@@ -145,7 +162,14 @@ function Content() {
       updateSelection({...selection, executables});
     }
     setInfo(data); setActualLaunch(launch); setManualExe(valid ? remembered : '');
-    if (data.opti) setSettings(data.opti.settings);
+    if (data.fsr) setFsr({ready:data.fsr.ready,version:data.fsr.version,reason:data.fsr.reason});
+    if (data.opti) {
+      const dirty = selection.srDirty[id] === true;
+      const sr = dirty ? selection.srDrafts[id] || data.opti.settings.sr : data.opti.settings.sr;
+      if (!dirty) updateSelection({...selection, srDrafts:{...selection.srDrafts,[id]:sr},
+        srDirty:{...selection.srDirty,[id]:false}});
+      setSettings({...data.opti.settings,sr});
+    }
     setRemoveConfirm(false);
     return data;
   }
@@ -209,6 +233,8 @@ function Content() {
     void task(t('正在读取游戏列表…'), async () => {
       try { await readOperation(); } catch { /* Inventory remains usable while snapshot polling reconnects. */ }
       setRuntime(unwrap(await runtimeStatus()));
+      try { setFsr(unwrap(await fsrStatus())); }
+      catch { setFsr({ready:false,version:'',reason:t('当前插件后台不支持 FSR 模型导入，请更新插件。')}); }
       const list = unwrap(await inventory()); if (!mounted.current) return; setGames(list);
       const previous = Number(localStorage.getItem('opti2xmx-selected')) || selection.appid;
       const attached = latestOperation.current;
@@ -256,6 +282,10 @@ function Content() {
     });
   }
   const opti = info?.opti;
+  const gameFsr = info?.fsr;
+  const fsrReady = gameFsr?.ready ?? fsr?.ready ?? false;
+  const fsrReason = gameFsr?.reason || fsr?.reason || '请导入本地 FSR 模型包。';
+  const selectedSR = session.srDrafts[appid] || settings.sr;
   const migrateOpti = !!opti?.installed && !opti.incomplete;
   const installReason = !info?.prefix_ready ? '请先从 Steam 用 Proton 启动游戏一次，退出后点击刷新。'
     : !executable ? '请先选择要运行的游戏程序。'
@@ -294,9 +324,68 @@ function Content() {
   }
   async function saveSettings(reset = false) {
     await task(reset ? t('正在恢复推荐默认设置…') : t('正在保存设置…'), async () => {
-      const desired = reset ? {sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'native'} : settings;
-      unwrap(await optiSettings(appid, desired, reset)); await load(appid);
+      const id = appid;
+      const desired: Settings = reset ? {sr:'xess',fg:'native',fg_input:'upscaler',spoof:'real',fg_multiplier:'native'}
+        : {...settings,sr:session.srDrafts[id] || settings.sr};
+      if (desired.sr === 'fsr_xmx') {
+        desired.spoof = 'real';
+        await saveFSRSettings(id, desired);
+      } else unwrap(await optiSettings(id, desired, reset));
+      commitSRDraft(id, desired.sr);
+      await load(id);
       setMessage(t('设置已保存，下次启动游戏生效。'));
+    });
+  }
+  async function applyPendingLaunch(id: number, before: string, next: Pending) {
+    if (before !== next.expected && before !== next.target) throw new Error(t('启动项已变化，请检查后重试'));
+    const actual = before === next.target ? before : await writeLaunch(id, next.target, before);
+    unwrap(await optiConfirm(id, actual));
+  }
+  async function saveFSRSettings(id: number, desired: Settings) {
+    let currentInfo = await load(id);
+    let launch = await readLaunch(id);
+    let xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+    if (currentInfo.state?.status === 'active' && !xmxActive)
+      throw new Error(t('启动项已变化，请刷新后恢复 XMX，再保存 FSR。'));
+    if (!currentInfo.fsr?.prepared && xmxActive) {
+      await finish(id, unwrap(await restore(id, launch)), true);
+      currentInfo = await load(id); launch = await readLaunch(id); xmxActive = false;
+    }
+    if (!currentInfo.fsr?.prepared) {
+      const exe = currentInfo.automatic.executable || executable;
+      if (!exe) throw new Error(t('请先选择要运行的游戏程序。'));
+      const next = unwrap(await fsrPrepare(id, exe, launch, source));
+      await applyPendingLaunch(id, launch, next);
+      currentInfo = await load(id); launch = await readLaunch(id);
+      xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+    }
+    if (xmxActive && !currentInfo.fsr?.bridge_ready) {
+      await finish(id, unwrap(await restore(id, launch)), true);
+      currentInfo = await load(id); launch = await readLaunch(id); xmxActive = false;
+    }
+    if (!xmxActive) {
+      const exe = currentInfo.automatic.executable || executable;
+      if (!exe) throw new Error(t('请先选择要运行的游戏程序。'));
+      const setup = unwrap(await enable(id, exe, currentInfo.automatic.route, launch));
+      if (!['active','pending_launch'].includes(setup.status)) throw new Error(t('上次设置未完成，请先点击恢复。'));
+      await finish(id, setup);
+      currentInfo = await load(id); launch = await readLaunch(id);
+      xmxActive = currentInfo.state?.status === 'active' && launch === currentInfo.state.launch;
+    }
+    if (!xmxActive || !currentInfo.fsr?.bridge_ready)
+      throw new Error(t(currentInfo.fsr?.reason || 'FSR XMX 兼容组件尚未就绪，请刷新后重试。'));
+    unwrap(await optiSettings(id, desired, false));
+  }
+  async function importFSRModel() {
+    await task(t('正在选择 FSR 模型包…'), async () => {
+      const picked = await openFilePicker(FileSelectionType.FILE, '/home/deck/Downloads', true, false, undefined, ['zip']);
+      const path = picked?.realpath || picked?.path;
+      if (!path) { setMessage(''); return; }
+      if (!path.toLowerCase().endsWith('.zip')) throw new Error(t('请选择 ZIP 格式的 FSR 模型包。'));
+      const status = unwrap(await fsrImport(path));
+      setFsr(status);
+      if (appid) await load(appid);
+      setMessage(status.ready ? t('FSR 模型包已导入并验证。') : t(status.reason || 'FSR 模型包尚未就绪。'));
     });
   }
   const options = (items: [string,string][]) => items.map(([data,label])=>({data,label}));
@@ -352,11 +441,26 @@ function Content() {
       {(opti?.managed || opti?.rollback) && <>
         <ButtonItem layout="below" disabled={busy} description={[opti.version ? 'Opti '+opti.version : '', runtimeReady].filter(Boolean).join(' · ')} onClick={()=>setAdvanced(!advanced)}>{advanced?t('收起高级设置'):t('高级设置')}</ButtonItem>
         {advanced && <>
-          {opti.managed && opti.version.startsWith('0.9') && <>
-            <DropdownItem layout="below" label={t('超分输出')} disabled={busy || active || configBlocked} selectedOption={settings.sr}
-              description={active?t('XMX 开启时使用 XeSS。'):undefined}
-              rgOptions={options([['xess','XeSS'],['fsr31','FSR 3.1'],['fsr22','FSR 2.2'],['dlss',t('DLSS（需要支持的显卡）')]])}
-              onChange={v=>setSettings({...settings,sr:String(v.data)})} />
+          {opti.managed && (opti.version.startsWith('0.9') || opti.version.startsWith('10.')) && <>
+            <DropdownItem layout="below" label={t('超分输出')} disabled={busy || configBlocked} selectedOption={selectedSR}
+              description={active?t('XMX 开启时可选择 XeSS 或 FSR 4.1.2 Lite；先退出游戏，保存后下次启动生效。'):
+                selectedSR==='fsr_xmx'?t('FSR 4.1.2 Lite 通过 XMX 兼容组件运行；保存时会准备此游戏。'):undefined}
+              rgOptions={options(active ? [['xess','XeSS'],['fsr_xmx',t('FSR 4.1.2 Lite XMX')]]
+                : [['xess','XeSS'],['fsr_xmx',t('FSR 4.1.2 Lite XMX')],['fsr31','FSR 3.1'],['fsr22','FSR 2.2'],['dlss',t('DLSS（需要支持的显卡）')]])}
+              onChange={v=>{const value=String(v.data);setSRDraft(appid,value);setSettings({...settings,sr:value});}} />
+            {selectedSR==='fsr_xmx' && <>
+              <PanelSectionRow><div style={{fontSize:13,lineHeight:1.5}}>
+                <div role="status">{t(!fsrReady ? fsrReason
+                  : gameFsr?.bridge_ready ? 'FSR 4.1.2 Lite XMX 已就绪；退出游戏后保存设置并从 Steam 重新启动。'
+                  : gameFsr?.prepared ? '此游戏的 FSR 文件已准备；保存时会刷新 XMX 兼容组件。'
+                  : 'FSR 模型包已就绪；保存时会为此游戏准备 Opti 10 和模型。')}</div>
+                {!active && <div role="note">{t(gameFsr?.prepared
+                  ? 'FSR 需要 XMX；保存后会自动开启 XMX，退出游戏后从 Steam 启动。'
+                  : 'FSR 需要 XMX；保存时会为此游戏准备 FSR 并自动开启 XMX。')}</div>}
+              </div></PanelSectionRow>
+              {!fsrReady && <ButtonItem layout="below" disabled={busy || configBlocked} description={t(fsrReason)}
+                onClick={()=>void importFSRModel()}>{t('导入 FSR 模型包')}</ButtonItem>}
+            </>}
             <DropdownItem layout="below" label={t('帧生成输出')} disabled={busy || configBlocked} selectedOption={settings.fg}
               description={opti.injection_enabled ? undefined : t('开启 Opti 注入后生效。')}
               rgOptions={options([['native',t('游戏原生（不接管）')],['fsrfg',t('FSR 帧生成')],['xefg',t('XeSS 帧生成（实验）')]])}
@@ -370,11 +474,11 @@ function Content() {
               description={t('选择游戏支持的帧生成类型。')}
               rgOptions={options([['fsrfg30','FSR 3.0 FG'],['fsrfg','FSR 3.1 FG'],['dlssg','DLSS FG'],['upscaler',t('无原生 FG：使用超分输入')]])}
               onChange={v=>setSettings({...settings,fg_input:String(v.data)})} />}
-            <DropdownItem layout="below" label={t('显卡伪装')} disabled={busy || active || configBlocked} selectedOption={settings.spoof}
-              description={active?t('XMX 开启时保留真实 Intel 身份。'):t('实验兼容选项；改身份不保证解锁功能。')}
+            <DropdownItem layout="below" label={t('显卡伪装')} disabled={busy || active || configBlocked || selectedSR==='fsr_xmx'} selectedOption={selectedSR==='fsr_xmx'?'real':settings.spoof}
+              description={active || selectedSR==='fsr_xmx'?t('XMX 开启时保留真实 Intel 身份。'):t('实验兼容选项；改身份不保证解锁功能。')}
               rgOptions={options([['real',t('真实显卡（推荐）')],['nvidia','NVIDIA'],['amd','AMD'],['intel','Intel Arc']])}
               onChange={v=>setSettings({...settings,spoof:String(v.data)})} />
-            <ButtonItem layout="below" disabled={busy || optiPending || !!opti.settings_recovery} onClick={()=>saveSettings()}>{t('保存设置')}</ButtonItem>
+            <ButtonItem layout="below" disabled={busy || optiPending || !!opti.settings_recovery || (selectedSR==='fsr_xmx' && (!fsrReady || pending || blocked))} onClick={()=>saveSettings()}>{t('保存设置')}</ButtonItem>
             <ButtonItem layout="below" disabled={busy || optiPending || !!opti.settings_recovery} description={t('恢复 XeSS、真实显卡、由游戏管理帧生成；先退出游戏。')} onClick={()=>saveSettings(true)}>{t('恢复默认')}</ButtonItem>
             {(opti.settings_rollback || opti.settings_recovery) && <ButtonItem layout="below" disabled={busy || optiPending}
               description={t('恢复上次保存前的配置；保留安装回退记录。先退出游戏。')}

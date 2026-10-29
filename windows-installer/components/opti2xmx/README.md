@@ -4,7 +4,7 @@
 
 **A Decky plugin for per-game OptiScaler management and Intel XeSS XMX setup on SteamOS.**
 
-Version **0.2.8** · AGPL-3.0-only license
+Version **0.3.0** · AGPL-3.0-only license
 
 This release adds experimental XeSS FG 2x/3x/4x requests, independent settings undo, and a Proton-safe XMX shim path. Short Cyberpunk 2077 benchmarks and rollback were tested on one Intel handheld; the FG controls retain their experimental label. See [FG testing and recovery](docs/FRAME_GENERATION.md).
 
@@ -53,7 +53,7 @@ The XMX route has been developed on an Intel ONEXPLAYER 3. AMD Steam Deck hardwa
 
 ## Install
 
-Download `opti2xmx-0.2.8.zip` from the [Releases page](https://github.com/FlightDan/Opti2XMX/releases/tag/v0.2.8), or build the ZIP using the commands below.
+Download `opti2xmx-0.3.0.zip` from the [Releases page](https://github.com/FlightDan/Opti2XMX/releases/tag/v0.3.0), or build the ZIP using the commands below.
 In Decky settings, enable developer mode and use **Install Plugin from ZIP File** (wording may vary by Loader version). Choose the built ZIP, then open Opti2XMX.
 
 The plugin runs as the Steam user and does not modify games just by loading. No upstream DLLs, private runtime binaries, game files or generated compiler caches are bundled.
@@ -91,7 +91,7 @@ python3 -B -m unittest discover -v
 python3 package_plugin.py
 ```
 
-The archive is written to `opti2xmx-0.2.8.zip`. It contains the Python backend, built frontend, pinned runtime descriptor, documentation and licenses, without runtime DLLs or drivers. Repository screenshots are omitted from the install ZIP to keep it small. Fixture tests cover restoration, interrupted operations, runtime hash/extraction failures and conflicting files; they do not replace real game and hardware testing. The plugin screenshots above show the prior 0.2.2 interface.
+The archive is written to `opti2xmx-0.3.0.zip`. It contains the Python backend, built frontend, pinned runtime descriptor, documentation and licenses, without runtime DLLs or drivers. Repository screenshots are omitted from the install ZIP to keep it small. Fixture tests cover restoration, interrupted operations, runtime hash/extraction failures and conflicting files; they do not replace real game and hardware testing. The plugin screenshots above show the prior 0.2.2 interface.
 
 ## Development and credits
 

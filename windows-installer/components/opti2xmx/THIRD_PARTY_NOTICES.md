@@ -9,3 +9,16 @@ The AGPL-3.0-only license applies to original Opti2XMX code, not to separately d
 - **Mesa ANV, Intel IGC and compute-runtime/ocloc**: included only in the separate runtime asset, with their own licenses, notices and source/build references. Generated kernels, game files and private binary caches are not distributed.
 
 Do not infer permission to redistribute a complete third-party runtime bundle from this repository's license. / 不要将本仓库的许可证视为重新分发整套第三方运行环境的许可。
+# FSR decompression compatibility
+
+The FSR feature includes the Opti2XMX `fsrxdec` adapter (AGPL-3.0-only) and the
+unmodified Windows x64 `libwim-15.dll` from wimlib 1.14.5 (LGPL-2.1-or-later).
+The adapter's corresponding sources, the full wimlib source archive and all
+required license texts are included under `fsr_compat/sources/` and
+`fsr_compat/licenses/`. Build and provenance details are in
+`fsr_compat/sources/fsr_compat/README.md` and `fsr_compat/manifest.json`.
+
+The optional FSR model archive is user-provided. Its three DLLs are not included
+in public plugin, installer or maintenance packages. Import only changes the
+verified upscaler copy's decompressor import name; it does not redistribute or
+replace Microsoft Cabinet.

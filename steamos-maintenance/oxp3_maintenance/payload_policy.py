@@ -26,6 +26,10 @@ PINNED_NTFS_METADATA = frozenset({
     'components/partition-mount/ntfs-tools-source.json',
     'components/partition-mount/tools/manifest.json',
 })
+PINNED_OPTI_METADATA = frozenset('components/opti2xmx/' + name for name in (
+    'plugin.json', 'package.json', 'runtime-source.json', 'fsr-source.json',
+    'fsr_compat/manifest.json', 'fsr_compat/sources/fsr_compat/dependency-source.json',
+))
 
 
 def distributable_path(relative):
@@ -109,6 +113,10 @@ def payload_json_bytes(relative, raw):
     if relative in PINNED_NTFS_METADATA:
         if sanitized != parsed:
             raise ValueError('Excluded metadata in pinned NTFS provenance')
+        return raw
+    if relative in PINNED_OPTI_METADATA:
+        if sanitized != parsed:
+            raise ValueError('Excluded metadata in pinned Opti plugin resource')
         return raw
     return json_bytes(sanitized)
 

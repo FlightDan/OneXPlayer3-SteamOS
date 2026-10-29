@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "product": "OXP3 SteamOS",
+  "version": "1.0.6+maintenance.19",
+  "display_version": "1.0.6",
+  "channel": "stable",
+  "notes": "集成 Opti2XMX 0.3.0：现有超分输出下拉框支持 XeSS 和 FSR 4.1.2 Lite XMX，保留默认 XeSS；FSR 模型由用户本地导入，公开包只含开源解压兼容组件、对应源码和许可。增加固定 OptiScaler 10 nightly 离线原档，关闭 XMX 回到安全 XeSS 配置，支持精确官方 Opti 0.9.4 core 的可恢复接管。Arc B390 / SteamOS 3.10 / Cyberpunk 2077 2.31 实机 FSR、XeSS 完整基准及 98 个原文件恢复通过；其他显卡、游戏、光追和帧生成组合未验证。沿用 .18 的其他已发布组件，不含未公开动态功耗研究。显示版本仍为 1.0.6。"
+}

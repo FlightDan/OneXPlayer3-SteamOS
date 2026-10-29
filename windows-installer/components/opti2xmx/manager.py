@@ -20,6 +20,7 @@ import uuid
 from opti import OptiMixin
 from download_progress import OperationProgress
 from runtime_setup import RuntimeMixin
+from fsr import FsrMixin
 
 
 def vdf(text):
@@ -74,7 +75,7 @@ def ini_set(text, section, key, value):
     return '\n'.join(lines) + '\n'
 
 
-class Manager(OptiMixin, RuntimeMixin):
+class Manager(OptiMixin, RuntimeMixin, FsrMixin):
     def __init__(self, home=None, engine=None):
         self.home = Path(home or Path.home()).resolve()
         self.root = self.home / '.local/share/opti2xmx'
@@ -201,6 +202,7 @@ class Manager(OptiMixin, RuntimeMixin):
                     state=state)
         info['automatic'] = self.automatic(info)
         info['opti'] = self.opti_status(info)
+        info['fsr'] = self.fsr_game_status(info)
         return info
 
     def automatic(self, info):
@@ -310,6 +312,12 @@ class Manager(OptiMixin, RuntimeMixin):
             with contextlib.redirect_stdout(io.StringIO()):
                 rt.install(argparse.Namespace(prefix=str(prefix), package=str(package), state=str(state / 'xmx'),
                                               game_exe=exe.name, config=None))
+            self.fsr_install_bridge(state, package)
+            record['fsr_bridge'] = 1
+            if ini:
+                manifest = rt.load(state / 'xmx')
+                manifest['fsr_guard_ini'] = str(ini)
+                rt.save(state / 'xmx', manifest)
             with rt.prefix_lock(prefix):
                 rt.game_idle(prefix, exe.name)
                 (state / 'original').mkdir()
@@ -399,4 +407,10 @@ class Manager(OptiMixin, RuntimeMixin):
         record['status'] = 'pending_restore_launch'
         self.save(record)
         self.opti_sync(appid, [f['path'] for f in record['files']])
+        owned = self.opti_record(appid)
+        if owned and (owned.get('settings_undo') or {}).get('xmx_only'):
+            # Turning XMX off already restores the XeSS-safe original. An undo
+            # from the active FSR session must not re-enable FSR on stock ANV.
+            owned['settings_undo']['status'] = 'restored-by-xmx-disable'
+            self.opti_save(appid, owned)
         return record

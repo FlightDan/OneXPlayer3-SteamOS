@@ -1,4 +1,4 @@
-"""Pinned public Opti2XMX 0.1.4 installer inputs; never execute plugin code."""
+"""Pinned public Opti2XMX installer inputs; never execute plugin code."""
 import hashlib
 import io
 import json
@@ -15,10 +15,49 @@ FILES_SHA256 = PINS['files_sha256']
 RUNTIME_SHA256 = PINS['runtime']['sha256']
 RUNTIME_SIZE = PINS['runtime']['size_bytes']
 RUNTIME_URL = PINS['runtime']['url']
-FILES = ('plugin.json', 'package.json', 'main.py', 'manager.py', 'opti.py',
+BASE_FILES = ('plugin.json', 'package.json', 'main.py', 'manager.py', 'opti.py',
          'download_progress.py', 'runtime_setup.py', 'runtime-source.json',
          'per_game.py', 'dist/index.js', 'README.md', 'README.zh-CN.md', 'LICENSE',
          'THIRD_PARTY_NOTICES.md', 'docs/RUNTIME.md', 'docs/FRAME_GENERATION.md')
+FSR_FILES = ('fsr.py', 'fsr_cm.py', 'fsr-source.json', 'docs/FSR_XMX.md',
+             'fsr_compat/manifest.json')
+COMPAT_BINARIES = ('bin/fsrxdec.dll', 'bin/libwim-15.dll')
+COMPAT_DISTRIBUTION = (
+    'licenses/fsrxdec-LICENSE.txt', 'licenses/wimlib/COPYING.GPLv3.txt',
+    'licenses/wimlib/COPYING.LGPL.txt', 'licenses/wimlib/COPYING.libdivsufsort-lite.txt',
+    'licenses/wimlib/COPYING.txt', 'sources/fsr_compat/build.ps1',
+    'sources/fsr_compat/dependency-source.json', 'sources/fsr_compat/fsrxdec.c',
+    'sources/fsr_compat/fsrxdec.def', 'sources/fsr_compat/LICENSE',
+    'sources/fsr_compat/README.md', 'sources/fsr_compat/test_fsrxdec.py',
+    'sources/wimlib-1.14.5.tar.gz')
+PUBLIC_FILES = BASE_FILES + FSR_FILES + tuple(
+    'fsr_compat/' + name for name in COMPAT_BINARIES + COMPAT_DISTRIBUTION)
+FILES = tuple(PINS['files'])
+if set(FILES) not in (set(BASE_FILES), set(PUBLIC_FILES)):
+    raise ValueError('Pinned Opti plugin membership differs from known public layouts')
+
+
+def validate_public_members(records):
+    """Allow a complete published layout, never privately imported FSR binaries."""
+    if set(records) == set(BASE_FILES):
+        return
+    if set(records) != set(PUBLIC_FILES):
+        raise ValueError('Unexpected public Opti plugin membership')
+    manifest = json.loads(records['fsr_compat/manifest.json'])
+    if (not isinstance(manifest, dict) or manifest.get('schema') != 1
+            or manifest.get('adapter') != 'fsrxdec' or manifest.get('architecture') != 'x86_64'):
+        raise ValueError('Unexpected public FSR compatibility identity')
+    for key, expected in (('files', COMPAT_BINARIES), ('distribution_files', COMPAT_DISTRIBUTION)):
+        rows = manifest.get(key)
+        if (not isinstance(rows, list) or len(rows) != len(expected)
+                or any(not isinstance(row, dict) for row in rows)
+                or {row.get('path') for row in rows} != set(expected)):
+            raise ValueError('Unexpected public FSR compatibility membership')
+        for row in rows:
+            data = records['fsr_compat/' + row['path']]
+            if (type(row.get('size')) is not int or row['size'] != len(data)
+                    or row.get('sha256') != hashlib.sha256(data).hexdigest()):
+                raise ValueError('Public FSR compatibility checksum mismatch')
 
 
 def _regular(path):
@@ -42,6 +81,7 @@ def _hash(path):
 
 
 def _metadata(records):
+    validate_public_members(records)
     package = json.loads(records['package.json'])
     descriptor = json.loads(records['runtime-source.json'])
     if package.get('version') != VERSION or json.loads(records['plugin.json']).get('name') != 'Opti2XMX':
