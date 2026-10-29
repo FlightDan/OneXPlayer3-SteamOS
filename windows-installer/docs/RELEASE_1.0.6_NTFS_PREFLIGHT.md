@@ -50,3 +50,5 @@
 本地复核材料：`windows-installer/work/ntfs-preflight-validation/remote-final-tests.json`、`remote-qa-result.json`，`windows-installer/work/ntfs-tools-functional-55bc6ed493444633b170a21c4298248d/report.json`、对应串口记录，以及 `windows-installer/logs/ntfs-preflight-delivery-20261029.json`。组件复核 ZIP 是局部候选，不能作为完整安装包或公开维护 Release 使用。README 仅同步已有维护链接版本。
 
 2026-10-29 正式交付复核：公开源码提交 `aa3fa0c03faf2e66f6ba25a30c10bfda130c98b2`。维护完整 Windows 回归首次受沙箱 DPAPI 上下文限制，860 项中 797 通过、53 跳过、10 项密钥测试出错；正常用户上下文重跑密钥模块 17 项全通过。独立审查核对 Git 字节、固定源码 JSON、签名分片完全一致。未把这些结果计作实机升级或完整新装。
+
+补充最终源码回归：隔离、断网的 SteamOS QEMU 使用 292 项核对过哈希的公开源码输入，NTFS 三模块 67/67 通过，0 跳过/失败/错误。维护器全量 VM 回归达到 480 秒上限，未完成，不能计为通过。另有实机验收脚本独立复核后 19 项本地门禁通过，仅验证脚本行为，未操作实机。这些结果均不能替代 .17→.18 正式升级和重启验收。
