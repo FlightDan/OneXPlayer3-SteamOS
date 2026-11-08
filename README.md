@@ -2,6 +2,10 @@
 
 [简体中文](README.md) | [English](README.en.md) | [安装方法](#3-安装方法)
 
+本仓库停止维护，相关适配后续更新移动到：
+https://github.com/FlightDan/Boiler-installer
+https://github.com/FlightDan/Boiler-adaptations
+
 
 ## 1. 简介
 
