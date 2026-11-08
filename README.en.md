@@ -2,6 +2,13 @@
 
 [简体中文](README.md) | [English](README.en.md) | [Installation](#3-installation)
 
+This repository is no longer maintained; future updates to these adaptations will be available through the Boiler SteamOS Universal Installer.
+
+https://github.com/FlightDan/Boiler-installer
+
+https://github.com/FlightDan/Boiler-adaptations
+
+
 ## 1. Introduction
 
 SteamOS support for the ONEXPLAYER 3 handheld, covering Game Mode, the KDE desktop, controller input and hardware controls, with Intel XeSS XMX acceleration and XeSS frame generation (where supported by the game).
